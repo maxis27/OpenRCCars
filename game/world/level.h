@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "formats/scene.h"
@@ -20,6 +21,13 @@ class Level {
 
     // camera behind the first checkpoint, looking along the track
     Camera              startCamera() const;
+
+    // start pose of the player's car (INST 'Player', +Z along the track), lowered or raised so that
+    // a model whose lowest point is at `carBottom` (model space Y) stands on the ground
+    rc::Mat4            carStart(float carBottom) const;
+
+    // highest surface of the track geometry directly below `from`
+    std::optional<float> groundHeight(const rc::Vec3& from) const;
 
   private:
     std::string                levelName;

@@ -14,9 +14,10 @@ using namespace Tempest;
 namespace {
 
 struct BatchKey {
+  int32_t model = -1;
   int32_t base = -1, light = -1, mask = -1, base2 = -1;
   bool operator<(const BatchKey& o) const {
-    return std::tie(base,light,mask,base2) < std::tie(o.base,o.light,o.mask,o.base2);
+    return std::tie(model,base,light,mask,base2) < std::tie(o.model,o.base,o.light,o.mask,o.base2);
     }
   };
 
@@ -27,9 +28,8 @@ bool LevelMesh::isHiddenMesh(const std::string& name) {
   return name.find("_LOD1")!=std::string::npos || name.find("_LOD2")!=std::string::npos;
   }
 
-LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene) {
-  createPipelines(device);
-
+LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene)
+  :pso(device) {
   bbox[0] = { 1e9f, 1e9f, 1e9f};
   bbox[1] = {-1e9f,-1e9f,-1e9f};
 
@@ -55,6 +55,7 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene) {
         continue;
         }
       BatchKey key;
+      key.model = m.model;
       key.base  = base->texture;
       key.light = light ? light->texture : -1;
       if(mask && base2) {
@@ -103,14 +104,14 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene) {
     Batch b;
     b.first  = all.size();
     b.count  = verts.size();
-    b.tex[0] = sceneTexture(res,scene,key.base,&b.mode);
-    if(auto t = scene.texture(key.base); t!=nullptr && rc::PackFile::normalize(t->name).rfind("sky",0)==0) {
+    b.tex[0] = sceneTexture(res,scene,key.base,key.model,&b.mode);
+    if(auto t = scene.texture(key.base,key.model); t!=nullptr && rc::PackFile::normalize(t->name).rfind("sky",0)==0) {
       b.sky   = true;
       b.flags = 0;
       }
-    b.tex[1] = key.light>=0 ? sceneTexture(res,scene,key.light,nullptr) : nullptr;
-    b.tex[2] = key.mask >=0 ? sceneTexture(res,scene,key.mask, nullptr) : nullptr;
-    b.tex[3] = key.base2>=0 ? sceneTexture(res,scene,key.base2,nullptr) : nullptr;
+    b.tex[1] = key.light>=0 ? sceneTexture(res,scene,key.light,key.model,nullptr) : nullptr;
+    b.tex[2] = key.mask >=0 ? sceneTexture(res,scene,key.mask, key.model,nullptr) : nullptr;
+    b.tex[3] = key.base2>=0 ? sceneTexture(res,scene,key.base2,key.model,nullptr) : nullptr;
     if(b.tex[1]!=nullptr)
       b.flags |= F_Lightmap;
     if(b.tex[2]!=nullptr && b.tex[3]!=nullptr) {
@@ -138,7 +139,7 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene) {
          info.skippedMeshes," LOD meshes skipped, ",info.untextured," untextured faces");
   }
 
-void LevelMesh::createPipelines(Device& device) {
+ScenePipelines::ScenePipelines(Device& device) {
   auto sh   = AppShader::get("level.vert.sprv");
   auto vert = device.shader(sh.data,sh.len);
   sh        = AppShader::get("level.frag.sprv");
@@ -146,27 +147,32 @@ void LevelMesh::createPipelines(Device& device) {
 
   // Faces of the original data are wound the other way than Tempest expects for front faces
   // (verified visually), so the "front" side is culled to drop back faces.
-  RenderState opaque;
-  opaque.setCullFaceMode(RenderState::CullMode::Front);
-  opaque.setZTestMode(RenderState::ZTestMode::LEqual);
-  psoOpaque = device.pipeline(Topology::Triangles,opaque,vert,frag);
+  RenderState stOpaque;
+  stOpaque.setCullFaceMode(RenderState::CullMode::Front);
+  stOpaque.setZTestMode(RenderState::ZTestMode::LEqual);
+  opaque = device.pipeline(Topology::Triangles,stOpaque,vert,frag);
 
   // alpha-tested foliage / fences are usually single quads seen from both sides
-  RenderState cutout = opaque;
-  cutout.setCullFaceMode(RenderState::CullMode::NoCull);
-  psoCutout = device.pipeline(Topology::Triangles,cutout,vert,frag);
+  RenderState stCutout = stOpaque;
+  stCutout.setCullFaceMode(RenderState::CullMode::NoCull);
+  cutout = device.pipeline(Topology::Triangles,stCutout,vert,frag);
 
-  RenderState blend = cutout;
-  blend.setBlendSource(RenderState::BlendMode::SrcAlpha);
-  blend.setBlendDest  (RenderState::BlendMode::OneMinusSrcAlpha);
-  blend.setZWriteEnabled(false);
-  psoBlend = device.pipeline(Topology::Triangles,blend,vert,frag);
+  RenderState stBlend = stCutout;
+  stBlend.setBlendSource(RenderState::BlendMode::SrcAlpha);
+  stBlend.setBlendDest  (RenderState::BlendMode::OneMinusSrcAlpha);
+  stBlend.setZWriteEnabled(false);
+  blend = device.pipeline(Topology::Triangles,stBlend,vert,frag);
   }
 
-const Texture2d* LevelMesh::sceneTexture(Resources& res, const rc::SbScene& scene, int32_t index, rc::AlphaMode* mode) {
+const RenderPipeline& ScenePipelines::get(rc::AlphaMode mode) const {
+  return (mode==rc::AlphaMode::Translucent) ? blend :
+         (mode==rc::AlphaMode::Cutout)      ? cutout : opaque;
+  }
+
+const Texture2d* LevelMesh::sceneTexture(Resources& res, const rc::SbScene& scene, int32_t index, int32_t model, rc::AlphaMode* mode) {
   if(mode!=nullptr)
     *mode = rc::AlphaMode::Opaque;
-  auto t = scene.texture(index);
+  auto t = scene.texture(index,model);
   if(t==nullptr)
     return nullptr;
 
@@ -200,11 +206,10 @@ void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, bool drawSk
   for(auto& b:batches) {
     if(b.sky && !drawSky)
       continue;
-    auto& pso = (b.mode==rc::AlphaMode::Translucent) ? psoBlend :
-                (b.mode==rc::AlphaMode::Cutout)      ? psoCutout : psoOpaque;
-    if(current!=&pso) {
-      enc.setPipeline(pso);
-      current = &pso;
+    auto& p = pso.get(b.mode);
+    if(current!=&p) {
+      enc.setPipeline(p);
+      current = &p;
       }
     push.flags = b.flags;
     enc.setPushData(push);

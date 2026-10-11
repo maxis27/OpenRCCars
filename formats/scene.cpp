@@ -43,12 +43,27 @@ class Loader {
       else if(c.is("MARK")) {
         marker(c,parentWorld);
         }
-      else if(c.is("DESC") || c.is("FOLD") || c.is("MODL")) {
+      else if(c.is("INST")) {
+        instance(c,parentWorld);
+        }
+      else if(c.is("MODL")) {
+        const int32_t prev = model;
+        model = int32_t(scene.models.size());
+        scene.models.emplace_back();
+        for(auto& ch:c.children()) {
+          if(ch.id==0x03 && ch.type!=0x92)
+            scene.models[size_t(model)] = std::string(ch.str());
+          if(ch.type==0x92)
+            node(ch,parent,parentWorld);
+          }
+        model = prev;
+        }
+      else if(c.is("DESC") || c.is("FOLD")) {
         for(auto& ch:c.children())
           if(ch.type==0x92)
             node(ch,parent,parentWorld);
         }
-      // COLL, HHID, INST, EVOL, SCRI, SPLN, ANIM ... - not needed for rendering yet
+      // COLL, HHID, EVOL, SCRI, SPLN, ANIM ... - not needed for rendering yet
       }
 
   private:
@@ -65,6 +80,7 @@ class Loader {
       {
         SbMesh& m = scene.meshes.back();
         m.parent  = parent;
+        m.model   = model;
         m.world   = parentWorld;
       }
       std::vector<Chunk> childNodes;
@@ -131,6 +147,7 @@ class Loader {
 
     void texture(const Chunk& c) {
       SbTexture t;
+      t.model = model;
       for(auto& ch:c.children()) {
         switch(ch.id) {
           case 0x03: t.name  = std::string(ch.str()); break;
@@ -150,13 +167,25 @@ class Loader {
         if(ch.id==0x0b) mk.world = parentWorld*readTransform(ch);
         if(ch.id==0x00 && ch.type==0x92) nested.push_back(ch); // e.g. cp_1 -> cp_1_1, cp_1_2 ...
         }
-      const Mat4 world = mk.world;
       scene.markers.push_back(std::move(mk));
+      // unlike meshes, nested markers store world transforms: cp_1_1, cp_1_2 ... lead from cp_1 to cp_2,
+      // and the last sub-checkpoint of a lap ends next to cp_1 (beach_1, urban_1)
       for(auto& ch:nested)
-        node(ch,-1,world);
+        node(ch,-1,parentWorld);
+      }
+
+    void instance(const Chunk& c, const Mat4& parentWorld) {
+      SbInstance in;
+      in.world = parentWorld;
+      for(auto& ch:c.children()) {
+        if(ch.id==0x03 && ch.type!=0x92) in.name  = std::string(ch.str());
+        if(ch.id==0x0b)                  in.world = parentWorld*readTransform(ch);
+        }
+      scene.instances.push_back(std::move(in));
       }
 
     SbScene& scene;
+    int32_t  model = -1;
   };
 
 }
@@ -184,11 +213,25 @@ SbScene SbScene::load(const std::vector<uint8_t>& file) {
   return scene;
   }
 
-const SbTexture* SbScene::texture(int32_t index) const {
+const SbTexture* SbScene::texture(int32_t index, int32_t model) const {
   for(auto& t:textures)
-    if(t.index==index)
+    if(t.index==index && t.model==model)
       return &t;
   return nullptr;
+  }
+
+const SbInstance* SbScene::instance(std::string_view name) const {
+  for(auto& i:instances)
+    if(i.name==name)
+      return &i;
+  return nullptr;
+  }
+
+int32_t SbScene::findModel(std::string_view name) const {
+  for(size_t i=0; i<models.size(); ++i)
+    if(models[i]==name)
+      return int32_t(i);
+  return -1;
   }
 
 const SbMarker* SbScene::marker(std::string_view name) const {

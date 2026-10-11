@@ -1,7 +1,8 @@
 // rcshot - offscreen render of a track to PNG (handy for testing without a window / on CI).
 //
 //   rcshot <game_dir> <track> <out.png> [width height] [x y z yaw pitch]
-//   without camera arguments the start camera (behind checkpoint cp_1) is used.
+//   the player's car stands on the start; without camera arguments the camera follows it.
+//   env RCSHOT_CAR=Car1|Car2|Car3|none picks the car (default Car1), none = track only, start camera behind cp_1.
 //   env RCSHOT_NOSKY=1 hides the sky dome (useful for top-down views).
 
 #include <Tempest/Device>
@@ -11,9 +12,11 @@
 #include <Tempest/VulkanApi>
 
 #include <cstdlib>
+#include <memory>
 #include <string>
 
 #include "game/resources.h"
+#include "game/world/carmesh.h"
 #include "game/world/level.h"
 
 using namespace Tempest;
@@ -34,6 +37,17 @@ int main(int argc, const char** argv) {
     Resources res(device,argv[1]);
     Level     level(device,res,argv[2]);
     Camera    cam = level.startCamera();
+
+    const char* carName = std::getenv("RCSHOT_CAR");
+    std::unique_ptr<CarMesh> car;
+    rc::Mat4                 carPose;
+    rc::SbScene              carSb;
+    if(carName==nullptr || std::string(carName)!="none") {
+      carSb   = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
+      car     = std::make_unique<CarMesh>(device,res,carSb,carName ? carName : "Car1");
+      carPose = level.carStart(car->bboxMin().y);
+      cam.chase(carPose,ChaseDistance,ChaseHeight);
+      }
     if(argc>10) {
       cam.position = {float(std::atof(argv[6])),float(std::atof(argv[7])),float(std::atof(argv[8]))};
       cam.yaw      = float(std::atof(argv[9]));
@@ -45,7 +59,8 @@ int main(int argc, const char** argv) {
     auto depth = device.zbuffer(TextureFormat::Depth32F,w,h);
 
     LevelMesh::Push push;
-    cam.viewProj(float(w)/float(h)).toColumnMajor(push.viewProj);
+    const rc::Mat4  viewProj = cam.viewProj(float(w)/float(h));
+    viewProj.toColumnMajor(push.viewProj);
     push.cameraPos[0] = cam.position.x;
     push.cameraPos[1] = cam.position.y;
     push.cameraPos[2] = cam.position.z;
@@ -58,6 +73,8 @@ int main(int argc, const char** argv) {
       auto enc = cmd.startEncoding(device);
       enc.setFramebuffer({{color,Vec4(0.62f,0.72f,0.82f,1.f),Tempest::Preserve}},{depth,1.f,Tempest::Preserve});
       level.mesh().draw(enc,push,std::getenv("RCSHOT_NOSKY")==nullptr);
+      if(car)
+        car->draw(enc,viewProj,push,carPose);
     }
     auto sync = device.submit(cmd);
     sync.wait();

@@ -62,6 +62,24 @@ struct Mat4 {
     }
   Vec3 translation() const { return {m[0][3], m[1][3], m[2][3]}; }
 
+  // determinant of the 3x3 part; negative for mirrored transforms (scale -1 in the data)
+  float determinant3() const {
+    return m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1]) -
+           m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0]) +
+           m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+    }
+
+  // inverse of a rotation + translation (no scale)
+  Mat4 inverseRigid() const {
+    Mat4 r;
+    for(int y=0; y<3; ++y)
+      for(int x=0; x<3; ++x)
+        r.m[y][x] = m[x][y];
+    const Vec3 t = r.vector(translation());
+    r.m[0][3] = -t.x; r.m[1][3] = -t.y; r.m[2][3] = -t.z;
+    return r;
+    }
+
   // column-major copy, as expected by GLSL mat4
   void toColumnMajor(float out[16]) const {
     for(int c=0; c<4; ++c)

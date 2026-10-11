@@ -10,7 +10,7 @@
 namespace rc {
 
 // .sb - "CREAT Studio Scene Project 6.0".
-// Module table followed by a node tree: DESC -> FOLD/MODL -> MESH (nested), GLTX, MARK, COLL, HHID, INST, SPLN, ANIM ...
+// Module table followed by a node tree: DESC -> FOLD/MODL -> MESH (nested), GLTX, MARK, COLL, HHID, INST, SCRI, SPLN, ANIM ...
 //
 // MESH children:
 //   0x03 name, 0x0b transform (u32 9, pos xyz, scale xyz, rotation xyz in degrees),
@@ -74,11 +74,28 @@ struct SbMarker {
   Vec3        position() const { return world.translation(); }
   };
 
-// INST: placed object or actor (children are ignored for now). 'Player' in FOLD 'Players' is the start position
-// of the player's car, with the car's forward (+Z) rotated to face along the track.
+// INST: placed object or actor (children - markers, volumes, scripts of AI characters - are ignored for now).
+//   0x03 name, 0x0a kind (3, or 2 for props laid on their side: purpose unknown, the transform has the rotation),
+//   0x0b transform, 0x72 model (MODL name in another scene), 0x74 that scene ("RoadCar" = Roadcar.sb, empty:
+//   the game knows where the model lives: Car.sb, stone.sb, people.sb, AIChars.sb).
+// 'Player' in FOLD 'Players' is the start position of the player's car (model "Car1"), with the car's
+// forward (+Z) rotated to face along the track.
 struct SbInstance {
   std::string name;
+  std::string model;
+  std::string source;
+  uint32_t    kind = 0;
   Mat4        world;
+  };
+
+// SCRI: text in the "Section Keys" format (see KeySections), e.g. the physics of a prop in stone.sb:
+//   Section Keys "Geom"   type(int) = 2 // cylinder   shiftCenterMassOY(float) = 0   End
+//   Section Keys "Params" mass(float) = 0.1  coeffHookNorm(float) = 0.3  coeffFrict(float) = 1.0  End
+// Scripts of instances (people, the track's DemoEntry) are game logic in another language and kept as text too.
+struct SbScript {
+  std::string name;
+  int32_t     model = -1; // SbScene::models, -1 outside a MODL
+  std::string text;
   };
 
 // COLL - top level node of track scenes (MOD_COLLISION). The game collides with the render geometry itself:
@@ -112,11 +129,13 @@ struct SbScene {
   std::vector<SbMesh>      meshes;
   std::vector<SbMarker>    markers;
   std::vector<SbInstance>  instances;
+  std::vector<SbScript>    scripts;   // SCRI directly under MODL/FOLD/DESC
   SbCollisionGrid          collision; // empty for scenes without COLL (cars, props)
 
   const SbTexture*  texture(int32_t index, int32_t model) const;
   const SbMarker*   marker(std::string_view name) const;
   const SbInstance* instance(std::string_view name) const;
+  const SbScript*   script(int32_t model, std::string_view name = {}) const; // first script of the model if no name
   int32_t           findModel(std::string_view name) const; // -1 if not found
 
   static SbScene load(const std::vector<uint8_t>& file); // throws FormatError

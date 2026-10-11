@@ -7,37 +7,13 @@
 #include <cmath>
 #include <iterator>
 
+#include "btconvert.h"
+
 using namespace rc;
+using namespace rc::bt;
 
-namespace {
-
-constexpr float S = PhysicsWorld::Scale;
-
-btVector3 toBt(const Vec3& v)   { return btVector3(v.x,v.y,v.z); }
-Vec3      fromBt(const btVector3& v) { return {float(v.x()),float(v.y()),float(v.z())}; }
-
-// rotation + translation of a Mat4 (unscaled) -> scaled btTransform
-btTransform toBt(const Mat4& m) {
-  btMatrix3x3 basis(m.m[0][0],m.m[0][1],m.m[0][2],
-                    m.m[1][0],m.m[1][1],m.m[1][2],
-                    m.m[2][0],m.m[2][1],m.m[2][2]);
-  return btTransform(basis,toBt(m.translation())*S);
-  }
-
-Mat4 fromBt(const btTransform& t) {
-  Mat4 m;
-  const btMatrix3x3& b = t.getBasis();
-  for(int r=0; r<3; ++r)
-    for(int c=0; c<3; ++c)
-      m.m[r][c] = float(b[r][c]);
-  const btVector3 o = t.getOrigin()/S;
-  m.m[0][3] = float(o.x()); m.m[1][3] = float(o.y()); m.m[2][3] = float(o.z());
-  return m;
-  }
-
-}
-
-// Suspension rays go through the COLL grid instead of Bullet's broadphase.
+// Suspension rays go through the COLL grid instead of Bullet's broadphase, and hit the props on the track
+// (a wheel rolls over a can, a bucket ...), which then feel the wheel's friction.
 class Vehicle::Raycaster : public btVehicleRaycaster {
   public:
     explicit Raycaster(PhysicsWorld& w) : world(w) {}
@@ -45,7 +21,14 @@ class Vehicle::Raycaster : public btVehicleRaycaster {
     void* castRay(const btVector3& from, const btVector3& to, btVehicleRaycasterResult& result) override {
       const Vec3 f = fromBt(from)*(1.f/S);
       const Vec3 d = fromBt(to-from)*(1.f/S);
-      auto hit = world.track().raycast(f,d,1.f);
+      auto  hit  = world.track().raycast(f,d,1.f);
+      float dist = hit ? hit->distance : 1.f;
+      if(auto prop = world.rayProps(f,f+d); prop.body!=nullptr && prop.fraction<dist) {
+        result.m_hitPointInWorld  = toBt(prop.point)*S;
+        result.m_hitNormalInWorld = toBt(prop.normal);
+        result.m_distFraction     = prop.fraction;
+        return prop.body;
+        }
       if(!hit)
         return nullptr;
       result.m_hitPointInWorld  = toBt(hit->point)*S;
@@ -97,6 +80,27 @@ PhysicsWorld::PhysicsWorld(const CollisionMesh& track) : coll(track) {
 PhysicsWorld::~PhysicsWorld() {
   // vehicles remove themselves; only the ground is left
   world->removeRigidBody(groundBody.get());
+  }
+
+PhysicsWorld::PropHit PhysicsWorld::rayProps(const Vec3& f, const Vec3& t) {
+  struct Callback : btCollisionWorld::ClosestRayResultCallback {
+    using ClosestRayResultCallback::ClosestRayResultCallback;
+    bool needsCollision(btBroadphaseProxy* proxy) const override {
+      auto obj = static_cast<const btCollisionObject*>(proxy->m_clientObject);
+      return obj->getUserIndex()==PropTag && ClosestRayResultCallback::needsCollision(proxy);
+      }
+    };
+  const btVector3 from = toBt(f)*S, to = toBt(t)*S;
+  PropHit  ret;
+  Callback cb(from,to);
+  world->rayTest(from,to,cb);
+  if(cb.hasHit()) {
+    ret.body     = const_cast<btRigidBody*>(btRigidBody::upcast(cb.m_collisionObject));
+    ret.point    = fromBt(cb.m_hitPointWorld)*(1.f/S);
+    ret.normal   = fromBt(cb.m_hitNormalWorld);
+    ret.fraction = float(cb.m_closestHitFraction);
+    }
+  return ret;
   }
 
 void PhysicsWorld::step(float dt) {

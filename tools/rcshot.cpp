@@ -9,6 +9,7 @@
 //   (positive = left) for the last half of that time, RCSHOT_JUMP=<seconds> jumps at that moment,
 //   RCSHOT_BOOST=1 holds the boost, RCSHOT_START="x z yaw" puts the car somewhere else first.
 //   env RCSHOT_TIME=<seconds> is the moment of the water animation (default: the drive time, else 0).
+//   env RCSHOT_OBJECTS=0 hides the objects placed on the track (props, characters, road cars).
 
 #include <Tempest/Device>
 #include <Tempest/Fence>
@@ -23,8 +24,9 @@
 #include <string>
 
 #include "game/resources.h"
-#include "game/world/carmesh.h"
+#include "game/world/modelmesh.h"
 #include "game/world/level.h"
+#include "game/world/objects.h"
 #include "physics/vehicle.h"
 
 using namespace Tempest;
@@ -46,14 +48,21 @@ int main(int argc, const char** argv) {
     Level     level(device,res,argv[2]);
     Camera    cam = level.startCamera();
 
+    // objects first: they settle on the track before the car drives in
+    rc::PhysicsWorld         world(level.collision());
+    rc::ObjectLibrary        library([&](const std::string& p){ return res.readFile(p); });
+    std::unique_ptr<Objects> objects;
+    if(const char* o = std::getenv("RCSHOT_OBJECTS"); o==nullptr || std::string(o)!="0")
+      objects = std::make_unique<Objects>(device,res,library,level.scene(),world);
+
     const char* carName = std::getenv("RCSHOT_CAR");
-    std::unique_ptr<CarMesh> car;
+    std::unique_ptr<ModelMesh> car;
     rc::Mat4                 carPose;
     rc::SbScene              carSb;
     std::vector<rc::Mat4>    parts;
     if(carName==nullptr || std::string(carName)!="none") {
       carSb   = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
-      car     = std::make_unique<CarMesh>(device,res,carSb,carName ? carName : "Car1");
+      car     = std::make_unique<ModelMesh>(device,res,carSb,carName ? carName : "Car1");
       carPose = level.carStart(car->bboxMin().y);
       if(const char* start = std::getenv("RCSHOT_START")) {
         // "x z yaw": somewhere else on the track, standing on the ground
@@ -69,7 +78,6 @@ int main(int argc, const char** argv) {
         bool             jumped = false;
         const float      time  = float(std::atof(drive));
         const int        carNo = std::atoi(car->name().c_str()+3);
-        rc::PhysicsWorld world(level.collision());
         rc::Vehicle      veh(world,rc::carGeometry(carSb,car->name()),rc::CarParams::load(res.pack(),carNo),carPose);
         for(float t=0; t<time; t+=1.f/60.f) {
           rc::Vehicle::Input in;
@@ -129,6 +137,8 @@ int main(int argc, const char** argv) {
       enc.setFramebuffer({{color,Vec4(0.62f,0.72f,0.82f,1.f),Tempest::Preserve}},{depth,1.f,Tempest::Preserve});
       const bool sky = std::getenv("RCSHOT_NOSKY")==nullptr;
       level.mesh().draw(enc,push,LevelMesh::Pass::Opaque,sky);
+      if(objects)
+        objects->draw(enc,viewProj,push);
       if(car)
         car->draw(enc,viewProj,push,carPose,parts.empty() ? nullptr : &parts);
       level.mesh().draw(enc,push,LevelMesh::Pass::Translucent,sky);

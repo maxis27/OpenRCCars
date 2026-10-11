@@ -17,11 +17,16 @@ namespace rc {
 //   0x11 positions (u32 n + vec3[n]), 0x13 texcoords (u32 n + vec2[n]), 0x14 bbox,
 //   0x17 faces: list of 0x18 { prefix n; 0x19 position indices, 0x1a normals, 0x25 material, 0x27 face normal,
 //                              0x3a layers: 0x3b { 0x3c texture (GLTX index), 0x3d tag (BAS1/LM_1/ALP1/BAS2), 0x3f uv indices } }
-// GLTX children: 0x03 name (= Textures.N/<name>.csi), 0x08 header (u32 5, u32 index ...), 0x32 embedded .csi (lightmaps)
+// GLTX children: 0x03 name (= Textures.N/<name>.csi), 0x08 header (u32 5, then index, 0, flags, flags, material),
+// 0x32 embedded .csi (lightmaps)
 // GLTX indices are local to the enclosing MODL: Car.sb holds several cars, each numbering its textures from 0.
+// `material` is a bit set describing what the texture is made of, at most one bit per texture on the tracks:
+//   4 wet sand, 5 sand (sand_halfdry), 6 trampled sand (Sand_trample), 7 wood, 8 grass, 9 gravel (Sand_gravel,
+//   path_*), 10 asphalt, 11 stone / concrete / rock, 12 metal; 0 for everything else, including water ("sea").
 struct SbTexture {
   int32_t              index = -1;
   int32_t              model = -1; // SbScene::models
+  uint32_t             material = 0;
   std::string          name;
   std::vector<uint8_t> embedded; // raw .csi, if stored inside the scene
   };

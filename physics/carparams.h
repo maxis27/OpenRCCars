@@ -10,7 +10,8 @@ namespace rc {
 
 // Driving parameters of one car (1 = Overkill, 2 = Buggy, 3 = Hummer), from RCCars.pack:
 //   Settings\engine<N>.ini, springs<N>.ini, tires<N>.ini, steering<N>.ini, resistance<N>.ini, cdt<N>.ini,
-//   Splines\splAccelBase<N>.bspl, Splines\OVERKILL|BUGGY|HUMMER.bspl (boost) and Scripts\upgrades.ini.
+//   Splines\splAccelBase<N>.bspl, Splines\OVERKILL|BUGGY|HUMMER.bspl (boost), Scripts\upgrades.ini and
+//   Settings\Water.ini (shared by all cars).
 // The tuning sliders (1..100) have no units in the data. How a slider becomes a physical value is our guess,
 // kept in one place (CarParams::load) so it can be tuned against the original game.
 struct CarParams {
@@ -44,6 +45,14 @@ struct CarParams {
 
   float   rolling     = 0.3f;   // m/s^2, bearings friction while coasting
   float   airDrag     = 0.013f; // 1/m: a = airDrag * v^2
+  // surfaces (see rc::Surface): deep sand and water hold the car back with a force proportional to its speed
+  float   deepSandDrag = 0.7f;  // 1/s, tires<N>.ini coeffDeepSand 7, all wheels in deep sand
+  float   waterDrag    = 2.f;   // 1/s, tires<N>.ini coeffWater 20 (Hummer 7), all wheels in water
+  float   waterDropWheels = 0.15f; // fraction of speed lost when the first wheel splashes in, Water.ini speedDropOther
+  float   waterDropBody   = 0.25f; // ... when the body does, Water.ini speedDropCenter
+  float   waterDamping    = 0.95f; // velocity kept per 1/30 s with the body under water, Water.ini DampingVelocity2
+  float   drownTime       = 1.f;   // s fully under water before the car counts as drowned
+
   float   comHeight   = 0.17f;  // centre of mass, fraction of the car's height above its lowest point
   float   inertiaRoll  = 1.f;   // multipliers of the box inertia
   float   inertiaPitch = 1.f;

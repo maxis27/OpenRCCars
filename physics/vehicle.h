@@ -60,7 +60,9 @@ class PhysicsWorld {
     std::unique_ptr<btRigidBody>                          groundBody;
   };
 
-// A car on btRaycastVehicle: chassis box + four suspension rays.
+// A car on btRaycastVehicle: chassis box + four suspension rays. The wheels stand on solid ground only: water
+// (Surface::Water) is not solid, so the car wades through shallow water and sinks into deep water, slowed down
+// by it, and counts as drowned once it has been fully under water for CarParams::drownTime.
 class Vehicle {
   public:
     struct Input {
@@ -87,6 +89,12 @@ class Vehicle {
     float                      speed() const;
     // turbo tank, 0..1
     float                      boostLevel() const { return tank; }
+    // what most of the wheels touching the ground stand on (Water when the car is in water), as of the last update
+    Surface                    surface() const { return under; }
+    // how deep the body is in water: 0 dry .. 1 fully under water
+    float                      submerged() const { return sub; }
+    // fully under water for a while: the original puts the car back on the track (last checkpoint)
+    bool                       drowned() const { return underWater>=prm.drownTime; }
     bool                       onGround() const;
     size_t                     wheelsOnGround() const;
 
@@ -98,6 +106,9 @@ class Vehicle {
   private:
     class Raycaster;
 
+    // surface under the wheels, water: slows the car down, tracks drowning
+    void                                  surfaces(float dt);
+
     PhysicsWorld&                         owner;
     CarGeometry                           geom;
     CarParams                             prm;
@@ -105,6 +116,10 @@ class Vehicle {
     float                                 steer = 0; // smoothed, -1..1
     float                                 jumpCooldown = 0;
     float                                 tank = 1;
+    Surface                               under = Surface::Default;
+    float                                 sub   = 0;
+    float                                 wet   = 0;          // share of the wheels in water, 0..1
+    float                                 underWater = 0;     // s fully under water
 
     std::unique_ptr<btBoxShape>           box;
     std::unique_ptr<btCompoundShape>      shape;

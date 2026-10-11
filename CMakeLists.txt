@@ -58,6 +58,7 @@ add_library(rcphysics STATIC
   physics/cargeometry.h physics/cargeometry.cpp
   physics/carparams.h   physics/carparams.cpp
   physics/vehicle.h     physics/vehicle.cpp
+  physics/checkpoints.h physics/checkpoints.cpp
   )
 target_link_libraries(rcphysics PUBLIC rcformats PRIVATE bullet)
 

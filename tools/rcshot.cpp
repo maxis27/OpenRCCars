@@ -7,7 +7,7 @@
 //   env RCSHOT_COLL=1 draws the collision overlay (key K in the game).
 //   env RCSHOT_DRIVE=<seconds> drives the car (physics) with full throttle first, RCSHOT_STEER=<-1..1> steering
 //   (positive = left) for the last half of that time, RCSHOT_JUMP=<seconds> jumps at that moment,
-//   RCSHOT_BOOST=1 holds the boost.
+//   RCSHOT_BOOST=1 holds the boost, RCSHOT_START="x z yaw" puts the car somewhere else first.
 
 #include <Tempest/Device>
 #include <Tempest/Fence>
@@ -16,6 +16,7 @@
 #include <Tempest/VulkanApi>
 
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -53,6 +54,14 @@ int main(int argc, const char** argv) {
       carSb   = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
       car     = std::make_unique<CarMesh>(device,res,carSb,carName ? carName : "Car1");
       carPose = level.carStart(car->bboxMin().y);
+      if(const char* start = std::getenv("RCSHOT_START")) {
+        // "x z yaw": somewhere else on the track, standing on the ground
+        float x = 0, z = 0, yaw = 0;
+        std::sscanf(start,"%f %f %f",&x,&z,&yaw);
+        carPose = rc::Mat4::translate({x,0,z})*rc::Mat4::rotate(1,yaw);
+        if(auto g = level.groundHeight({x,1000.f,z}))
+          carPose.m[1][3] = *g - car->bboxMin().y;
+        }
       if(const char* drive = std::getenv("RCSHOT_DRIVE")) {
         const char*      steer = std::getenv("RCSHOT_STEER");
         const char*      jump  = std::getenv("RCSHOT_JUMP");
@@ -81,7 +90,8 @@ int main(int argc, const char** argv) {
           }
         const rc::Vec3 at = carPose.translation();
         Log::i("drove ",time," s: ",veh.speed()*3.6f," km/h, ",veh.wheelsOnGround()," wheels on the ground, at ",
-               at.x," ",at.y," ",at.z);
+               at.x," ",at.y," ",at.z,", on ",rc::surfaceName(veh.surface()),", ",int(veh.submerged()*100.f),
+               "% under water");
         }
       // chase view from behind, level with the horizon
       const rc::Vec3 f = carPose.vector({0,0,1});

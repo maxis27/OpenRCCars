@@ -6,6 +6,32 @@
 
 using namespace rc;
 
+Surface rc::surfaceOf(const SbTexture* texture) {
+  if(texture==nullptr)
+    return Surface::Default;
+  // the game finds its water by this name too (RCCars.exe: "sea", "sea_alpha" next to the water code)
+  if(texture->name=="sea")
+    return Surface::Water;
+  const uint32_t m = texture->material;
+  if(m & (1u<<4)) return Surface::WetSand;
+  if(m & (1u<<5)) return Surface::Sand;
+  if(m & (1u<<6)) return Surface::DeepSand;
+  if(m & (1u<<9)) return Surface::Gravel;
+  return Surface::Default;
+  }
+
+const char* rc::surfaceName(Surface s) {
+  switch(s) {
+    case Surface::Default:  return "default";
+    case Surface::Sand:     return "sand";
+    case Surface::WetSand:  return "wet sand";
+    case Surface::DeepSand: return "deep sand";
+    case Surface::Gravel:   return "gravel";
+    case Surface::Water:    return "water";
+    }
+  return "?";
+  }
+
 CollisionMesh::CollisionMesh(const SbScene& scene) {
   const auto& grid = scene.collision;
   if(grid.empty())
@@ -32,6 +58,9 @@ CollisionMesh::CollisionMesh(const SbScene& scene) {
       if(!used[mi][fi])
         continue;
       const SbFace& f = m.faces[fi];
+      const auto*   base = f.layer(LayerTag::Base);
+      const Surface surf = surfaceOf(base ? scene.texture(base->texture,m.model) : nullptr);
+      water = water || surf==Surface::Water;
       auto at = [&](size_t i) {
         return f.pos[i]<m.positions.size() ? m.world.point(m.positions[f.pos[i]]) : Vec3{};
         };
@@ -48,6 +77,7 @@ CollisionMesh::CollisionMesh(const SbScene& scene) {
         t.normal = n*(1.f/l);
         t.mesh   = uint32_t(mi);
         t.face   = uint32_t(fi);
+        t.surface = surf;
         tris.push_back(t);
         }
       faceTris[mi][fi] = {first,uint32_t(tris.size())-first};
@@ -107,8 +137,9 @@ bool CollisionMesh::intersect(const Triangle& t, const Vec3& from, const Vec3& d
   return true;
   }
 
-std::optional<CollisionMesh::Hit> CollisionMesh::raycast(const Vec3& from, const Vec3& dir, float maxDistance) const {
-  if(tris.empty())
+std::optional<CollisionMesh::Hit> CollisionMesh::raycast(const Vec3& from, const Vec3& dir, float maxDistance,
+                                                          Layer layer) const {
+  if(tris.empty() || (layer==Layer::Water && !water))
     return std::nullopt;
 
   const float o[3]  = {from.x,from.y,from.z};
@@ -166,8 +197,11 @@ std::optional<CollisionMesh::Hit> CollisionMesh::raycast(const Vec3& from, const
   while(true) {
     const size_t idx = size_t(c[2]) + size_t(dims[2])*(size_t(c[1]) + size_t(dims[1])*size_t(c[0]));
     for(uint32_t i=cellStart[idx]; i<cellStart[idx+1]; ++i) {
+      const Triangle& tri = tris[cellTris[i]];
+      if((tri.surface==Surface::Water)!=(layer==Layer::Water))
+        continue;
       const float limit = best ? best->distance : t1;
-      if(intersect(tris[cellTris[i]],from,dir,limit,h)) {
+      if(intersect(tri,from,dir,limit,h)) {
         h.triangle = cellTris[i];
         best       = h;
         }
@@ -189,6 +223,23 @@ std::optional<CollisionMesh::Hit> CollisionMesh::raycast(const Vec3& from, const
 
 std::optional<float> CollisionMesh::groundHeight(const Vec3& from, float maxDepth) const {
   if(auto h = raycast(from,Vec3{0,-1,0},maxDepth))
+    return h->point.y;
+  return std::nullopt;
+  }
+
+Surface CollisionMesh::surfaceBelow(const Vec3& from, float maxDepth) const {
+  if(auto h = raycast(from,Vec3{0,-1,0},maxDepth))
+    return tris[h->triangle].surface;
+  return Surface::Default;
+  }
+
+std::optional<float> CollisionMesh::waterLevel(const Vec3& at, float range) const {
+  if(!water)
+    return std::nullopt;
+  // the nearest surface above (under water), else the nearest one below
+  if(auto h = raycast(at,Vec3{0,1,0},range,Layer::Water))
+    return h->point.y;
+  if(auto h = raycast(at,Vec3{0,-1,0},range,Layer::Water))
     return h->point.y;
   return std::nullopt;
   }

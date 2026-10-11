@@ -17,6 +17,12 @@ CollisionView::CollisionView(Device& device, const rc::CollisionMesh& coll, cons
     if(face.layer(rc::LayerTag::Base)==nullptr) {
       c[0] = 0.2f; c[1] = 0.45f; c[2] = 1.0f; c[3] = 0.45f;
       }
+    else if(t.surface==rc::Surface::Water) {   // not solid
+      c[0] = 0.1f; c[1] = 0.95f; c[2] = 1.0f; c[3] = 0.40f;
+      }
+    else if(t.surface==rc::Surface::DeepSand && up>0.5f) {
+      c[0] = 0.9f; c[1] = 0.3f;  c[2] = 0.9f; c[3] = 0.45f;
+      }
     else if(up>0.82f) { // < ~35 deg
       c[0] = 0.2f; c[1] = 0.9f;  c[2] = 0.3f; c[3] = 0.30f;
       }

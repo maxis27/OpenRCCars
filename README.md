@@ -32,6 +32,13 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   dopalacz jedzie po krzywej `Splines/OVERKILL|BUGGY|HUMMER.bspl` (32/38/30 km/h zamiast 25/30/20), zbiornik turbo
   ładuje się z czasem (w oryginale na torze; jak dokładnie, jeszcze nie wiemy); skok (akcja `Jump` w `RCCars.exe`, bez parametru w danych, więc wysokość
   ok. 0,3 m jest dobrana na oko); auto przewrócone na dach wraca na koła po 2 s
+- **nawierzchnie i woda**: rodzaj nawierzchni pochodzi z bitów materiału tekstury (`GLTX`): piasek, mokry piasek,
+  głęboki piasek (`Sand_trample`), żwir i reszta. Jak w danych oryginału, jazdę zmieniają tylko głęboki piasek i woda
+  (`Settings/tires<N>.ini`: `coeffDeepSand`, `coeffWater`; Hummer na dużych kołach mniej traci w wodzie); pozostałe
+  nawierzchnie różnią się w oryginale tylko kurzem spod kół. Woda (tekstura `sea`: morze, strumienie, kałuże,
+  wodospady) nie jest twarda: auto brodzi w płytkiej wodzie i zwalnia, w głębokiej tonie, a po 1 s całkiem pod wodą
+  wraca do ostatniego punktu kontrolnego, jak w instrukcji („jeśli utoniesz w morzu”). Tam też wraca po klawiszu R
+  i po wypadnięciu poza trasę. Nazwa nawierzchni pod autem jest w tytule okna
 - **narzędzia**: `rcinfo` (inspekcja/eksport danych i jazda testowa, bez GPU) i `rcshot` (render offscreen do PNG)
 
 ![Auto na starcie (beach_1)](docs/car_beach_1.jpg)
@@ -39,6 +46,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 ![Nakładka kolizji (beach_1, klawisz K)](docs/collision_beach_1.jpg)
 
 ![Jazda: skręt w lewo (beach_1)](docs/driving_beach_1.jpg)
+
+![Auto wjechało do morza i tonie (beach_1)](docs/water_beach_1.jpg)
 
 ![Urban 1](docs/urban_1.jpg)
 
@@ -97,7 +106,7 @@ Jazda (kamera za autem):
 | Shift | dopalacz (zużywa turbo, ok. 3 s z pełnego zbiornika; procent w tytule okna) |
 | B | zablokuj koła (tylne, do poślizgu) |
 | T | postaw auto na koła w miejscu |
-| R | powrót na start |
+| R | powrót do ostatniego punktu kontrolnego (przed pierwszym: na start) |
 | U | następny poziom ulepszeń (0–3: dopalacze, rezonatory, opony razem) |
 | 1 / 2 / 3 | auto: Overkill / Buggy / Hummer |
 
@@ -106,7 +115,7 @@ Pozostałe:
 | Klawisz | Akcja |
 |---|---|
 | V | kamera za autem ↔ kamera swobodna (auto wtedy stoi) |
-| K | nakładka kolizji (debug) |
+| K | nakładka kolizji (debug; turkusowa woda, fioletowy głęboki piasek) |
 | W / S / A / D | ruch kamery swobodnej |
 | E, Spacja / Q, C | w górę / w dół |
 | Shift | szybciej ×4 |
@@ -134,6 +143,7 @@ RCSHOT_COLL=1 rcshot ...                                        # z nakładką k
 RCSHOT_DRIVE=3 RCSHOT_STEER=1 rcshot ...                        # najpierw 3 s jazdy na pełnym gazie, druga połowa ze skrętem
 RCSHOT_DRIVE=2 RCSHOT_JUMP=1.6 rcshot ...                       # skok w 1,6 s, zdjęcie w 2 s
 RCSHOT_DRIVE=3 RCSHOT_BOOST=1 rcshot ...                        # z dopalaczem
+RCSHOT_START="-8 -41 90" RCSHOT_DRIVE=1.6 rcshot ...            # auto najpierw w punkcie x z, obrócone o yaw (tu: do morza)
 ```
 
 ## Struktura
@@ -144,12 +154,13 @@ formats/        formaty danych, czyste C++ bez zależności
   pack.*        RCCars.pack + deszyfrowanie
   csi.*         tekstury
   scene.*       sceny .sb
-  collision.*   siatka kolizji z węzła COLL, raycast
+  collision.*   siatka kolizji z węzła COLL, raycast, nawierzchnie
   settings.*    pliki suwaków Settings/*.ini, Scripts/upgrades.ini, krzywe .bspl
 physics/        fizyka jazdy (Bullet, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
-  vehicle.*     świat Bulleta trasy, btRaycastVehicle z promieniami przez siatkę COLL
+  vehicle.*     świat Bulleta trasy, btRaycastVehicle z promieniami przez siatkę COLL, nawierzchnie i woda
+  checkpoints.* kolejność punktów kontrolnych, postęp auta, powrót do ostatniego punktu
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
   camera.*      kamera swobodna
@@ -186,6 +197,17 @@ lib/Tempest     silnik (submoduł git)
   na beach_1) z listą par (siatka, maska bitowa ścian) na komórkę; indeksy komórek `z + nz*(y + ny*x)`, bity od
   najmłodszego. Kolizje używają więc geometrii renderu, łącznie ze ścianami bez tekstury (niewidoczne bariery)
   i niektórymi siatkami `_LOD*`. Zweryfikowane na wszystkich 10 trasach: każda ściana nachodzi na swoją komórkę.
+- Nagłówek `GLTX` (element `0x08`) to tablica 5 liczb: indeks, 0, dwa słowa flag i **materiał**: bity
+  4 mokry piasek, 5 piasek (`sand_halfdry`), 6 udeptany/głęboki piasek (`Sand_trample`), 7 drewno, 8 trawa, 9 żwir
+  (`Sand_gravel`, `path_*`), 10 asfalt, 11 kamień/beton/skała, 12 metal (po jednym bicie na teksturę, na wszystkich
+  trasach). `RCCars.exe` zna tylko `surf_default|sand|wetsand|dunesand|gravel` (`Settings/surf_*.crs`: same parametry
+  kurzu), a z fizyki opon `coeffDeepSand` i `coeffWater`. Kolejność nazw i kolory kurzu pasują do bitów 4–6 i 9.
+- Woda to ściany z teksturą `sea` (bez bitu materiału; `RCCars.exe` szuka jej po nazwie). Leżą w `COLL` jak reszta,
+  w kilku kopiach `_LOD1`–`_LOD4` na tej samej wysokości. Poziom morza: 0 na beach_1, 2,15 na beach_3; dno pod nim
+  to zwykłe ściany kolizji (na beach_1 piasek opada od -0,3 m przy brzegu do -1,4 m). Na country_1 płytkie kałuże
+  (`pool1..3`), na country_3 strumień (kilka cm) i wodospady. `Settings/Water.ini` (`speedDropCenter` 125/500,
+  `speedDropOther` 76/500, `DampingVelocity2` 950/1000) czytamy jako utratę prędkości przy wpadnięciu do wody
+  nadwozia i kół oraz tłumienie pod wodą; to nasze odczytanie nazw.
 - Start auta gracza to `INST 'Player'` w folderze `Players`; jego oś +Z wskazuje kierunek jazdy. Auta są w skali
   modeli RC (ok. 0,4–0,6 m długości), przód modelu to +Z.
 
@@ -194,7 +216,9 @@ lib/Tempest     silnik (submoduł git)
 1. ~~Model auta postawiony na starcie~~ (zrobione; LOD-y i ulepszenia `UPGRADES*` jeszcze niewyświetlane)
 2. ~~Kolizje trasy z węzła `COLL`~~ (zrobione: siatka kolizji, raycast, nakładka debug)
 3. ~~Fizyka jazdy: Bullet `btRaycastVehicle` + parametry z ustawień gry~~ (zrobione; do dostrojenia na wyczucie
-   względem oryginału; powierzchnie `surf_*` i woda jeszcze nie spowalniają, kolizje kul z `cdt*.ini` nieużyte)
+   względem oryginału; kolizje kul z `cdt*.ini` nieużyte)
+   - ~~nawierzchnie i woda~~ (zrobione: głęboki piasek i woda spowalniają, w głębokiej wodzie auto tonie i wraca do
+     ostatniego punktu kontrolnego); brakuje kurzu i plusków spod kół oraz stref `car_reset_volume_*` („dziury”)
 4. Węzły `INST` (instancje obiektów), `HHID` (widoczność/sektory), animacje (`SPLN`/`ANIM`/`ASEQ`)
 5. Dźwięk: odszyfrowane WAV z `Sound/`, muzyka MP3 z `Tracks/`
 6. Linie jazdy AI z `CarProfiles/` i logika wyścigu (checkpointy `cp_*`, okrążenia, tryby)

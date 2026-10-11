@@ -19,3 +19,86 @@ jobs:
         run: cmake -B build -DOPENRCCARS_TOOLS_ONLY=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
       - name: Build
         run: cmake --build build --config RelWithDebInfo
+
+  # Full build: Tempest + game + rcshot. Tempest needs Vulkan 1.4.357+, newer than the runners
+  # ship, so headers, loader and glslang are built from pinned Khronos tags (cached).
+  game:
+    name: game (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      VULKAN_VERSION: v1.4.365
+      GLSLANG_VERSION: 16.6.0
+      VULKAN_SDK: ${{ github.workspace }}/vksdk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxcursor-dev libvulkan-dev
+
+      - name: Cache Vulkan SDK
+        id: vksdk-cache
+        uses: actions/cache@v4
+        with:
+          path: vksdk
+          key: vksdk-${{ runner.os }}-${{ env.VULKAN_VERSION }}-glslang-${{ env.GLSLANG_VERSION }}
+
+      - name: Build Vulkan SDK subset
+        if: steps.vksdk-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git clone --depth 1 -b "$VULKAN_VERSION" https://github.com/KhronosGroup/Vulkan-Headers.git deps/headers
+          cmake -S deps/headers -B deps/headers/build -DCMAKE_INSTALL_PREFIX="$VULKAN_SDK"
+          cmake --install deps/headers/build
+
+          # Linux links the system libvulkan; Windows needs vulkan-1.lib from the loader.
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            git clone --depth 1 -b "$VULKAN_VERSION" https://github.com/KhronosGroup/Vulkan-Loader.git deps/loader
+            cmake -S deps/loader -B deps/loader/build -DCMAKE_PREFIX_PATH="$VULKAN_SDK" -DCMAKE_INSTALL_PREFIX="$VULKAN_SDK"
+            cmake --build deps/loader/build --config Release
+            cmake --install deps/loader/build --config Release
+          fi
+
+          git clone --depth 1 -b "$GLSLANG_VERSION" https://github.com/KhronosGroup/glslang.git deps/glslang
+          cmake -S deps/glslang -B deps/glslang/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$VULKAN_SDK" \
+            -DENABLE_OPT=OFF -DGLSLANG_TESTS=OFF -DBUILD_TESTING=OFF
+          cmake --build deps/glslang/build --config Release
+          cmake --install deps/glslang/build --config Release
+
+      # Tempest looks up glslangValidator on PATH only.
+      - name: Add glslang to PATH
+        shell: bash
+        run: echo "$VULKAN_SDK/bin" >> "$GITHUB_PATH"
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build
+        run: cmake --build build --config RelWithDebInfo --parallel
+
+      - name: Upload Windows build
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenRCCars-windows
+          path: |
+            build/bin/RelWithDebInfo/*.exe
+            build/bin/RelWithDebInfo/*.pdb
+
+      # tar keeps the executable bit, which upload-artifact's zip drops.
+      - name: Package Linux build
+        if: runner.os == 'Linux'
+        run: tar -czf OpenRCCars-linux-x64.tar.gz -C build/bin OpenRCCars rcshot rcinfo
+
+      - name: Upload Linux build
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenRCCars-linux
+          path: OpenRCCars-linux-x64.tar.gz

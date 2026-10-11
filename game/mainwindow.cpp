@@ -83,6 +83,8 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     if(freeCamera)
       camera.chase(carPose,ChaseDistance,ChaseHeight); // free flight starts from the chase view
     }
+  if(e.key==Event::K_K)
+    showCollision = !showCollision;
   if(e.key==Event::K_R && level) {
     camera  = level->startCamera();
     carPose = level->carStart(car->bboxMin().y);
@@ -160,6 +162,8 @@ void MainWindow::render() {
         level->mesh().draw(enc,push);
       if(car)
         car->draw(enc,viewProj,push,carPose);
+      if(level && showCollision)
+        level->collisionView().draw(enc,push);
     }
 
     sync = device.submit(cmd);

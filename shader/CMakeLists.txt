@@ -28,6 +28,8 @@ endfunction(add_shader)
 
 add_shader(level.vert level.vert)
 add_shader(level.frag level.frag)
+add_shader(collision.vert collision.vert)
+add_shader(collision.frag collision.frag)
 
 add_custom_command(
   OUTPUT     ${HEADER} ${CPP}

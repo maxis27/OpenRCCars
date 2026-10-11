@@ -4,6 +4,7 @@
 //   the player's car stands on the start; without camera arguments the camera follows it.
 //   env RCSHOT_CAR=Car1|Car2|Car3|none picks the car (default Car1), none = track only, start camera behind cp_1.
 //   env RCSHOT_NOSKY=1 hides the sky dome (useful for top-down views).
+//   env RCSHOT_COLL=1 draws the collision overlay (key K in the game).
 
 #include <Tempest/Device>
 #include <Tempest/Fence>
@@ -75,6 +76,8 @@ int main(int argc, const char** argv) {
       level.mesh().draw(enc,push,std::getenv("RCSHOT_NOSKY")==nullptr);
       if(car)
         car->draw(enc,viewProj,push,carPose);
+      if(std::getenv("RCSHOT_COLL")!=nullptr)
+        level.collisionView().draw(enc,push);
     }
     auto sync = device.submit(cmd);
     sync.wait();

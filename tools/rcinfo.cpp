@@ -5,11 +5,13 @@
 //   rcinfo <game_dir> csi <name> <out.tga>       decode a pack texture to TGA
 //   rcinfo <game_dir> sb <RCCarsDB/x.sb>         scene statistics (meshes, faces, textures, markers)
 //   rcinfo <game_dir> obj <RCCarsDB/x.sb> <out.obj>  export scene geometry (world space) to OBJ
+//   rcinfo <game_dir> coll <RCCarsDB/x.sb> [out.obj]  collision grid statistics + self-test, optional OBJ export
 //   rcinfo <game_dir> check                      decode every texture in the pack and every RCCarsDB/*.sb
 
 #include "formats/pack.h"
 #include "formats/csi.h"
 #include "formats/scene.h"
+#include "formats/collision.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -17,6 +19,7 @@
 #include <iostream>
 #include <iterator>
 #include <map>
+#include <random>
 
 namespace fs = std::filesystem;
 
@@ -127,6 +130,10 @@ static int cmdCheck(const fs::path& game, rc::PackFile& pack) {
       for(auto& t:sc.textures)
         if(!t.embedded.empty())
           rc::decodeCsi(t.embedded.data(),t.embedded.size());
+      if(!sc.collision.empty()) {
+        rc::CollisionMesh coll(sc);
+        std::printf("  %-16s collision: %zu triangles\n",f.path().filename().string().c_str(),coll.triangles().size());
+        }
       scenes++;
       }
     catch(const std::exception& ex) {
@@ -161,16 +168,115 @@ static int cmdObj(const fs::path& path, const fs::path& out) {
   return 0;
   }
 
+// brute force reference for CollisionMesh::raycast
+static std::optional<float> groundBrute(const rc::CollisionMesh& coll, const rc::Vec3& from) {
+  std::optional<float> best;
+  for(auto& t:coll.triangles()) {
+    const rc::Vec3 &a = t.a, &b = t.b, &c = t.c;
+    const float d = (b.z-c.z)*(a.x-c.x) + (c.x-b.x)*(a.z-c.z);
+    if(std::abs(d)<1e-12f)
+      continue;
+    const float u = ((b.z-c.z)*(from.x-c.x) + (c.x-b.x)*(from.z-c.z))/d;
+    const float v = ((c.z-a.z)*(from.x-c.x) + (a.x-c.x)*(from.z-c.z))/d;
+    if(u<0 || v<0 || u+v>1)
+      continue;
+    const float y = a.y*u + b.y*v + c.y*(1-u-v);
+    if(y<=from.y && (!best || y>*best))
+      best = y;
+    }
+  return best;
+  }
+
+static int cmdColl(const fs::path& path, const char* objOut) {
+  auto scene = rc::SbScene::load(readFile(path));
+  auto& g = scene.collision;
+  if(g.empty()) {
+    std::printf("no COLL in this scene\n");
+    return 0;
+    }
+  rc::CollisionMesh coll(scene);
+  const rc::Vec3 cs = coll.cellSize();
+  size_t faces = 0, untextured = 0, maxCell = 0, usedCells = 0;
+  std::map<std::pair<uint32_t,uint32_t>,bool> seen;
+  for(auto& t:coll.triangles()) {
+    if(seen.emplace(std::make_pair(t.mesh,t.face),true).second) {
+      faces++;
+      if(scene.meshes[t.mesh].faces[t.face].layer(rc::LayerTag::Base)==nullptr)
+        untextured++;
+      }
+    }
+  for(uint32_t x=0; x<g.dims[0]; ++x)
+    for(uint32_t y=0; y<g.dims[1]; ++y)
+      for(uint32_t z=0; z<g.dims[2]; ++z) {
+        size_t n = 0;
+        coll.forEachInCell(x,y,z,[&](const rc::CollisionMesh::Triangle&){ ++n; });
+        maxCell = std::max(maxCell,n);
+        usedCells += n>0 ? 1 : 0;
+        }
+  std::printf("grid: %u x %u x %u cells of %.3f x %.3f x %.3f, from (%.2f %.2f %.2f) to (%.2f %.2f %.2f)\n",
+              g.dims[0],g.dims[1],g.dims[2],cs.x,cs.y,cs.z,g.min.x,g.min.y,g.min.z,g.max.x,g.max.y,g.max.z);
+  std::printf("entries: %zu, non-empty cells: %zu, max triangles in a cell: %zu\n",g.entries.size(),usedCells,maxCell);
+  std::printf("collision: %zu faces (%zu without texture), %zu triangles\n",faces,untextured,coll.triangles().size());
+
+  auto ground = [&](const char* what, const rc::Vec3& p) {
+    auto h = coll.groundHeight(p+rc::Vec3{0,1.f,0});
+    if(h)
+      std::printf("ground under %-8s (%.2f %.2f %.2f): %.3f\n",what,p.x,p.y,p.z,*h);
+    else
+      std::printf("ground under %-8s (%.2f %.2f %.2f): none\n",what,p.x,p.y,p.z);
+    };
+  if(auto p = scene.instance("Player"))
+    ground("Player",p->world.translation());
+  if(auto m = scene.marker("cp_1"))
+    ground("cp_1",m->position());
+
+  // self-test: grid raycast vs brute force over all triangles at random points
+  std::mt19937 rng(1);
+  std::uniform_real_distribution<float> rx(g.min.x,g.max.x), rz(g.min.z,g.max.z), ry(g.min.y,g.max.y);
+  size_t samples = 2000, hits = 0, mismatch = 0;
+  for(size_t i=0; i<samples; ++i) {
+    const rc::Vec3 p = {rx(rng),ry(rng),rz(rng)};
+    auto a = coll.groundHeight(p);
+    auto b = groundBrute(coll,p);
+    // queries are limited to the grid volume, like the grid itself: parts of faces below it are not found
+    if(b && *b<g.min.y)
+      b.reset();
+    if(a.has_value()!=b.has_value() || (a && std::abs(*a-*b)>1e-3f)) {
+      if(mismatch<5)
+        std::printf("  mismatch at (%.3f %.3f %.3f): grid %s, brute %s\n",p.x,p.y,p.z,
+                    a ? std::to_string(*a).c_str() : "none",b ? std::to_string(*b).c_str() : "none");
+      mismatch++;
+      }
+    hits += a ? 1 : 0;
+    }
+  std::printf("raycast self-test: %zu samples, %zu hit ground, %zu mismatches\n",samples,hits,mismatch);
+
+  if(objOut!=nullptr) {
+    std::ofstream f(objOut);
+    for(auto& t:coll.triangles())
+      f << "v " << t.a.x << " " << t.a.y << " " << t.a.z << "\n"
+        << "v " << t.b.x << " " << t.b.y << " " << t.b.z << "\n"
+        << "v " << t.c.x << " " << t.c.y << " " << t.c.z << "\n";
+    for(size_t i=0; i<coll.triangles().size(); ++i)
+      f << "f " << i*3+1 << " " << i*3+2 << " " << i*3+3 << "\n";
+    }
+  return mismatch==0 ? 0 : 3;
+  }
+
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|check ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|check ...\n");
     return 1;
     }
   try {
     const fs::path game = argv[1];
     const std::string cmd = argv[2];
-    rc::PackFile pack(game/"RCCars.pack");
+    if(cmd=="coll" && argc>3)
+      return cmdColl(game/argv[3],argc>4 ? argv[4] : nullptr);
+    if(cmd=="obj" && argc>4)
+      return cmdObj(game/argv[3],argv[4]);
 
+    rc::PackFile pack(game/"RCCars.pack");
     if(cmd=="pack")
       return cmdPack(pack);
     if(cmd=="check")
@@ -187,8 +293,6 @@ int main(int argc, char** argv) {
       }
     if(cmd=="sb" && argc>3)
       return cmdSb(game/argv[3],pack);
-    if(cmd=="obj" && argc>4)
-      return cmdObj(game/argv[3],argv[4]);
     std::fprintf(stderr,"unknown command\n");
     return 1;
     }

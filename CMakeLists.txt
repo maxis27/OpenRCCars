@@ -24,6 +24,7 @@ add_library(rcformats STATIC
   formats/pack.h   formats/pack.cpp
   formats/csi.h    formats/csi.cpp
   formats/scene.h  formats/scene.cpp
+  formats/collision.h formats/collision.cpp
   )
 target_include_directories(rcformats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -52,6 +53,7 @@ add_library(rcengine STATIC
   game/world/levelmesh.h   game/world/levelmesh.cpp
   game/world/carmesh.h     game/world/carmesh.cpp
   game/world/level.h       game/world/level.cpp
+  game/world/collisionview.h game/world/collisionview.cpp
   )
 target_include_directories(rcengine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} lib/Tempest/Engine/include)
 target_link_libraries(rcengine PUBLIC rcformats Tempest Shaders)

@@ -10,8 +10,12 @@ Level::Level(Tempest::Device& device, Resources& res, const std::string& name)
   :levelName(name) {
   sb  = rc::SbScene::load(res.readFile(std::filesystem::path("RCCarsDB")/(name+".sb")));
   gpu = std::make_unique<LevelMesh>(device,res,sb);
+  coll    = rc::CollisionMesh(sb);
+  collGpu = std::make_unique<CollisionView>(device,coll,sb);
   Tempest::Log::i("level \"",name,"\": ",sb.meshes.size()," meshes, ",sb.textures.size()," textures, ",
-                  sb.markers.size()," markers");
+                  sb.markers.size()," markers, ",coll.triangles().size()," collision triangles");
+  if(coll.empty())
+    Tempest::Log::e("level \"",name,"\": no COLL node, the car has nothing to stand on");
   }
 
 Camera Level::startCamera() const {
@@ -54,32 +58,5 @@ rc::Mat4 Level::carStart(float carBottom) const {
   }
 
 std::optional<float> Level::groundHeight(const rc::Vec3& from) const {
-  std::optional<float> best;
-  for(auto& m:sb.meshes) {
-    if(m.positions.empty() || LevelMesh::isHiddenMesh(m.name))
-      continue;
-    for(auto& f:m.faces) {
-      if(f.pos.size()<3 || f.layer(rc::LayerTag::Base)==nullptr)
-        continue;
-      auto at = [&](size_t i) {
-        return f.pos[i]<m.positions.size() ? m.world.point(m.positions[f.pos[i]]) : rc::Vec3{};
-        };
-      const rc::Vec3 a = at(0);
-      for(size_t i=1; i+1<f.pos.size(); ++i) {
-        const rc::Vec3 b = at(i), c = at(i+1);
-        // barycentric coordinates in the XZ plane
-        const float d = (b.z-c.z)*(a.x-c.x) + (c.x-b.x)*(a.z-c.z);
-        if(std::abs(d)<1e-8f)
-          continue;
-        const float u = ((b.z-c.z)*(from.x-c.x) + (c.x-b.x)*(from.z-c.z))/d;
-        const float v = ((c.z-a.z)*(from.x-c.x) + (a.x-c.x)*(from.z-c.z))/d;
-        if(u<0 || v<0 || u+v>1)
-          continue;
-        const float y = a.y*u + b.y*v + c.y*(1-u-v);
-        if(y<=from.y && (!best || y>*best))
-          best = y;
-        }
-      }
-    }
-  return best;
+  return coll.groundHeight(from);
   }

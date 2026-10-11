@@ -48,6 +48,7 @@ class MainWindow : public Tempest::Window {
     rc::Mat4                carPose;
     Camera                  camera;
     bool                    freeCamera = false;
+    bool                    showCollision = false; // K: collision debug overlay
 
     Tempest::CommandBuffer  commands[MaxFramesInFlight];
     Tempest::Fence          fence[MaxFramesInFlight];

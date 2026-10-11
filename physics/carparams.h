@@ -25,6 +25,7 @@ struct CarParams {
   float   reverseSpeed = 0.35f; // fraction of top speed
   float   brakeDecel  = 12.f;   // m/s^2
 
+  float   jumpSpeed   = 2.4f;   // m/s upwards; RCCars.exe has a "Jump" action but no setting for it (~0.3 m high)
   float   steerAngle  = 30.f;   // degrees, steering<N>.ini AngleSteer
   float   steerAtTop  = 0.4f;   // fraction of steerAngle left at top speed
 

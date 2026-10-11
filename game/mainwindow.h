@@ -55,6 +55,7 @@ class MainWindow : public Tempest::Window {
     // declared after `level`: the physics world refers to the level's collision mesh
     std::unique_ptr<rc::PhysicsWorld> physics;
     std::unique_ptr<rc::Vehicle>      vehicle;
+    bool                    jumpPressed = false;
     float                   upsideDown = 0; // seconds on the roof or side, then the car is put back
     Camera                  camera;
     float                   chaseYaw = 0;   // smoothed heading for the chase camera, degrees

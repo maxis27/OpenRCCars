@@ -128,6 +128,8 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     }
   if(e.key==Event::K_T && vehicle)
     vehicle->recover();
+  if(e.key==Event::K_Space && !freeCamera)
+    jumpPressed = true;
   if(e.key==Event::K_V) {
     freeCamera = !freeCamera;
     if(freeCamera)
@@ -171,8 +173,10 @@ void MainWindow::tick(float dt) {
       const bool right = keys[Event::K_D] || keys[Event::K_Right];
       in.throttle  = (up ? 1.f : 0.f) - (down ? 1.f : 0.f);
       in.steer     = (left ? 1.f : 0.f) - (right ? 1.f : 0.f);
-      in.handbrake = keys[Event::K_Space];
+      in.handbrake = keys[Event::K_LShift] || keys[Event::K_RShift];
+      in.jump      = jumpPressed;
       }
+    jumpPressed = false;
     vehicle->update(in,dt);
     physics->step(dt);
     carPose = vehicle->pose();

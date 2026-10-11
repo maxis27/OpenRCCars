@@ -187,7 +187,8 @@ void Vehicle::reset(const Mat4& start) {
     vehicle->applyEngineForce(0,i);
     vehicle->getWheelInfo(i).m_rotation = 0;
     }
-  steer = 0;
+  steer        = 0;
+  jumpCooldown = 0;
   }
 
 void Vehicle::recover() {
@@ -247,6 +248,15 @@ void Vehicle::update(const Input& in, float dt) {
     vehicle->applyEngineForce(massS*accel/float(n),i);
     vehicle->setBrake(massS*b*PhysicsWorld::FixedDt/float(n),i);
     vehicle->setSteeringValue(front ? angle : 0.f,i);
+    }
+
+  // jump: an upward kick along the car's up axis, so on a slope it pushes off the surface
+  jumpCooldown = std::max(jumpCooldown-dt,0.f);
+  if(in.jump && jumpCooldown<=0 && wheelsOnGround()>=2) {
+    btVector3 up = body->getWorldTransform().getBasis().getColumn(1);
+    up = (up+btVector3(0,1,0)).normalized();
+    body->applyCentralImpulse(up*(prm.mass*prm.jumpSpeed*S));
+    jumpCooldown = 0.5f;
     }
 
   // air drag on the body

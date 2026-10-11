@@ -67,6 +67,7 @@ class Vehicle {
       float throttle  = 0;     // -1 (brake / reverse) .. 1
       float steer     = 0;     // -1 (right) .. 1 (left)
       bool  handbrake = false;
+      bool  jump      = false; // pressed this frame; works with at least two wheels on the ground
       };
 
     // `start` places the model like CarMesh::draw expects (model -> world, rotation + translation)
@@ -99,6 +100,7 @@ class Vehicle {
     CarParams                             prm;
     Vec3                                  com;       // centre of mass, model space
     float                                 steer = 0; // smoothed, -1..1
+    float                                 jumpCooldown = 0;
 
     std::unique_ptr<btBoxShape>           box;
     std::unique_ptr<btCompoundShape>      shape;

@@ -28,7 +28,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   zderzający się z tymi samymi trójkątami (ściany, słupy, niewidoczne bariery). Parametry każdego auta z
   `Settings/engine|springs|tires|steering|resistance|cdt<N>.ini`, krzywa przyspieszenia z `Splines/splAccelBase<N>.bspl`,
   ulepszenia (dopalacze, rezonatory, opony) z `Scripts/upgrades.ini`. Koła kręcą się, skręcają i pracują na
-  zawieszeniu; auto przewrócone na dach wraca na koła po 2 s
+  zawieszeniu; spacja to skok jak w oryginale (akcja `Jump` w `RCCars.exe`, bez parametru w danych, więc wysokość
+  ok. 0,3 m jest dobrana na oko); auto przewrócone na dach wraca na koła po 2 s
 - **narzędzia**: `rcinfo` (inspekcja/eksport danych i jazda testowa, bez GPU) i `rcshot` (render offscreen do PNG)
 
 ![Auto na starcie (beach_1)](docs/car_beach_1.jpg)
@@ -90,7 +91,8 @@ Jazda (kamera za autem):
 | W / ↑ | gaz |
 | S / ↓ | hamulec, po zatrzymaniu wsteczny |
 | A / ← , D / → | skręt w lewo / w prawo |
-| Spacja | hamulec ręczny (tylne koła) |
+| Spacja | skok |
+| Shift | hamulec ręczny (tylne koła) |
 | T | postaw auto na koła w miejscu |
 | R | powrót na start |
 | U | następny poziom ulepszeń (0–3: dopalacze, rezonatory, opony razem) |
@@ -127,6 +129,7 @@ rcshot <folder_gry> beach_1 shot.png [w h] [x y z yaw pitch]   # render offscree
 RCSHOT_CAR=Car3 rcshot ...                                      # inne auto (Car1/Car2/Car3), none = sama trasa
 RCSHOT_COLL=1 rcshot ...                                        # z nakładką kolizji
 RCSHOT_DRIVE=3 RCSHOT_STEER=1 rcshot ...                        # najpierw 3 s jazdy na pełnym gazie, druga połowa ze skrętem
+RCSHOT_DRIVE=2 RCSHOT_JUMP=1.6 rcshot ...                       # skok w 1,6 s, zdjęcie w 2 s
 ```
 
 ## Struktura

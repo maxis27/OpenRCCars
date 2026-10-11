@@ -66,7 +66,8 @@ class LevelMesh {
     rc::Vec3     bboxMax() const { return bbox[1]; }
     const Stats& stats()   const { return info; }
 
-    static bool  isHiddenMesh(const std::string& name);
+    // low detail copies (_LOD<n>) that are not drawn, per SbScene::meshes
+    static std::vector<bool> hiddenMeshes(const rc::SbScene& scene);
 
   private:
     struct Batch {

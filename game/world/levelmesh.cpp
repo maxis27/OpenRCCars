@@ -23,9 +23,32 @@ struct BatchKey {
 
 }
 
-bool LevelMesh::isHiddenMesh(const std::string& name) {
-  // low detail copies, drawn by the original engine only at distance
-  return name.find("_LOD1")!=std::string::npos || name.find("_LOD2")!=std::string::npos;
+std::vector<bool> LevelMesh::hiddenMeshes(const rc::SbScene& scene) {
+  // "_LOD<n>" copies of the same thing are siblings under one parent. Objects keep their full detail mesh
+  // without a suffix next to simplified _LOD1/_LOD2 copies; the sea is made only of LODs, where _LOD1 is the
+  // coarsest and the highest number the finest, and groups far from the track have only _LOD1/_LOD2. The
+  // original picks one per distance (WaterLOD); we draw the finest one of each group.
+  auto lodOf = [](const std::string& name) {
+    const size_t at = name.find("_LOD");
+    return (at!=std::string::npos && at+4<name.size() && name[at+4]>='1' && name[at+4]<='9') ? name[at+4]-'0' : 0;
+    };
+  std::map<int32_t,int> finest;
+  std::map<int32_t,bool> plain;
+  for(auto& m:scene.meshes) {
+    if(m.faces.empty())
+      continue;
+    if(const int l = lodOf(m.name))
+      finest[m.parent] = std::max(finest[m.parent],l);
+    else
+      plain[m.parent] = true;
+    }
+  std::vector<bool> hidden(scene.meshes.size(),false);
+  for(size_t i=0; i<scene.meshes.size(); ++i) {
+    auto&     m = scene.meshes[i];
+    const int l = lodOf(m.name);
+    hidden[i] = l>0 && (plain[m.parent] || l<finest[m.parent]);
+    }
+  return hidden;
   }
 
 LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene)
@@ -35,10 +58,12 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene)
 
   // 1. bucket triangles by texture layers
   std::map<BatchKey,std::vector<Vertex>> buckets;
-  for(auto& m:scene.meshes) {
+  const auto hidden = hiddenMeshes(scene);
+  for(size_t mi=0; mi<scene.meshes.size(); ++mi) {
+    auto& m = scene.meshes[mi];
     if(m.positions.empty())
       continue;
-    if(isHiddenMesh(m.name)) {
+    if(hidden[mi]) {
       info.skippedMeshes++;
       continue;
       }

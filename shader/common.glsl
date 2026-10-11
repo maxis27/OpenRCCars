@@ -18,15 +18,13 @@ layout(push_constant, std430) uniform Push {
 
 // Waves of the sea, after Settings/WLOD_*.ini (beach_1 more1): two directional waves, "angle" 6 and "angle2" 4
 // in 10 degree steps, "amp" 16 and "amp2" 25 read as half-centimetres, "length2" 161 as centimetres. The original's
-// wave code is not readable (encrypted exe), so wavelengths and speeds are picked by eye. The angles are read as
-// where the waves come from (from +x towards +z): taken as the direction they travel, the waves of beach_1 ran out
-// to sea, so they go the opposite way, onto the beach.
+// wave code is not readable (encrypted exe), so wavelengths and speeds are picked by eye.
 // Returns the height offset in .x and its gradient in .yz (d/dx, d/dz).
 const float WAVE_LENGTH1 = 3.0, WAVE_LENGTH2 = 1.61;
 
 // `amp` scales each of the two waves (water.tese leaves out the ones its mesh is too coarse for)
 vec3 waterWaves(vec2 xz, float t, vec2 amp) {
-  const float a1 = radians(240.0), a2 = radians(220.0);
+  const float a1 = radians(60.0), a2 = radians(40.0);
   const vec2  d1 = vec2(cos(a1), sin(a1)), d2 = vec2(cos(a2), sin(a2));
   const float k1 = 6.2831853/WAVE_LENGTH1, w1 = k1*0.6, h1 = 0.08*amp.x;
   const float k2 = 6.2831853/WAVE_LENGTH2, w2 = k2*0.5, h2 = 0.125*amp.y;

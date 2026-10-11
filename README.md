@@ -221,12 +221,11 @@ lib/Tempest     silnik (submoduł git)
   o 32% paska, przezroczystość 36…255), przesunięta w fazie wzdłuż brzegu.
 - Fale: dwie fale kierunkowe wg `WLOD_beach_1_more1.ini` (`angle` 6 i `angle2` 4 w krokach 10°, `amp` 16 i `amp2` 25
   czytane jako pół centymetra, `length2` 161 cm), z białymi grzbietami i odblaskiem słońca; tekstura morza płynie
-  (`texSpeedMin/Max`). Długości i prędkości fal dobrane na oko. Kąty czytamy jako kierunek, z którego fale przychodzą:
-  wzięte jako kierunek ruchu dawały na beach_1 fale uciekające od plaży w morze. Tafla faluje naprawdę: teselacja
-  (`shader/water.tesc`, `water.tese`) dzieli morze przy kamerze co 15 cm (dalej co 2% odległości) i podnosi wierzchołki;
-  fala, której siatka nie oddaje (mniej niż 8 wierzchołków na długość fali), zostaje tylko w cieniowaniu. Przy brzegu
-  fale wygasają (pełna wysokość od 0,3 m głębokości). Bez teselacji w GPU tafla jest płaska, a fale są tylko w
-  cieniowaniu. Fizyka auta liczy z płaską taflą.
+  (`texSpeedMin/Max`). Długości i prędkości fal dobrane na oko. Tafla faluje naprawdę: teselacja (`shader/water.tesc`,
+  `water.tese`) dzieli morze przy kamerze co 15 cm (dalej co 2% odległości) i podnosi wierzchołki; fala, której siatka
+  nie oddaje (mniej niż 8 wierzchołków na długość fali), zostaje tylko w cieniowaniu. Przy brzegu fale wygasają (pełna
+  wysokość od 0,3 m głębokości). Bez teselacji w GPU tafla jest płaska, a fale są tylko w cieniowaniu. Fizyka auta
+  liczy z płaską taflą.
 - Brzeg: tafla morza jest płaska (beach_1: 0 m) i kończy się w powietrzu tam, gdzie plaża leży niżej (piasek przy
   brzegu na -0,31 m, tam leży też piana), a na zrzutach z oryginału woda schodzi do poziomu plaży. Oryginał ma do tego
   suwaki `magnetOffset`/`magnetRadius`/`clampY*` w `WLOD_*.ini`, ale ich kod w `RCCars.exe` jest zaszyfrowany

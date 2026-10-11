@@ -19,8 +19,6 @@ layout(location = 2) out vec2 outUvLight[];
 layout(location = 3) out vec2 outUvMask[];
 layout(location = 4) out vec2 outUvBase2[];
 layout(location = 5) out vec3 outWorld[];
-// how much coarser than waterSpacing() the patch came out: big sea triangles hit the limit of 64 pieces per edge
-layout(location = 6) patch out float outCoarse;
 
 // how many pieces an edge is cut into: depends only on the edge, so that both triangles sharing it agree
 float edgeLevel(vec3 a, vec3 b) {
@@ -46,6 +44,5 @@ void main() {
     gl_TessLevelOuter[1] = min(e1, 64.0);
     gl_TessLevelOuter[2] = min(e2, 64.0);
     gl_TessLevelInner[0] = min(e,  64.0);
-    outCoarse = max(e/64.0, 1.0);
     }
   }

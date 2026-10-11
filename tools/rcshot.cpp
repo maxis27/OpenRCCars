@@ -118,6 +118,10 @@ int main(int argc, const char** argv) {
     push.cameraPos[3] = 250.f;
     push.sunDir[0] = 0.4f; push.sunDir[1] = 0.8f; push.sunDir[2] = 0.3f;
     push.sunDir[3] = 1.0f;
+    if(car) {
+      const rc::Vec3 at = carPose.translation();
+      push.carPos[0] = at.x; push.carPos[1] = at.y; push.carPos[2] = at.z;
+      }
     if(const char* t = std::getenv("RCSHOT_TIME"))
       push.time = float(std::atof(t));
     else if(const char* d = std::getenv("RCSHOT_DRIVE"))

@@ -3,7 +3,7 @@
 
 #include "common.glsl"
 
-// Moves the split sea (water.tesc) up and down with the waves level.frag shades.
+// Moves the split sea (water.tesc) up and down with the waves (seaHeight).
 layout(triangles, equal_spacing, ccw) in;
 
 layout(location = 0) in vec3 inNormal[];
@@ -12,7 +12,6 @@ layout(location = 2) in vec2 inUvLight[];
 layout(location = 3) in vec2 inUvMask[];
 layout(location = 4) in vec2 inUvBase2[];
 layout(location = 5) in vec3 inWorld[];
-layout(location = 6) patch in float inCoarse;
 
 layout(location = 0) out vec3 outNormal;
 layout(location = 1) out vec2 outUvBase;
@@ -34,9 +33,8 @@ void main() {
   outUvBase2 = b.x*inUvBase2[0] + b.y*inUvBase2[1] + b.z*inUvBase2[2];
   vec3 pos   = b.x*inWorld  [0] + b.y*inWorld  [1] + b.z*inWorld  [2];
 
-  // a wave is only moved where the mesh is fine enough to show it, further away it stays in the shading
-  float spacing = waterSpacing(distance(push.cameraPos.xyz, pos))*inCoarse;
-  pos.y += waterWaves(pos.xz, push.time, waterDetail(spacing)).x * waterShallow(outUvMask.x);
+  if((push.flags & F_WAVES)!=0u)
+    pos.y += seaHeight(pos.xz, push.time, outUvMask.x);
 
   outWorld    = pos;
   gl_Position = push.viewProj * vec4(pos, 1.0);

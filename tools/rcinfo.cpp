@@ -13,6 +13,7 @@
 #include "formats/csi.h"
 #include "formats/scene.h"
 #include "formats/collision.h"
+#include "formats/water.h"
 #include "physics/checkpoints.h"
 #include "physics/vehicle.h"
 
@@ -289,6 +290,7 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   auto scene = rc::SbScene::load(readFile(game/track));
   auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
   rc::CollisionMesh coll(scene);
+  coll.setSeas(rc::Seas::load(scene,pack,track.stem().string()));
   const std::string model = "Car"+std::to_string(car);
   const auto geom = rc::carGeometry(cars,model);
   const auto prm  = rc::CarParams::load(pack,car,upgrade);

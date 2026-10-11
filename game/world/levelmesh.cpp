@@ -3,10 +3,12 @@
 #include <Tempest/Log>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <map>
 #include <tuple>
+#include <unordered_map>
 
 #include "game/resources.h"
 #include "shader.h"
@@ -14,6 +16,121 @@
 using namespace Tempest;
 
 namespace {
+
+// The outline of a sea: the edges of its faces that no other face of it shares (RCCars.exe 0x520d50), and how far
+// a point is from it in the xz plane. Our sea mixes LODs of neighbouring groups, so their T-junctions would look
+// like outline too: an edge counts only if one of its sides is dry.
+class SeaOutline {
+  public:
+    void add(const rc::Vec3& a, const rc::Vec3& b, const rc::Vec3& c) { tris.push_back({a,b,c}); }
+
+    void build() {
+      std::map<std::tuple<int64_t,int64_t,int64_t>,uint32_t> weld;
+      auto id = [&](const rc::Vec3& p) {
+        auto k = std::make_tuple(std::llround(p.x*100.0),std::llround(p.y*100.0),std::llround(p.z*100.0));
+        return weld.emplace(k,uint32_t(weld.size())).first->second;
+        };
+      std::map<std::pair<uint32_t,uint32_t>,std::pair<int,std::pair<rc::Vec3,rc::Vec3>>> count;
+      for(size_t i=0; i<tris.size(); ++i) {
+        for(int e=0; e<3; ++e) {
+          const rc::Vec3& a = tris[i][e];
+          const rc::Vec3& b = tris[i][(e+1)%3];
+          uint32_t ia = id(a), ib = id(b);
+          auto& c = count[{std::min(ia,ib),std::max(ia,ib)}];
+          c.first++;
+          c.second = {a,b};
+          }
+        const auto [mn,mx] = bounds(tris[i]);
+        forCells(mn,mx,triCell,[&](uint64_t k){ triGrid[k].push_back(uint32_t(i)); });
+        }
+      for(auto& [k,c]:count) {
+        if(c.first!=1)
+          continue;
+        const rc::Vec3 a = c.second.first, b = c.second.second;
+        const float    dx = b.x-a.x, dz = b.z-a.z, len = std::hypot(dx,dz);
+        if(len<1e-4f)
+          continue;
+        const rc::Vec2 mid = {(a.x+b.x)*0.5f,(a.z+b.z)*0.5f};
+        const rc::Vec2 n   = {-dz/len*0.05f, dx/len*0.05f};
+        if(covered({mid.x+n.x,mid.y+n.y}) && covered({mid.x-n.x,mid.y-n.y}))
+          continue; // water on both sides: a seam between groups
+        const uint32_t i = uint32_t(edges.size());
+        edges.push_back({rc::Vec2{a.x,a.z},rc::Vec2{b.x,b.z}});
+        forCells({std::min(a.x,b.x),0,std::min(a.z,b.z)},{std::max(a.x,b.x),0,std::max(a.z,b.z)},edgeCell,
+                 [&](uint64_t k){ edgeGrid[k].push_back(i); });
+        }
+      }
+
+    // distance to the outline, at most `maxDist`
+    float distance(const rc::Vec3& p, float maxDist) const {
+      float best = maxDist;
+      forCells({p.x-maxDist,0,p.z-maxDist},{p.x+maxDist,0,p.z+maxDist},edgeCell,[&](uint64_t k) {
+        auto it = edgeGrid.find(k);
+        if(it==edgeGrid.end())
+          return;
+        for(uint32_t i:it->second) {
+          const rc::Vec2 a = edges[i].first, b = edges[i].second;
+          const float    ex = b.x-a.x, ez = b.y-a.y;
+          const float    t  = std::clamp(((p.x-a.x)*ex+(p.z-a.y)*ez)/(ex*ex+ez*ez),0.f,1.f);
+          best = std::min(best,std::hypot(p.x-(a.x+ex*t),p.z-(a.y+ez*t)));
+          }
+        });
+      return best;
+      }
+
+    size_t outlineEdges() const { return edges.size(); }
+
+  private:
+    static constexpr float triCell = 4.f, edgeCell = 2.f;
+    using Tri = std::array<rc::Vec3,3>;
+
+    static std::pair<rc::Vec3,rc::Vec3> bounds(const Tri& t) {
+      rc::Vec3 mn = t[0], mx = t[0];
+      for(auto& p:t) {
+        mn = {std::min(mn.x,p.x),0,std::min(mn.z,p.z)};
+        mx = {std::max(mx.x,p.x),0,std::max(mx.z,p.z)};
+        }
+      return {mn,mx};
+      }
+
+    template<class F>
+    static void forCells(const rc::Vec3& mn, const rc::Vec3& mx, float cell, F&& fn) {
+      const int64_t x0 = int64_t(std::floor(mn.x/cell)), x1 = int64_t(std::floor(mx.x/cell));
+      const int64_t z0 = int64_t(std::floor(mn.z/cell)), z1 = int64_t(std::floor(mx.z/cell));
+      for(int64_t x=x0; x<=x1; ++x)
+        for(int64_t z=z0; z<=z1; ++z)
+          fn((uint64_t(uint32_t(int32_t(x)))<<32) | uint32_t(int32_t(z)));
+      }
+
+    bool covered(const rc::Vec2& p) const {
+      bool hit = false;
+      forCells({p.x,0,p.y},{p.x,0,p.y},triCell,[&](uint64_t k) {
+        auto it = triGrid.find(k);
+        if(it==triGrid.end())
+          return;
+        for(uint32_t i:it->second) {
+          const Tri& t = tris[i];
+          auto side = [&](const rc::Vec3& a, const rc::Vec3& b) { return (b.x-a.x)*(p.y-a.z)-(b.z-a.z)*(p.x-a.x); };
+          const float d0 = side(t[0],t[1]), d1 = side(t[1],t[2]), d2 = side(t[2],t[0]);
+          if((d0>=0 && d1>=0 && d2>=0) || (d0<=0 && d1<=0 && d2<=0))
+            hit = true;
+          }
+        });
+      return hit;
+      }
+
+    std::vector<Tri>                                        tris;
+    std::vector<std::pair<rc::Vec2,rc::Vec2>>               edges;
+    std::unordered_map<uint64_t,std::vector<uint32_t>>      triGrid, edgeGrid;
+  };
+
+std::optional<rc::WaterWaves> loadWaves(rc::PackFile& pack, std::string_view track, const std::string& object) {
+  const std::string name = "Settings\\WLOD_"+std::string(track)+"_"+object+".ini";
+  if(pack.find(name)==nullptr)
+    return std::nullopt;
+  auto d = pack.read(name);
+  return rc::WaterWaves::parse(rc::SliderFile::parse(std::string_view(reinterpret_cast<const char*>(d.data()),d.size())));
+  }
 
 struct BatchKey {
   int32_t model = -1;
@@ -53,14 +170,91 @@ std::vector<bool> LevelMesh::hiddenMeshes(const rc::SbScene& scene) {
   return hidden;
   }
 
-LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, const rc::CollisionMesh* ground)
+WaterBlock WaterBlock::from(const rc::WaterWaves& w, const rc::CoastFoam& foam) {
+  const float a = w.angle*3.14159265f/180.f;
+  WaterBlock b;
+  b.wave[0]  = w.amp;      b.wave[1]  = w.period;          b.wave[2]  = w.speed;      b.wave[3]  = w.amp2;
+  b.wave2[0] = w.period2;  b.wave2[1] = 1.f/w.length2;    b.wave2[2] = w.center.x;   b.wave2[3] = w.center.z;
+  b.dir[0]   = std::cos(a); b.dir[1]  = std::sin(a);       b.dir[2]   = w.offset;     b.dir[3]   = w.magnetOffset;
+  b.edge[0]  = w.magnetRadius>0 ? 1.f/w.magnetRadius : 0.f;
+  b.edge[1]  = w.alphaRadius;
+  b.edge[2]  = w.distAlphaClampMin;
+  b.edge[3]  = w.distAlphaClampMax;
+  b.color[0] = w.colorMin/255.f; b.color[1] = w.colorMax/255.f; b.color[2] = 1.f; b.color[3] = foam.heightOn;
+  b.foam[0]  = foam.alphaMin;    b.foam[1]  = foam.alphaMax;    b.foam[2]  = foam.scrollVel;
+  return b;
+  }
+
+LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, const rc::CollisionMesh* ground,
+                     std::string_view track)
   :pso(device) {
   bbox[0] = { 1e9f, 1e9f, 1e9f};
   bbox[1] = {-1e9f,-1e9f,-1e9f};
 
+  const auto hidden = hiddenMeshes(scene);
+  auto isSea = [&](const rc::SbMesh& m, const rc::SbFace& f) {
+    auto base = f.layer(rc::LayerTag::Base);
+    return base!=nullptr && f.layer(rc::LayerTag::Alpha)==nullptr &&
+           rc::surfaceOf(scene.texture(base->texture,m.model))==rc::Surface::Water;
+    };
+
+  // 0. seas with waves: the node above the sea faces that has a WLOD_<track>_<node>.ini, e.g. "more1"
+  std::vector<rc::WaterWaves> seas;
+  std::vector<std::string>    seaNames;
+  std::vector<int32_t>        seaOf(scene.meshes.size(),-1);
+  if(!track.empty()) {
+    std::map<int32_t,int32_t> node; // mesh -> sea, -1 none
+    for(size_t mi=0; mi<scene.meshes.size(); ++mi) {
+      auto& m = scene.meshes[mi];
+      if(hidden[mi] || std::none_of(m.faces.begin(),m.faces.end(),[&](const rc::SbFace& f){ return isSea(m,f); }))
+        continue;
+      for(int32_t p=int32_t(mi); p>=0 && seaOf[mi]<0; p=scene.meshes[size_t(p)].parent) {
+        auto it = node.find(p);
+        if(it==node.end()) {
+          int32_t id = -1;
+          if(auto w = loadWaves(res.pack(),track,scene.meshes[size_t(p)].name)) {
+            id = int32_t(seas.size());
+            seas.push_back(*w);
+            seaNames.push_back(scene.meshes[size_t(p)].name);
+            }
+          it = node.emplace(p,id).first;
+          }
+        seaOf[mi] = it->second;
+        }
+      }
+    }
+  // the outline of each sea, measured inside the scene's "water_box" only (RCCars.exe 0x5211a0)
+  std::vector<SeaOutline> outlines(seas.size());
+  for(size_t mi=0; mi<scene.meshes.size(); ++mi) {
+    auto& m = scene.meshes[mi];
+    if(seaOf[mi]<0)
+      continue;
+    for(auto& f:m.faces) {
+      if(!isSea(m,f) || f.pos.size()<3)
+        continue;
+      auto at = [&](size_t i) { return m.world.point(m.positions[f.pos[i]<m.positions.size() ? f.pos[i] : 0]); };
+      for(size_t i=1; i+1<f.pos.size(); ++i)
+        outlines[size_t(seaOf[mi])].add(at(0),at(i),at(i+1));
+      }
+    }
+  for(size_t i=0; i<outlines.size(); ++i) {
+    outlines[i].build();
+    Log::i("water \"",seaNames[i],"\": ",outlines[i].outlineEdges()," outline edges");
+    }
+  const rc::SbVolume* waterBox = scene.volume("water_box");
+  rc::CoastFoam foam;
+  if(!seas.empty() && res.pack().find("Settings\\waterLOD_coast.ini")!=nullptr) {
+    auto d = res.pack().read("Settings\\waterLOD_coast.ini");
+    foam = rc::CoastFoam::parse(rc::SliderFile::parse(std::string_view(reinterpret_cast<const char*>(d.data()),d.size())));
+    }
+  // the foam follows the waves of the main sea ("more1"); which one the original links it to is not known
+  int32_t foamSea = seas.empty() ? -1 : 0;
+  for(size_t i=0; i<seaNames.size(); ++i)
+    if(seaNames[i]=="more1")
+      foamSea = int32_t(i);
+
   // 1. bucket triangles by texture layers
   std::map<BatchKey,std::vector<Vertex>> buckets;
-  const auto hidden = hiddenMeshes(scene);
   for(size_t mi=0; mi<scene.meshes.size(); ++mi) {
     auto& m = scene.meshes[mi];
     if(m.positions.empty())
@@ -89,9 +283,15 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
         key.mask  = mask->texture;
         key.base2 = base2 ? base2->texture : -1;
         }
-      // water (texture "sea") carries its depth above the solid ground in uvMask.x, see F_Water
-      const bool water = ground!=nullptr && mask==nullptr &&
-                         rc::surfaceOf(scene.texture(base->texture,m.model))==rc::Surface::Water;
+      // a sea with waves carries the distance to its outline in uvMask.x (F_Waves); other water (texture "sea")
+      // its depth above the solid ground (F_Water)
+      const int32_t sea   = isSea(m,f) ? seaOf[mi] : -1;
+      const bool    water = sea<0 && ground!=nullptr && isSea(m,f);
+      const float   reach = sea>=0 ? std::max(seas[size_t(sea)].magnetRadius,seas[size_t(sea)].alphaRadius)+0.5f : 0.f;
+      if(sea>=0) {
+        key.mask  = -3; // own batch per sea
+        key.base2 = sea;
+        }
       if(water)
         key.mask = -2; // own batch
       // lowers `p` to the water surface at the shore (CollisionMesh::shoreHeight) and returns its depth
@@ -153,6 +353,11 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
           v.uvMask[1] = v.pos[1];
           v.uvMask[0] = shapeWater(v.pos);
           }
+        if(sea>=0) {
+          const bool inBox = waterBox==nullptr || waterBox->contains(p);
+          v.uvMask[0] = inBox ? outlines[size_t(sea)].distance(p,reach) : reach;
+          v.uvMask[1] = 0;
+          }
         if(mask!=nullptr && base2==nullptr)
           v.pos[1] += 0.01f; // shore foam lies on the sand, lift it to keep it from z-fighting
         bbox[0] = {std::min(bbox[0].x,p.x),std::min(bbox[0].y,p.y),std::min(bbox[0].z,p.z)};
@@ -190,7 +395,13 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
       b.flags |= F_Water;
       b.mode   = rc::AlphaMode::Translucent;
       }
-    b.tex[3] = key.base2>=0 ? sceneTexture(res,scene,key.base2,key.model,nullptr) : nullptr;
+    if(key.mask==-3) {
+      b.flags |= F_Water | F_Waves;
+      b.mode   = rc::AlphaMode::Translucent;
+      b.water  = key.base2;
+      b.tex[2] = nullptr;
+      }
+    b.tex[3] = key.base2>=0 && key.mask!=-3 ? sceneTexture(res,scene,key.base2,key.model,nullptr) : nullptr;
     if(b.tex[1]!=nullptr)
       b.flags |= F_Lightmap;
     if(b.tex[2]!=nullptr && b.tex[3]!=nullptr) {
@@ -201,6 +412,7 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
       // a mask without a second texture fades the base out: the foam along the shore (coast_base / coast)
       b.flags |= F_Mask;
       b.mode   = rc::AlphaMode::Translucent;
+      b.water  = foamSea;
       }
     if(b.mode==rc::AlphaMode::Cutout)
       b.flags |= F_Cutout;
@@ -216,6 +428,9 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
   std::stable_sort(batches.begin(),batches.end(),[&](const Batch& a, const Batch& b){
     return order(a) < order(b);
     });
+
+  for(auto& w:seas)
+    waterUbo.push_back(device.ubo(WaterBlock::from(w,foam)));
 
   vbo            = device.vbo(all);
   info.triangles = all.size()/3;
@@ -247,6 +462,8 @@ ScenePipelines::ScenePipelines(Device& device) {
   stBlend.setBlendDest  (RenderState::BlendMode::OneMinusSrcAlpha);
   stBlend.setZWriteEnabled(false);
   blend = device.pipeline(Topology::Triangles,stBlend,vert,frag);
+
+  noWater = device.ubo(WaterBlock());
 
   if(device.properties().tesselationShader) {
     sh        = AppShader::get("water.tesc.sprv");
@@ -301,17 +518,19 @@ void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass, 
       continue;
     if((b.mode==rc::AlphaMode::Translucent)!=(pass==Pass::Translucent))
       continue;
-    auto& p = (b.flags & F_Water) && !pso.water.isEmpty() ? pso.water : pso.get(b.mode);
+    const bool tess = (b.flags & F_Water) && !pso.water.isEmpty();
+    auto&      p    = tess ? pso.water : pso.get(b.mode);
     if(current!=&p) {
       enc.setPipeline(p);
       current = &p;
       }
-    push.flags = b.flags;
+    push.flags = b.flags | (tess ? uint32_t(F_Tess) : 0u);
     enc.setPushData(push);
     enc.setBinding(0,*b.tex[0]);
     enc.setBinding(1,*b.tex[1]);
     enc.setBinding(2,*b.tex[2]);
     enc.setBinding(3,*b.tex[3]);
+    enc.setBinding(4,b.water>=0 ? waterUbo[size_t(b.water)] : pso.noWater);
     enc.draw(vbo,b.first,b.count);
     }
   }

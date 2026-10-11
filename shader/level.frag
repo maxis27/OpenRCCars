@@ -28,31 +28,50 @@ void main() {
     color.rgb = mix(c2.rgb, color.rgb, m);
     }
 
-  if((push.flags & F_WATER)!=0u) {
-    // WLOD_*.ini alphaMin 26/255 .. alphaMax 255; full opacity at 0.8 m deep (distAlphaClampMax 8, a guess
-    // at its unit), nothing where the ground is above the sea plane
+  if((push.flags & F_WAVES)!=0u) {
+    // the sea after RCCars.exe 0x51c000 / 0x5240c0, see formats/water.h
+    float edge = inUvMask.x;
+    float s    = seaMagnet(edge);
+    vec3  w    = seaWaves(inWorld.xz, push.time);
+    // see-through towards the outline: 35/255 there, opaque from alphaRadius on
+    float a = water.edge.y>0.0 ? clamp((35.0 + 220.0*edge/water.edge.y)/255.0, 35.0/255.0, 1.0) : 1.0;
+    // but only near the car (distAlphaClampMin/Max), in a distance that weighs height 187 times
+    vec3  d    = inWorld - push.carPos.xyz;
+    float dc   = sqrt(dot(d.xz, d.xz) + 187.0*d.y*d.y);
+    float near = 1.0 - clamp((dc - water.edge.z)/max(water.edge.w - water.edge.z, 1e-6), 0.0, 1.0);
+    color.a    = mix(1.0, a, near);
+    // grey from colorMin in the troughs to colorMax on the crests
+    float lo = -(0.5*water.wave.x + water.wave.w), hi = water.wave.x + water.wave.w;
+    color.rgb *= mix(water.color.x, water.color.y, clamp((s*w.x - lo)/max(hi - lo, 1e-6), 0.0, 1.0));
+    normal     = normalize(vec3(-w.y*s, 1.0, -w.z*s));
+    }
+  else if((push.flags & F_WATER)!=0u) {
+    // water without WLOD settings (pools, streams): WLOD_*.ini alphaMin 26/255 .. alphaMax 255, full opacity at
+    // 0.8 m deep, nothing where the ground is above the water plane
     float depth = inUvMask.x;
     color.a = depth<=0.0 ? 0.0 : mix(26.0/255.0, 1.0, pow(clamp(depth/0.8, 0.0, 1.0), 0.6));
-    // waves (dying out towards the shore) light the surface, white caps on the crests ("colorMin" 175 ..
-    // "colorMax" 255)
-    vec3  w     = waterWaves(inWorld.xz, push.time) * waterShallow(depth);
-    float crest = smoothstep(0.45, 0.95, w.x/0.205);
-    color.rgb = mix(color.rgb, vec3(0.95), crest*0.6);
-    color.a   = max(color.a, crest*0.8*step(0.0, depth));
-    normal    = normalize(vec3(-w.y, 1.0, -w.z));
+    normal  = vec3(0.0, 1.0, 0.0);
     }
 
   if((push.flags & F_MASK)!=0u) {
-    // the foam washes up and down the beach (waterLOD_coast.ini: "HeightOn" 100, "HeightOff" 68 read as how
-    // much of the strip it covers, "AlphaMin" 36 .. "AlphaMax" 255, "ScrollVel" 11). The mask's V runs from
-    // the top of the strip (0, the wavy edge) down into the sea (1). A wave every 4 s, out of step along the shore.
-    float phase = push.time*6.2831853/4.0 - dot(inWorld.xz, vec2(0.35, 0.21));
-    float s     = 0.5 + 0.5*sin(phase);                // 1 = washed up
-    float shift = (1.0-s)*0.32;
-    vec2  uv    = inUvMask + vec2(0.0, -shift);
-    color.a     = uv.y<0.0 ? 0.0 : texture(texMask, uv).a;
-    color.a    *= mix(36.0/255.0, 1.0, s);
-    color.rgb   = texture(texBase, inUvBase + vec2(0.0, -push.time*0.11*0.1)).rgb;
+    // shore foam (RCCars.exe 0x51c690, formats/water.h CoastFoam): it follows wave 2 of the sea, showing as the
+    // water draws back and fading as the next wave comes in; its texture scrolls by "ScrollVel"
+    float fade = 1.0;
+    vec2  uv   = inUvBase;
+    if(water.color.z>0.0) {
+      float p  = seaPhase2(inWorld.xz, push.time);
+      float h  = sin(p), on = water.color.w;
+      float lo = water.foam.x, hi = water.foam.y;
+      if(cos(p)>0.0 && h>on)
+        fade = lo;
+      else if(cos(p)<0.0)
+        fade = mix(hi, lo, (h+1.0)*0.5);
+      else
+        fade = h>on ? lo : mix(hi, lo, (h+1.0)/max(on+1.0, 1e-6));
+      uv.y -= water.foam.z*push.time;
+      }
+    color.a   = texture(texMask, inUvMask).a * fade;
+    color.rgb = texture(texBase, uv).rgb;
     }
 
   if((push.flags & F_CUTOUT)!=0u && color.a<0.5)

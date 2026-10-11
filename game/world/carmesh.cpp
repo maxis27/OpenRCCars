@@ -157,6 +157,7 @@ void CarMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
     enc.setBinding(1,*b.tex);
     enc.setBinding(2,*b.tex);
     enc.setBinding(3,*b.tex);
+    enc.setBinding(4,pso.noWater);
     enc.draw(vbo,b.first,b.count);
     }
   }

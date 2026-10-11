@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 #include "scene.h"
@@ -67,7 +68,16 @@ class CollisionMesh {
     // what the solid surface directly below `from` (within maxDepth) is made of
     Surface                      surfaceBelow(const Vec3& from, float maxDepth) const;
     // height of the nearest water surface above `at`, or if there is none, below it; within `range` either way
+    // (shaped by shoreHeight)
     std::optional<float>         waterLevel(const Vec3& at, float range) const;
+
+    // The sea is a flat sheet that ends in mid-air where the beach is lower than the water (on beach_1 the
+    // surface is at 0 and the sand along the shore at -0.31). The original pulls the water down to the sand
+    // there (WaterLOD magnet/clampY sliders, code not readable); we limit the depth of the water to
+    // `shoreSlope` times the distance to the nearest shore edge of the sea. `p` is a point on the water as
+    // the scene has it, the result the height of the water surface there.
+    float                        shoreHeight(const Vec3& p) const;
+    static constexpr float       shoreSlope = 0.3f;
 
     // triangles listed in a cell; the same triangle shows up in every cell it touches
     template<class F>
@@ -86,6 +96,14 @@ class CollisionMesh {
     Vec3                  origin, cell;
     std::vector<uint32_t> cellStart; // cells+1 offsets into cellTris
     std::vector<uint32_t> cellTris;
+
+    // edges of the sea meshes not shared with another sea triangle, less than 1 m above the ground and with the
+    // ground just past them below the water,
+    // bucketed in shoreCell x shoreCell squares
+    struct Edge { float ax, az, bx, bz; };
+    float                 shoreDistance(float x, float z, float maxDistance) const;
+    static constexpr float shoreCell = 2.f;
+    std::unordered_map<uint64_t,std::vector<Edge>> shore;
   };
 
 }

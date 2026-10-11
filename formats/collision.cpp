@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
+#include <tuple>
 
 using namespace rc;
 
@@ -109,6 +111,86 @@ CollisionMesh::CollisionMesh(const SbScene& scene) {
       }
     }
   cellStart[cells] = uint32_t(cellTris.size());
+
+  // 4. shore edges of the sea
+  if(!water)
+    return;
+  auto key = [](const Vec3& p) {
+    return std::make_tuple(std::lround(p.x*100),std::lround(p.y*100),std::lround(p.z*100));
+    };
+  using Key = decltype(key(Vec3{}));
+  std::map<std::tuple<uint32_t,Key,Key>,int> uses;
+  auto edgeKey = [&](uint32_t mesh, const Vec3& a, const Vec3& b) {
+    const auto ka = key(a), kb = key(b);
+    return ka<kb ? std::make_tuple(mesh,ka,kb) : std::make_tuple(mesh,kb,ka);
+    };
+  for(auto& t:tris)
+    if(t.surface==Surface::Water) {
+      uses[edgeKey(t.mesh,t.a,t.b)]++;
+      uses[edgeKey(t.mesh,t.b,t.c)]++;
+      uses[edgeKey(t.mesh,t.c,t.a)]++;
+      }
+  for(auto& t:tris) {
+    if(t.surface!=Surface::Water)
+      continue;
+    const Vec3* v[3] = {&t.a,&t.b,&t.c};
+    for(int i=0; i<3; ++i) {
+      const Vec3& a = *v[i];
+      const Vec3& b = *v[(i+1)%3];
+      if(uses[edgeKey(t.mesh,a,b)]!=1)
+        continue;
+      const Vec3 mid = (a+b)*0.5f;
+      const auto floor = groundHeight(mid+Vec3{0,0.05f,0},50.f);
+      if(!floor || mid.y-*floor>=1.f)
+        continue; // open sea: a seam between sea groups, or the edge of the grid
+      // only where the ground just past the edge is still below the water: the water would end in mid-air.
+      // Around rocks and up a beach that rises out of the sea it meets the ground by itself.
+      const Vec3& o   = *v[(i+2)%3];
+      Vec3        out = {b.z-a.z,0,a.x-b.x};
+      if(Vec3::dot(out,o-mid)>0)
+        out = out*-1.f;
+      const float len = out.length();
+      if(len<1e-6f)
+        continue;
+      const auto past = groundHeight(mid+out*(0.3f/len)+Vec3{0,2.f,0},50.f);
+      if(!past || *past>=mid.y-0.05f)
+        continue;
+      const Edge e = {a.x,a.z,b.x,b.z};
+      const int x0 = int(std::floor(std::min(a.x,b.x)/shoreCell)), x1 = int(std::floor(std::max(a.x,b.x)/shoreCell));
+      const int z0 = int(std::floor(std::min(a.z,b.z)/shoreCell)), z1 = int(std::floor(std::max(a.z,b.z)/shoreCell));
+      for(int x=x0; x<=x1; ++x)
+        for(int z=z0; z<=z1; ++z)
+          shore[(uint64_t(uint32_t(x))<<32) | uint32_t(z)].push_back(e);
+      }
+    }
+  }
+
+float CollisionMesh::shoreDistance(float x, float z, float maxDistance) const {
+  float best = maxDistance;
+  const int cx = int(std::floor(x/shoreCell)), cz = int(std::floor(z/shoreCell));
+  const int r  = int(std::ceil(maxDistance/shoreCell));
+  for(int ix=cx-r; ix<=cx+r; ++ix)
+    for(int iz=cz-r; iz<=cz+r; ++iz) {
+      auto it = shore.find((uint64_t(uint32_t(ix))<<32) | uint32_t(iz));
+      if(it==shore.end())
+        continue;
+      for(auto& e:it->second) {
+        const float ex = e.bx-e.ax, ez = e.bz-e.az, len2 = ex*ex+ez*ez;
+        const float t  = len2>0 ? std::clamp(((x-e.ax)*ex+(z-e.az)*ez)/len2,0.f,1.f) : 0.f;
+        best = std::min(best,std::hypot(x-(e.ax+ex*t),z-(e.az+ez*t)));
+        }
+      }
+  return best;
+  }
+
+float CollisionMesh::shoreHeight(const Vec3& p) const {
+  if(shore.empty())
+    return p.y;
+  const auto floor = groundHeight(p+Vec3{0,0.05f,0},50.f);
+  if(!floor || p.y<=*floor)
+    return p.y;
+  const float depth = p.y-*floor;
+  return *floor + std::min(depth,shoreSlope*shoreDistance(p.x,p.z,depth/shoreSlope));
   }
 
 bool CollisionMesh::intersect(const Triangle& t, const Vec3& from, const Vec3& dir, float maxT, Hit& out) const {
@@ -238,8 +320,8 @@ std::optional<float> CollisionMesh::waterLevel(const Vec3& at, float range) cons
     return std::nullopt;
   // the nearest surface above (under water), else the nearest one below
   if(auto h = raycast(at,Vec3{0,1,0},range,Layer::Water))
-    return h->point.y;
+    return shoreHeight(h->point);
   if(auto h = raycast(at,Vec3{0,-1,0},range,Layer::Water))
-    return h->point.y;
+    return shoreHeight(h->point);
   return std::nullopt;
   }

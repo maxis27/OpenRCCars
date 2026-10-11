@@ -94,9 +94,12 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
                          rc::surfaceOf(scene.texture(base->texture,m.model))==rc::Surface::Water;
       if(water)
         key.mask = -2; // own batch
-      auto depthAt = [&](const rc::Vec3& p) {
-        const auto floor = ground->groundHeight(p+rc::Vec3{0,0.05f,0},50.f); // not from higher up: rocks overhang the sea
-        return floor ? p.y-*floor : 100.f;
+      // lowers `p` to the water surface at the shore (CollisionMesh::shoreHeight) and returns its depth
+      auto shapeWater = [&](float* p) {
+        const rc::Vec3 at    = {p[0],p[1],p[2]};
+        const auto     floor = ground->groundHeight(at+rc::Vec3{0,0.05f,0},50.f); // not from higher up: rocks overhang the sea
+        p[1] = ground->shoreHeight(at);
+        return floor ? p[1]-*floor : 100.f;
         };
       // the depth is interpolated per vertex: split big sea triangles near the shore so that it follows the seabed
       std::function<void(std::vector<Vertex>&,const Vertex&,const Vertex&,const Vertex&,int)> subdivideWater;
@@ -113,8 +116,9 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
           lerp(x.pos,y.pos,v.pos,3);       lerp(x.normal,y.normal,v.normal,3);
           lerp(x.uvBase,y.uvBase,v.uvBase,2); lerp(x.uvLight,y.uvLight,v.uvLight,2);
           lerp(x.uvBase2,y.uvBase2,v.uvBase2,2);
-          v.uvMask[0] = depthAt({v.pos[0],v.pos[1],v.pos[2]});
-          v.uvMask[1] = 0;
+          v.uvMask[1] = (x.uvMask[1]+y.uvMask[1])*0.5f; // the scene's height, before shapeWater
+          v.pos[1]    = v.uvMask[1];
+          v.uvMask[0] = shapeWater(v.pos);
           return v;
           };
         const Vertex ab = mid(a,b), bc = mid(b,c), ca = mid(c,a);
@@ -145,8 +149,10 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
         uv(light,corner,v.uvLight);
         uv(mask, corner,v.uvMask);
         uv(base2,corner,v.uvBase2);
-        if(water)
-          v.uvMask[0] = depthAt(p);
+        if(water) {
+          v.uvMask[1] = v.pos[1];
+          v.uvMask[0] = shapeWater(v.pos);
+          }
         if(mask!=nullptr && base2==nullptr)
           v.pos[1] += 0.01f; // shore foam lies on the sand, lift it to keep it from z-fighting
         bbox[0] = {std::min(bbox[0].x,p.x),std::min(bbox[0].y,p.y),std::min(bbox[0].z,p.z)};
@@ -205,8 +211,8 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
     batches.push_back(b);
     }
 
-  // opaque first, translucent last, and of those the water at the very end: foam and the like lie under it
-  auto order = [](const Batch& b) { return b.mode!=rc::AlphaMode::Translucent ? 0 : (b.flags & F_Water) ? 2 : 1; };
+  // opaque first, then the water, then the rest of the translucent batches: the foam is surf on top of the water
+  auto order = [](const Batch& b) { return b.mode!=rc::AlphaMode::Translucent ? 0 : (b.flags & F_Water) ? 1 : 2; };
   std::stable_sort(batches.begin(),batches.end(),[&](const Batch& a, const Batch& b){
     return order(a) < order(b);
     });

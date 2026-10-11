@@ -217,6 +217,12 @@ lib/Tempest     silnik (submoduł git)
   Piana przy brzegu to ściany `coast*` z teksturą `coast_base` i maską `ALP1` `coast` bez `BAS2`: maska to
   przezroczystość piany (falista krawędź). W oryginale piana przesuwa się po plaży (`waterLOD_coast.ini`:
   `HeightOn/HeightOff`, `ScrollVel`, `AlphaMin` 36), u nas stoi.
+- Brzeg: tafla morza jest płaska (beach_1: 0 m) i kończy się w powietrzu tam, gdzie plaża leży niżej (piasek przy
+  brzegu na -0,31 m, tam leży też piana), a na zrzutach z oryginału woda schodzi do poziomu plaży. Oryginał ma do tego
+  suwaki `magnetOffset`/`magnetRadius`/`clampY*` w `WLOD_*.ini`, ale ich kod w `RCCars.exe` jest zaszyfrowany
+  (zabezpieczenie Steam). U nas głębokość wody jest ograniczona do 0,3 × odległość od krawędzi morza, za którą
+  grunt jest nadal pod wodą (`CollisionMesh::shoreHeight`); tak samo dla rysowania i fizyki, więc przy brzegu auto
+  brodzi, a tonie dalej. Piana leży na wodzie.
 - Start auta gracza to `INST 'Player'` w folderze `Players`; jego oś +Z wskazuje kierunek jazdy. Auta są w skali
   modeli RC (ok. 0,4–0,6 m długości), przód modelu to +Z.
 

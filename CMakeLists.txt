@@ -25,11 +25,44 @@ add_library(rcformats STATIC
   formats/csi.h    formats/csi.cpp
   formats/scene.h  formats/scene.cpp
   formats/collision.h formats/collision.cpp
+  formats/settings.h  formats/settings.cpp
   )
 target_include_directories(rcformats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
+# --- Bullet (only LinearMath, BulletCollision and BulletDynamics) ---
+include(FetchContent)
+FetchContent_Declare(bullet
+  GIT_REPOSITORY https://github.com/bulletphysics/bullet3.git
+  GIT_TAG        3.25
+  GIT_SHALLOW    TRUE
+  SOURCE_SUBDIR  do-not-add-subdirectory
+  )
+FetchContent_MakeAvailable(bullet)
+# Not Bullet's bt*All.cpp unity files: some of its sources define BT_USE_SSE_IN_API before their includes,
+# which breaks the other sources of a unity build with MSVC (SSE is on by default there).
+file(GLOB_RECURSE BULLET_SOURCES
+  ${bullet_SOURCE_DIR}/src/LinearMath/*.cpp
+  ${bullet_SOURCE_DIR}/src/BulletCollision/*.cpp
+  ${bullet_SOURCE_DIR}/src/BulletDynamics/*.cpp
+  )
+add_library(bullet STATIC ${BULLET_SOURCES})
+target_include_directories(bullet SYSTEM PUBLIC ${bullet_SOURCE_DIR}/src)
+if(MSVC)
+  target_compile_options(bullet PRIVATE /W0)
+else()
+  target_compile_options(bullet PRIVATE -w)
+endif()
+
+# --- driving physics: car geometry and parameters, btRaycastVehicle on the COLL track (no GPU) ---
+add_library(rcphysics STATIC
+  physics/cargeometry.h physics/cargeometry.cpp
+  physics/carparams.h   physics/carparams.cpp
+  physics/vehicle.h     physics/vehicle.cpp
+  )
+target_link_libraries(rcphysics PUBLIC rcformats PRIVATE bullet)
+
 add_executable(rcinfo tools/rcinfo.cpp)
-target_link_libraries(rcinfo rcformats)
+target_link_libraries(rcinfo rcformats rcphysics)
 
 if(OPENRCCARS_TOOLS_ONLY)
   return()
@@ -56,7 +89,7 @@ add_library(rcengine STATIC
   game/world/collisionview.h game/world/collisionview.cpp
   )
 target_include_directories(rcengine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} lib/Tempest/Engine/include)
-target_link_libraries(rcengine PUBLIC rcformats Tempest Shaders)
+target_link_libraries(rcengine PUBLIC rcformats rcphysics Tempest Shaders)
 # Tempest is static here, so its private link directory for vulkan-1.lib does not reach our executables.
 target_link_directories(rcengine PUBLIC "$ENV{VULKAN_SDK}/lib")
 

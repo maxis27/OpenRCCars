@@ -19,7 +19,7 @@ class PackFile {
     struct Entry {
       std::string name;    // original name, e.g. "Textures.1\\wood_board.csi"
       uint64_t    offset = 0;
-      uint32_t    size   = 0; // stored size including the 10 byte blob header
+      uint32_t    size   = 0; // payload size; an encrypted blob adds a 10 byte header in front
       };
 
     PackFile() = default;

@@ -6,14 +6,19 @@
 //   rcinfo <game_dir> sb <RCCarsDB/x.sb>         scene statistics (meshes, faces, textures, markers)
 //   rcinfo <game_dir> obj <RCCarsDB/x.sb> <out.obj>  export scene geometry (world space) to OBJ
 //   rcinfo <game_dir> coll <RCCarsDB/x.sb> [out.obj]  collision grid statistics + self-test, optional OBJ export
+//   rcinfo <game_dir> drive <RCCarsDB/x.sb> [car 1-3] [upgrade 0-3]  headless test drive on a track (physics)
 //   rcinfo <game_dir> check                      decode every texture in the pack and every RCCarsDB/*.sb
 
 #include "formats/pack.h"
 #include "formats/csi.h"
 #include "formats/scene.h"
 #include "formats/collision.h"
+#include "physics/vehicle.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -263,9 +268,125 @@ static int cmdColl(const fs::path& path, const char* objOut) {
   return mismatch==0 ? 0 : 3;
   }
 
+// headless test drive: an autopilot steers straight at the next checkpoint (cp_1, cp_1_1 .. cp_2 ..) for up to
+// two minutes or one lap, backing up when stuck. It knows nothing about the track's shape, so it gets stuck
+// where the straight line to the next checkpoint runs into a wall or a post. The test fails if the car does not
+// reach even the first checkpoint after the start or leaves the track (falls through or out of the collision grid).
+static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& pack, int car, int upgrade) {
+  auto scene = rc::SbScene::load(readFile(game/track));
+  auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
+  rc::CollisionMesh coll(scene);
+  const std::string model = "Car"+std::to_string(car);
+  const auto geom = rc::carGeometry(cars,model);
+  const auto prm  = rc::CarParams::load(pack,car,upgrade);
+
+  std::printf("%s: %zu wheels, size %.3f x %.3f x %.3f m\n",model.c_str(),geom.wheels.size(),
+              geom.max.x-geom.min.x,geom.max.y-geom.min.y,geom.max.z-geom.min.z);
+  for(auto& w:geom.wheels)
+    std::printf("  %-18s hub (%.3f %.3f %.3f) radius %.3f width %.3f\n",w.name.c_str(),
+                w.center.x,w.center.y,w.center.z,w.radius,w.width);
+  std::printf("boost: top %.1f km/h, accel %.1f m/s^2 at 0, %.1f s per tank\n",
+              prm.boostAccel.points().back().x*prm.speedScale,prm.acceleration(0,true),prm.boostTime);
+  std::printf("params: top %.1f km/h, accel %.1f m/s^2 at 0, steer %.0f deg, spring %.0f/s^2 damp %.1f/%.1f rest %.3f m,"
+              " grip %.2f/%.2f, drag %.4f, rolling %.2f\n",prm.topSpeed*3.6f,prm.acceleration(0),prm.steerAngle,
+              prm.suspStiffness,prm.suspDamping,prm.suspCompression,prm.suspRest,prm.gripFront,prm.gripRear,
+              prm.airDrag,prm.rolling);
+
+  // checkpoints in driving order: cp_1, cp_1_1, cp_1_2 .., cp_2, .. and back to cp_1
+  std::vector<rc::Vec3>    route;
+  std::vector<std::string> names;
+  for(int cp=1; ; ++cp) {
+    auto m = scene.marker("cp_"+std::to_string(cp));
+    if(m==nullptr)
+      break;
+    route.push_back(m->position()); names.push_back(m->name);
+    for(int sub=1; ; ++sub) {
+      auto s = scene.marker("cp_"+std::to_string(cp)+"_"+std::to_string(sub));
+      if(s==nullptr)
+        break;
+      route.push_back(s->position()); names.push_back(s->name);
+      }
+    }
+  if(route.empty()) {
+    std::printf("no checkpoints\n");
+    return 3;
+    }
+  route.push_back(route.front()); names.push_back(names.front());
+
+  rc::Mat4 start;
+  if(auto p = scene.instance("Player"))
+    start = p->world;
+  if(auto h = coll.groundHeight(start.translation()+rc::Vec3{0,1.f,0}))
+    start.m[1][3] = *h - geom.min.y;
+
+  rc::PhysicsWorld world(coll);
+  rc::Vehicle      veh(world,geom,prm,start);
+  const float dt = 1.f/60.f, limit = 120.f;
+  size_t next = 1, flips = 0, reverses = 0;
+  float  maxSpeed = 0, stuck = 0, backing = 0, upsideDown = 0, t = 0;
+  bool   fell = false;
+  int    frame = 0;
+  for(; t<limit && next<route.size(); t+=dt, ++frame) {
+    const rc::Mat4 m = veh.pose();
+    const rc::Vec3 p = m.translation(), f = m.vector({0,0,1});
+    rc::Vec3 to = route[next]-p;
+    to.y = 0;
+    if(to.length()<2.5f) {
+      std::printf("%6.2f reached %-6s (%7.2f %6.2f %7.2f)\n",t,names[next].c_str(),p.x,p.y,p.z);
+      ++next;
+      continue;
+      }
+    // signed angle from the car's heading to the target, positive = target on the left (+X)
+    const float want  = std::atan2(to.x,to.z), have = std::atan2(f.x,f.z);
+    float       angle = want-have;
+    while(angle> 3.14159265f) angle -= 6.2831853f;
+    while(angle<-3.14159265f) angle += 6.2831853f;
+
+    rc::Vehicle::Input in;
+    in.steer    = std::clamp(angle/0.35f,-1.f,1.f);
+    in.throttle = std::abs(angle)>1.0f ? 0.5f : 1.f;
+    // stuck against something: back up for a moment, steering the other way
+    stuck = (std::abs(veh.speed())<0.5f && backing<=0) ? stuck+dt : 0;
+    if(stuck>1.5f) {
+      backing = 1.2f;
+      stuck   = 0;
+      ++reverses;
+      }
+    if(backing>0) {
+      backing    -= dt;
+      in.throttle = -1;
+      in.steer    = -in.steer;
+      }
+    // on its side or roof: put it back on the wheels, as the game does
+    upsideDown = m.vector({0,1,0}).y<0.3f ? upsideDown+dt : 0;
+    if(upsideDown>1.5f) {
+      veh.recover();
+      upsideDown = 0;
+      ++flips;
+      }
+    veh.update(in,dt);
+    world.step(dt);
+    maxSpeed = std::max(maxSpeed,veh.speed());
+    const rc::Vec3 now = veh.pose().translation();
+    if(!std::isfinite(now.y) || now.y<scene.collision.min.y-1.f) {
+      std::printf("%6.2f fell off the track at (%.2f %.2f %.2f)\n",t,now.x,now.y,now.z);
+      fell = true;
+      break;
+      }
+    if(frame%60==0)
+      std::printf("%6.2f pos (%7.2f %6.2f %7.2f) speed %5.1f km/h wheels %zu -> %s\n",t,p.x,p.y,p.z,
+                  veh.speed()*3.6f,veh.wheelsOnGround(),names[next].c_str());
+    }
+  const bool lap = next>=route.size();
+  std::printf("%s: %zu of %zu checkpoints in %.1f s, max speed %.1f km/h, %zu times backed up, %zu times put back"
+              " on the wheels\n",lap ? "lap finished" : "lap not finished",next-1,route.size()-1,t,maxSpeed*3.6f,
+              reverses,flips);
+  return (!fell && next>1) ? 0 : 3;
+  }
+
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|check ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|check|drive ...\n");
     return 1;
     }
   try {
@@ -293,6 +414,8 @@ int main(int argc, char** argv) {
       }
     if(cmd=="sb" && argc>3)
       return cmdSb(game/argv[3],pack);
+    if(cmd=="drive" && argc>3)
+      return cmdDrive(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1,argc>5 ? std::atoi(argv[5]) : 0);
     std::fprintf(stderr,"unknown command\n");
     return 1;
     }

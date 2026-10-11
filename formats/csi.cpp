@@ -40,21 +40,10 @@ Image rc::decodeCsi(const uint8_t* data, size_t size) {
 
   if(w==0 || h==0 || w>8192 || h>8192 || bpp==0 || bpp>4 || ch==0 || ch>4)
     throw FormatError("csi: unsupported header");
-  // Some files in RCCars.pack are short: the original packer dropped the last 10 bytes of e.g. sky_up.csi,
-  // and of a few 1x1 textures (car_dirted_hw0, sh_char) even part of the header padding.
-  // Tolerate up to one row (at least 16 bytes) of missing data, the rest is filled with zeros.
-  const size_t need    = size_t(w)*h*bpp;
-  const size_t allowed = std::max<size_t>(size_t(w)*bpp,16);
-  if(size_t(hdr)+need>size+allowed)
+  const size_t need = size_t(w)*h*bpp;
+  if(size_t(hdr)+need>size)
     throw FormatError("csi: truncated pixel data");
-  std::vector<uint8_t> padded;
   const uint8_t* px = data+hdr;
-  if(size_t(hdr)+need>size) {
-    if(hdr<size)
-      padded.assign(data+hdr,data+size);
-    padded.resize(need,0);
-    px = padded.data();
-    }
 
   Image img;
   img.w = w;

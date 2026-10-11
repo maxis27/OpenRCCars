@@ -10,6 +10,8 @@
 
 using namespace Tempest;
 
+static const char* const Cars[] = {"Car1", "Car2", "Car3"}; // Overkill, Buggy, Hummer
+
 static const char* const Tracks[] = {
   "beach_1",  "beach_2",  "beach_3",  "beach_4",
   "country_1","country_2","country_3","country_4",
@@ -19,6 +21,8 @@ static const char* const Tracks[] = {
 MainWindow::MainWindow(Device& device, Resources& res, const std::string& name)
   : Window(Maximized), device(device), resources(res), swapchain(device,hwnd()) {
   resetSwapchain();
+  carScene = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
+  loadCar(Cars[0]);
   loadLevel(name);
   lastTick = Application::tickCount();
   }
@@ -31,8 +35,9 @@ void MainWindow::loadLevel(const std::string& name) {
   device.waitIdle();
   try {
     auto next = std::make_unique<Level>(device,resources,name);
-    level  = std::move(next);
-    camera = level->startCamera();
+    level   = std::move(next);
+    camera  = level->startCamera();
+    carPose = level->carStart(car->bboxMin().y);
     setWindowTitle(("OpenRCCars - "+name).c_str());
     }
   catch(const std::exception& e) {
@@ -40,6 +45,13 @@ void MainWindow::loadLevel(const std::string& name) {
     if(level==nullptr)
       throw; // nothing to show at all
     }
+  }
+
+void MainWindow::loadCar(const std::string& model) {
+  device.waitIdle();
+  car = std::make_unique<CarMesh>(device,resources,carScene,model);
+  if(level)
+    carPose = level->carStart(car->bboxMin().y);
   }
 
 void MainWindow::resetSwapchain() {
@@ -63,8 +75,18 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     if(id<std::size(Tracks))
       loadLevel(Tracks[id]);
     }
-  if(e.key==Event::K_R && level)
-    camera = level->startCamera();
+  // 1..3 - switch car
+  if(e.key>=Event::K_1 && e.key<=Event::K_3)
+    loadCar(Cars[e.key-Event::K_1]);
+  if(e.key==Event::K_V) {
+    freeCamera = !freeCamera;
+    if(freeCamera)
+      camera.chase(carPose,ChaseDistance,ChaseHeight); // free flight starts from the chase view
+    }
+  if(e.key==Event::K_R && level) {
+    camera  = level->startCamera();
+    carPose = level->carStart(car->bboxMin().y);
+    }
   }
 
 void MainWindow::keyUpEvent(KeyEvent& e) {
@@ -78,7 +100,8 @@ void MainWindow::mouseDownEvent(MouseEvent& e) {
 void MainWindow::mouseDragEvent(MouseEvent& e) {
   const auto d = e.pos()-mousePos;
   mousePos = e.pos();
-  camera.rotate(float(d.x)*0.2f,-float(d.y)*0.2f);
+  if(freeCamera)
+    camera.rotate(float(d.x)*0.2f,-float(d.y)*0.2f);
   }
 
 void MainWindow::mouseWheelEvent(MouseEvent& e) {
@@ -86,6 +109,10 @@ void MainWindow::mouseWheelEvent(MouseEvent& e) {
   }
 
 void MainWindow::tick(float dt) {
+  if(!freeCamera) {
+    camera.chase(carPose,ChaseDistance,ChaseHeight);
+    return;
+    }
   const float s = speed*dt*((keys[Event::K_LShift] || keys[Event::K_RShift]) ? 4.f : 1.f);
   float f = 0, r = 0, u = 0;
   if(keys[Event::K_W]) f += s;
@@ -116,7 +143,8 @@ void MainWindow::render() {
     sync.wait();
 
     LevelMesh::Push push;
-    camera.viewProj(float(w())/float(std::max(1,h()))).toColumnMajor(push.viewProj);
+    const rc::Mat4  viewProj = camera.viewProj(float(w())/float(std::max(1,h())));
+    viewProj.toColumnMajor(push.viewProj);
     push.cameraPos[0] = camera.position.x;
     push.cameraPos[1] = camera.position.y;
     push.cameraPos[2] = camera.position.z;
@@ -130,6 +158,8 @@ void MainWindow::render() {
                          {zbuffer,1.f,Tempest::Preserve});
       if(level)
         level->mesh().draw(enc,push);
+      if(car)
+        car->draw(enc,viewProj,push,carPose);
     }
 
     sync = device.submit(cmd);

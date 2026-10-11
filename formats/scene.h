@@ -18,8 +18,10 @@ namespace rc {
 //   0x17 faces: list of 0x18 { prefix n; 0x19 position indices, 0x1a normals, 0x25 material, 0x27 face normal,
 //                              0x3a layers: 0x3b { 0x3c texture (GLTX index), 0x3d tag (BAS1/LM_1/ALP1/BAS2), 0x3f uv indices } }
 // GLTX children: 0x03 name (= Textures.N/<name>.csi), 0x08 header (u32 5, u32 index ...), 0x32 embedded .csi (lightmaps)
+// GLTX indices are local to the enclosing MODL: Car.sb holds several cars, each numbering its textures from 0.
 struct SbTexture {
   int32_t              index = -1;
+  int32_t              model = -1; // SbScene::models
   std::string          name;
   std::vector<uint8_t> embedded; // raw .csi, if stored inside the scene
   };
@@ -53,6 +55,7 @@ struct SbFace {
 struct SbMesh {
   std::string         name;
   int32_t             parent = -1;
+  int32_t             model  = -1; // SbScene::models
   Mat4                local;
   Mat4                world;
   std::vector<Vec3>   positions;
@@ -66,13 +69,24 @@ struct SbMarker {
   Vec3        position() const { return world.translation(); }
   };
 
-struct SbScene {
-  std::vector<SbTexture> textures;
-  std::vector<SbMesh>    meshes;
-  std::vector<SbMarker>  markers;
+// INST: placed object or actor (children are ignored for now). 'Player' in FOLD 'Players' is the start position
+// of the player's car, with the car's forward (+Z) rotated to face along the track.
+struct SbInstance {
+  std::string name;
+  Mat4        world;
+  };
 
-  const SbTexture* texture(int32_t index) const;
-  const SbMarker*  marker(std::string_view name) const;
+struct SbScene {
+  std::vector<std::string> models; // MODL names, e.g. a track ("beach_1") or cars in Car.sb ("Car1", "Car2LOD1" ...)
+  std::vector<SbTexture>   textures;
+  std::vector<SbMesh>      meshes;
+  std::vector<SbMarker>    markers;
+  std::vector<SbInstance>  instances;
+
+  const SbTexture*  texture(int32_t index, int32_t model) const;
+  const SbMarker*   marker(std::string_view name) const;
+  const SbInstance* instance(std::string_view name) const;
+  int32_t           findModel(std::string_view name) const; // -1 if not found
 
   static SbScene load(const std::vector<uint8_t>& file); // throws FormatError
   };

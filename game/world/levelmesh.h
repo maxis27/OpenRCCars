@@ -15,6 +15,16 @@
 
 class Resources;
 
+// Pipelines of shader/level.*, shared by the track and the cars.
+struct ScenePipelines {
+  explicit ScenePipelines(Tempest::Device& device);
+  const Tempest::RenderPipeline& get(rc::AlphaMode mode) const;
+
+  Tempest::RenderPipeline opaque;
+  Tempest::RenderPipeline cutout;
+  Tempest::RenderPipeline blend;
+  };
+
 // Static, pre-transformed geometry of a .sb scene, grouped into batches by texture layers.
 class LevelMesh {
   public:
@@ -68,16 +78,13 @@ class LevelMesh {
       bool                      sky    = false; // sky dome (sky_* textures)
       };
 
-    void                          createPipelines(Tempest::Device& device);
-    const Tempest::Texture2d*     sceneTexture(Resources& res, const rc::SbScene& scene, int32_t index, rc::AlphaMode* mode);
+    const Tempest::Texture2d*     sceneTexture(Resources& res, const rc::SbScene& scene, int32_t index, int32_t model, rc::AlphaMode* mode);
 
     Tempest::VertexBuffer<Vertex> vbo;
     std::vector<Batch>            batches;
     std::deque<Tempest::Texture2d> embedded;  // lightmaps stored inside the scene; deque keeps addresses stable
     std::vector<std::pair<int32_t,size_t>> embeddedIndex;
-    Tempest::RenderPipeline       psoOpaque;
-    Tempest::RenderPipeline       psoCutout;
-    Tempest::RenderPipeline       psoBlend;
+    ScenePipelines                pso;
     rc::Vec3                      bbox[2];
     Stats                         info;
   };

@@ -13,6 +13,7 @@
 
 #include "camera.h"
 #include "resources.h"
+#include "world/carmesh.h"
 #include "world/level.h"
 
 class MainWindow : public Tempest::Window {
@@ -34,6 +35,7 @@ class MainWindow : public Tempest::Window {
     void resetSwapchain();
     void tick(float dt);
     void loadLevel(const std::string& name);
+    void loadCar(const std::string& model);
 
     Tempest::Device&        device;
     Resources&              resources;
@@ -41,7 +43,11 @@ class MainWindow : public Tempest::Window {
     Tempest::ZBuffer        zbuffer;
 
     std::unique_ptr<Level>  level;
+    rc::SbScene             carScene;       // RCCarsDB/Car.sb, all cars
+    std::unique_ptr<CarMesh> car;
+    rc::Mat4                carPose;
     Camera                  camera;
+    bool                    freeCamera = false;
 
     Tempest::CommandBuffer  commands[MaxFramesInFlight];
     Tempest::Fence          fence[MaxFramesInFlight];

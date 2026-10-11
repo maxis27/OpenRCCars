@@ -33,6 +33,15 @@ void Camera::rotate(float dYaw, float dPitch) {
   pitch  = std::clamp(pitch+dPitch,-89.f,89.f);
   }
 
+void Camera::chase(const Mat4& target, float distance, float height) {
+  Vec3 dir = target.vector({0,0,1});
+  dir.y = 0;
+  dir   = dir.normalized();
+  const Vec3 at = target.translation();
+  position = at - dir*distance + Vec3{0,height,0};
+  lookAt(at + Vec3{0,height*0.4f,0});
+  }
+
 Mat4 Camera::view() const {
   // rows of the rotation are the camera basis vectors (right-handed world: right = forward x up),
   // view space itself is +Z forward to match the projection

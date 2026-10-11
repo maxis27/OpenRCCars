@@ -50,6 +50,7 @@ add_library(rcengine STATIC
   game/camera.h            game/camera.cpp
   game/resources.h         game/resources.cpp
   game/world/levelmesh.h   game/world/levelmesh.cpp
+  game/world/carmesh.h     game/world/carmesh.cpp
   game/world/level.h       game/world/level.cpp
   )
 target_include_directories(rcengine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} lib/Tempest/Engine/include)

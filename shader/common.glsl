@@ -20,16 +20,38 @@ layout(push_constant, std430) uniform Push {
 // in 10 degree steps, "amp" 16 and "amp2" 25 read as half-centimetres, "length2" 161 as centimetres. The original's
 // wave code is not readable (encrypted exe), so wavelengths and speeds are picked by eye.
 // Returns the height offset in .x and its gradient in .yz (d/dx, d/dz).
-vec3 waterWaves(vec2 xz, float t) {
+const float WAVE_LENGTH1 = 3.0, WAVE_LENGTH2 = 1.61;
+
+// `amp` scales each of the two waves (water.tese leaves out the ones its mesh is too coarse for)
+vec3 waterWaves(vec2 xz, float t, vec2 amp) {
   const float a1 = radians(60.0), a2 = radians(40.0);
   const vec2  d1 = vec2(cos(a1), sin(a1)), d2 = vec2(cos(a2), sin(a2));
-  const float k1 = 6.2831853/3.0,  w1 = k1*0.6, h1 = 0.08;
-  const float k2 = 6.2831853/1.61, w2 = k2*0.5, h2 = 0.125;
+  const float k1 = 6.2831853/WAVE_LENGTH1, w1 = k1*0.6, h1 = 0.08*amp.x;
+  const float k2 = 6.2831853/WAVE_LENGTH2, w2 = k2*0.5, h2 = 0.125*amp.y;
   float p1 = k1*dot(d1,xz) - w1*t;
   float p2 = k2*dot(d2,xz) - w2*t;
   float y  = h1*sin(p1) + h2*sin(p2);
   vec2  g  = h1*k1*cos(p1)*d1 + h2*k2*cos(p2)*d2;
   return vec3(y, g);
+  }
+
+vec3 waterWaves(vec2 xz, float t) {
+  return waterWaves(xz, t, vec2(1.0));
+  }
+
+// the waves die out towards the shore: full height from 0.3 m deep
+float waterShallow(float depth) {
+  return clamp(depth/0.3, 0.0, 1.0);
+  }
+
+// how far apart the vertices of the moving sea are (water.tesc) at `dist` metres from the camera
+float waterSpacing(float dist) {
+  return max(0.15, dist*0.02);
+  }
+
+// which waves a mesh with vertices `spacing` metres apart can show without flickering: 8 or more per wave
+vec2 waterDetail(float spacing) {
+  return vec2(1.0) - smoothstep(vec2(WAVE_LENGTH1, WAVE_LENGTH2)/8.0, vec2(WAVE_LENGTH1, WAVE_LENGTH2)/4.0, vec2(spacing));
   }
 
 #endif

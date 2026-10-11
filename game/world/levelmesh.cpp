@@ -247,6 +247,14 @@ ScenePipelines::ScenePipelines(Device& device) {
   stBlend.setBlendDest  (RenderState::BlendMode::OneMinusSrcAlpha);
   stBlend.setZWriteEnabled(false);
   blend = device.pipeline(Topology::Triangles,stBlend,vert,frag);
+
+  if(device.properties().tesselationShader) {
+    sh        = AppShader::get("water.tesc.sprv");
+    auto tesc = device.shader(sh.data,sh.len);
+    sh        = AppShader::get("water.tese.sprv");
+    auto tese = device.shader(sh.data,sh.len);
+    water = device.pipeline(Topology::Triangles,stBlend,vert,tesc,tese,frag);
+    }
   }
 
 const RenderPipeline& ScenePipelines::get(rc::AlphaMode mode) const {
@@ -293,7 +301,7 @@ void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass, 
       continue;
     if((b.mode==rc::AlphaMode::Translucent)!=(pass==Pass::Translucent))
       continue;
-    auto& p = pso.get(b.mode);
+    auto& p = (b.flags & F_Water) && !pso.water.isEmpty() ? pso.water : pso.get(b.mode);
     if(current!=&p) {
       enc.setPipeline(p);
       current = &p;

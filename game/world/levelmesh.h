@@ -24,6 +24,8 @@ struct ScenePipelines {
   Tempest::RenderPipeline opaque;
   Tempest::RenderPipeline cutout;
   Tempest::RenderPipeline blend;
+  // the sea, split up by tessellation to move it with the waves; empty when the GPU can't tessellate
+  Tempest::RenderPipeline water;
   };
 
 // Static, pre-transformed geometry of a .sb scene, grouped into batches by texture layers.

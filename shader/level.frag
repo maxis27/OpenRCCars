@@ -35,7 +35,7 @@ void main() {
     color.a = depth<=0.0 ? 0.0 : mix(26.0/255.0, 1.0, pow(clamp(depth/0.8, 0.0, 1.0), 0.6));
     // waves (dying out towards the shore) light the surface, white caps on the crests ("colorMin" 175 ..
     // "colorMax" 255)
-    vec3  w     = waterWaves(inWorld.xz, push.time) * clamp(depth/0.3, 0.0, 1.0);
+    vec3  w     = waterWaves(inWorld.xz, push.time) * waterShallow(depth);
     float crest = smoothstep(0.45, 0.95, w.x/0.205);
     color.rgb = mix(color.rgb, vec3(0.95), crest*0.6);
     color.a   = max(color.a, crest*0.8*step(0.0, depth));

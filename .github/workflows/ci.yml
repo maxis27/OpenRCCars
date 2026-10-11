@@ -90,3 +90,15 @@ jobs:
           path: |
             build/bin/RelWithDebInfo/*.exe
             build/bin/RelWithDebInfo/*.pdb
+
+      # tar keeps the executable bit, which upload-artifact's zip drops.
+      - name: Package Linux build
+        if: runner.os == 'Linux'
+        run: tar -czf OpenRCCars-linux-x64.tar.gz -C build/bin OpenRCCars rcshot rcinfo
+
+      - name: Upload Linux build
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenRCCars-linux
+          path: OpenRCCars-linux-x64.tar.gz

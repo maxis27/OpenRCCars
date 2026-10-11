@@ -12,6 +12,7 @@
 #include <memory>
 
 #include "camera.h"
+#include "physics/checkpoints.h"
 #include "physics/vehicle.h"
 #include "resources.h"
 #include "world/carmesh.h"
@@ -37,7 +38,7 @@ class MainWindow : public Tempest::Window {
     void tick(float dt);
     void loadLevel(const std::string& name);
     void loadCar(size_t id);
-    void resetCar();
+    void respawnCar();    // back to the last checkpoint passed (R, drowned, off the track)
     void setupPhysics();
     std::vector<rc::Mat4> carPartPoses() const;
 
@@ -55,6 +56,7 @@ class MainWindow : public Tempest::Window {
     // declared after `level`: the physics world refers to the level's collision mesh
     std::unique_ptr<rc::PhysicsWorld> physics;
     std::unique_ptr<rc::Vehicle>      vehicle;
+    std::unique_ptr<rc::Checkpoints>  checkpoints;
     bool                    jumpPressed = false;
     float                   upsideDown = 0; // seconds on the roof or side, then the car is put back
     Camera                  camera;
@@ -71,5 +73,6 @@ class MainWindow : public Tempest::Window {
     float                   speed    = 8.f; // m/s
     uint64_t                lastTick = 0;
     float                   fpsTime  = 0;
+    float                   time     = 0; // seconds since start, animates the water
     uint32_t                fpsCount = 0;
   };

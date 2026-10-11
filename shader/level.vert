@@ -22,11 +22,17 @@ out gl_PerVertex {
   };
 
 void main() {
+  vec3 pos    = inPos;
   outNormal   = inNormal;
-  outUvBase   = inUvBase;
-  outUvLight  = inUvLight;
   outUvMask   = inUvMask;
+  outUvBase   = inUvBase;
+  if((push.flags & F_WATER)!=0u) {
+    // the texture drifts ("texSpeedMin/Max" 13..28); the waves are drawn per pixel in level.frag: the sea's
+    // vertices are metres apart, too coarse to move them
+    outUvBase = inUvBase + push.time*vec2(0.013, 0.028);
+    }
+  outUvLight  = inUvLight;
   outUvBase2  = inUvBase2;
-  outWorld    = inPos;
-  gl_Position = push.viewProj * vec4(inPos, 1.0);
+  outWorld    = pos;
+  gl_Position = push.viewProj * vec4(pos, 1.0);
   }

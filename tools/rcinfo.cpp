@@ -13,6 +13,7 @@
 #include "formats/csi.h"
 #include "formats/scene.h"
 #include "formats/collision.h"
+#include "physics/checkpoints.h"
 #include "physics/vehicle.h"
 
 #include <algorithm>
@@ -177,6 +178,8 @@ static int cmdObj(const fs::path& path, const fs::path& out) {
 static std::optional<float> groundBrute(const rc::CollisionMesh& coll, const rc::Vec3& from) {
   std::optional<float> best;
   for(auto& t:coll.triangles()) {
+    if(t.surface==rc::Surface::Water)
+      continue;
     const rc::Vec3 &a = t.a, &b = t.b, &c = t.c;
     const float d = (b.z-c.z)*(a.x-c.x) + (c.x-b.x)*(a.z-c.z);
     if(std::abs(d)<1e-12f)
@@ -222,6 +225,16 @@ static int cmdColl(const fs::path& path, const char* objOut) {
               g.dims[0],g.dims[1],g.dims[2],cs.x,cs.y,cs.z,g.min.x,g.min.y,g.min.z,g.max.x,g.max.y,g.max.z);
   std::printf("entries: %zu, non-empty cells: %zu, max triangles in a cell: %zu\n",g.entries.size(),usedCells,maxCell);
   std::printf("collision: %zu faces (%zu without texture), %zu triangles\n",faces,untextured,coll.triangles().size());
+
+  // what the drivable ground (up to ~35 degrees) is made of; LOD copies of the sea count several times
+  std::map<rc::Surface,double> area;
+  for(auto& t:coll.triangles())
+    if(std::abs(t.normal.y)>0.82f)
+      area[t.surface] += 0.5*rc::Vec3::cross(t.b-t.a,t.c-t.a).length();
+  std::printf("ground surfaces:");
+  for(auto& [s,a]:area)
+    std::printf(" %s %.0f m2,",rc::surfaceName(s),a);
+  std::printf("\n");
 
   auto ground = [&](const char* what, const rc::Vec3& p) {
     auto h = coll.groundHeight(p+rc::Vec3{0,1.f,0});
@@ -293,49 +306,39 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
               prm.airDrag,prm.rolling);
 
   // checkpoints in driving order: cp_1, cp_1_1, cp_1_2 .., cp_2, .. and back to cp_1
-  std::vector<rc::Vec3>    route;
-  std::vector<std::string> names;
-  for(int cp=1; ; ++cp) {
-    auto m = scene.marker("cp_"+std::to_string(cp));
-    if(m==nullptr)
-      break;
-    route.push_back(m->position()); names.push_back(m->name);
-    for(int sub=1; ; ++sub) {
-      auto s = scene.marker("cp_"+std::to_string(cp)+"_"+std::to_string(sub));
-      if(s==nullptr)
-        break;
-      route.push_back(s->position()); names.push_back(s->name);
-      }
-    }
-  if(route.empty()) {
+  rc::Checkpoints cps(scene,coll);
+  if(cps.empty()) {
     std::printf("no checkpoints\n");
     return 3;
     }
-  route.push_back(route.front()); names.push_back(names.front());
+  const auto& route = cps.route();
 
   rc::Mat4 start;
   if(auto p = scene.instance("Player"))
     start = p->world;
   if(auto h = coll.groundHeight(start.translation()+rc::Vec3{0,1.f,0}))
     start.m[1][3] = *h - geom.min.y;
+  cps.reset(start);
 
   rc::PhysicsWorld world(coll);
   rc::Vehicle      veh(world,geom,prm,start);
   const float dt = 1.f/60.f, limit = 120.f;
-  size_t next = 1, flips = 0, reverses = 0;
+  size_t flips = 0, reverses = 0, drowned = 0, passed = 0;
   float  maxSpeed = 0, stuck = 0, backing = 0, upsideDown = 0, t = 0;
   bool   fell = false;
   int    frame = 0;
-  for(; t<limit && next<route.size(); t+=dt, ++frame) {
+  std::map<rc::Surface,float> onSurface;
+  for(; t<limit && cps.laps()==0; t+=dt, ++frame) {
     const rc::Mat4 m = veh.pose();
     const rc::Vec3 p = m.translation(), f = m.vector({0,0,1});
-    rc::Vec3 to = route[next]-p;
-    to.y = 0;
-    if(to.length()<2.5f) {
-      std::printf("%6.2f reached %-6s (%7.2f %6.2f %7.2f)\n",t,names[next].c_str(),p.x,p.y,p.z);
-      ++next;
+    const size_t   next = cps.next();
+    if(cps.update(p)) {
+      std::printf("%6.2f reached %-6s (%7.2f %6.2f %7.2f)\n",t,route[next].name.c_str(),p.x,p.y,p.z);
+      ++passed;
       continue;
       }
+    rc::Vec3 to = route[next].position-p;
+    to.y = 0;
     // signed angle from the car's heading to the target, positive = target on the left (+X)
     const float want  = std::atan2(to.x,to.z), have = std::atan2(f.x,f.z);
     float       angle = want-have;
@@ -367,6 +370,16 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
     veh.update(in,dt);
     world.step(dt);
     maxSpeed = std::max(maxSpeed,veh.speed());
+    onSurface[veh.surface()] += dt;
+    // in the sea for too long: back to the last checkpoint, as the game does
+    if(veh.drowned()) {
+      const rc::Vec3 at = veh.pose().translation();
+      std::printf("%6.2f drowned at (%.2f %.2f %.2f), back to %s\n",t,at.x,at.y,at.z,
+                  route[cps.next()-1].name.c_str());
+      veh.reset(cps.respawn(geom.min.y));
+      ++drowned;
+      continue;
+      }
     const rc::Vec3 now = veh.pose().translation();
     if(!std::isfinite(now.y) || now.y<scene.collision.min.y-1.f) {
       std::printf("%6.2f fell off the track at (%.2f %.2f %.2f)\n",t,now.x,now.y,now.z);
@@ -374,14 +387,18 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
       break;
       }
     if(frame%60==0)
-      std::printf("%6.2f pos (%7.2f %6.2f %7.2f) speed %5.1f km/h wheels %zu -> %s\n",t,p.x,p.y,p.z,
-                  veh.speed()*3.6f,veh.wheelsOnGround(),names[next].c_str());
+      std::printf("%6.2f pos (%7.2f %6.2f %7.2f) speed %5.1f km/h wheels %zu on %s -> %s\n",t,p.x,p.y,p.z,
+                  veh.speed()*3.6f,veh.wheelsOnGround(),rc::surfaceName(veh.surface()),route[next].name.c_str());
     }
-  const bool lap = next>=route.size();
+  const bool lap = cps.laps()>0;
   std::printf("%s: %zu of %zu checkpoints in %.1f s, max speed %.1f km/h, %zu times backed up, %zu times put back"
-              " on the wheels\n",lap ? "lap finished" : "lap not finished",next-1,route.size()-1,t,maxSpeed*3.6f,
-              reverses,flips);
-  return (!fell && next>1) ? 0 : 3;
+              " on the wheels, drowned %zu times\n",lap ? "lap finished" : "lap not finished",passed,route.size()-1,t,
+              maxSpeed*3.6f,reverses,flips,drowned);
+  std::printf("time on:");
+  for(auto& [s,v]:onSurface)
+    std::printf(" %s %.1f s,",rc::surfaceName(s),v);
+  std::printf("\n");
+  return (!fell && passed>0) ? 0 : 3;
   }
 
 int main(int argc, char** argv) {

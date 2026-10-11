@@ -10,6 +10,7 @@
 #include <deque>
 #include <vector>
 
+#include "formats/collision.h"
 #include "formats/scene.h"
 #include "formats/csi.h"
 
@@ -41,6 +42,8 @@ class LevelMesh {
       F_Lightmap = 1, // keep in sync with shader/common.glsl
       F_Blend    = 2,
       F_Cutout   = 4,
+      F_Mask     = 8,
+      F_Water    = 16,
       };
 
     struct Push {
@@ -48,7 +51,8 @@ class LevelMesh {
       float    cameraPos[4];   // xyz, w = fog distance
       float    sunDir[4];      // xyz, w = lightmap scale
       uint32_t flags = 0;
-      uint32_t padding[3] = {};
+      float    time = 0;       // seconds, animates the water and the foam
+      uint32_t padding[2] = {};
       };
 
     struct Stats {
@@ -58,15 +62,19 @@ class LevelMesh {
       size_t untextured    = 0;
       };
 
-    LevelMesh(Tempest::Device& device, Resources& res, const rc::SbScene& scene);
+    // `ground` (the track collision) gives the water its depth, so that the sea fades out towards the shore
+    LevelMesh(Tempest::Device& device, Resources& res, const rc::SbScene& scene, const rc::CollisionMesh* ground = nullptr);
 
-    void         draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, const Push& frame, bool drawSky = true) const;
+    // opaque and alpha-tested batches first, then (after the cars) the see-through ones: water, shore foam ...
+    enum class Pass { Opaque, Translucent };
+    void         draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, const Push& frame, Pass pass, bool drawSky = true) const;
 
     rc::Vec3     bboxMin() const { return bbox[0]; }
     rc::Vec3     bboxMax() const { return bbox[1]; }
     const Stats& stats()   const { return info; }
 
-    static bool  isHiddenMesh(const std::string& name);
+    // low detail copies (_LOD<n>) that are not drawn, per SbScene::meshes
+    static std::vector<bool> hiddenMeshes(const rc::SbScene& scene);
 
   private:
     struct Batch {

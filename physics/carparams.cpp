@@ -79,6 +79,18 @@ CarParams CarParams::load(PackFile& pack, int32_t car, int32_t upgrade) {
   const auto tir = sliders(pack,"Settings\\tires"+n+".ini");
   p.gripFront *= float(tir.raw("CoeffFrontTires",7))/7.f;
   p.gripRear  *= float(tir.raw("CoeffRearTires", 7))/7.f;
+  // coeffDeepSand 7, coeffWater 20 (Hummer 7: big wheels): read as a drag of slider/10 per second, so in deep sand
+  // the Overkill tops out at ~2/3 of its speed and in water at ~2/5 (Hummer ~2/3)
+  p.deepSandDrag = float(tir.raw("coeffDeepSand",7))*0.1f;
+  p.waterDrag    = float(tir.raw("coeffWater",20))*0.1f;
+
+  // Water.ini: speedDropCenter 125/500, speedDropOther 76/500, DampingVelocity2 950/1000. The names suggest the
+  // speed lost by the car's central collision sphere and the other ones hitting the water, and a per-frame
+  // damping (the original runs its simulation at about 30 Hz); how exactly the game applies them is our guess.
+  const auto wtr = sliders(pack,"Settings\\Water.ini");
+  p.waterDropBody   = unit(wtr,"speedDropCenter",0.25f);
+  p.waterDropWheels = unit(wtr,"speedDropOther",0.15f);
+  p.waterDamping    = unit(wtr,"DampingVelocity2",0.95f);
 
   // resistance<N>.ini: coeffFrictionBearings 6, coeffAirResistance 33
   const auto res = sliders(pack,"Settings\\resistance"+n+".ini");

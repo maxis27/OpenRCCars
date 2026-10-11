@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 
 using namespace rc;
 
@@ -65,11 +66,12 @@ PhysicsWorld::PhysicsWorld(const CollisionMesh& track) : coll(track) {
   world      = std::make_unique<btDiscreteDynamicsWorld>(dispatcher.get(),broadphase.get(),solver.get(),config.get());
   world->setGravity(btVector3(0,-Gravity*S,0));
 
-  // static track: triangle soup of the COLL faces
-  auto& tris = track.triangles();
-  vertices.reserve(tris.size()*9);
-  indices .reserve(tris.size()*3);
-  for(auto& t:tris) {
+  // static track: triangle soup of the COLL faces, without water
+  size_t solid = 0;
+  for(auto& t:track.triangles()) {
+    if(t.surface==Surface::Water)
+      continue;
+    ++solid;
     for(const Vec3* p:{&t.a,&t.b,&t.c}) {
       indices.push_back(int(vertices.size()/3));
       vertices.push_back(p->x*S);
@@ -78,8 +80,8 @@ PhysicsWorld::PhysicsWorld(const CollisionMesh& track) : coll(track) {
       }
     }
   btCollisionShape* shape = nullptr;
-  if(!tris.empty()) {
-    meshData  = std::make_unique<btTriangleIndexVertexArray>(int(tris.size()),indices.data(),3*int(sizeof(int)),
+  if(solid>0) {
+    meshData  = std::make_unique<btTriangleIndexVertexArray>(int(solid),indices.data(),3*int(sizeof(int)),
                                                              int(vertices.size()/3),vertices.data(),3*int(sizeof(float)));
     meshShape = std::make_unique<btBvhTriangleMeshShape>(meshData.get(),true);
     shape     = meshShape.get();
@@ -190,6 +192,10 @@ void Vehicle::reset(const Mat4& start) {
   steer        = 0;
   jumpCooldown = 0;
   tank         = 1;
+  under        = Surface::Default;
+  sub          = 0;
+  wet          = 0;
+  underWater   = 0;
   }
 
 void Vehicle::recover() {
@@ -270,6 +276,85 @@ void Vehicle::update(const Input& in, float dt) {
   const float     ls = float(lv.length());
   if(ls>1e-3f)
     body->applyCentralForce(-lv*(prm.mass*prm.airDrag*ls/S));
+
+  surfaces(dt);
+  }
+
+void Vehicle::surfaces(float dt) {
+  const auto& track = owner.track();
+  const int   n     = vehicle->getNumWheels();
+
+  // wheels: the solid surface under each one touching the ground, and how deep each one is in water
+  const Mat4 m = pose();
+  size_t count[size_t(Surface::Water)+1] = {};
+  int    inSand = 0;
+  float  wetSum = 0;
+  for(int i=0; i<n; ++i) {
+    auto&       info = vehicle->getWheelInfo(i);
+    const float r    = info.m_wheelsRadius/S;
+    // from the body's pose, not btWheelInfo::m_worldTransform: that one is stale until the next step after reset()
+    const Vec3  hub  = m.point(wheelPose(size_t(i)).translation());
+    if(auto level = track.waterLevel(hub,0.5f))
+      wetSum += std::clamp((*level-(hub.y-r))/(2.f*r),0.f,1.f);
+    if(!info.m_raycastInfo.m_isInContact)
+      continue;
+    const Vec3    at = fromBt(info.m_raycastInfo.m_contactPointWS)*(1.f/S);
+    const Surface s  = track.surfaceBelow(at+Vec3{0,0.02f,0},0.05f);
+    count[size_t(s)]++;
+    inSand += s==Surface::DeepSand ? 1 : 0;
+    }
+  const float wetNow = n>0 ? wetSum/float(n) : 0.f;
+
+  // body: how much of its height (from the bottom of the wheels to the roof, antenna aside) is below the water surface
+  const float height = std::max(geom.roof-geom.min.y,0.01f);
+  const Vec3  centre = m.point(Vec3{(geom.bodyMin.x+geom.bodyMax.x)*0.5f,geom.min.y+height*0.5f,
+                                    (geom.bodyMin.z+geom.bodyMax.z)*0.5f});
+  float subNow = 0;
+  if(auto level = track.waterLevel(centre,5.f))
+    subNow = std::clamp((*level-(centre.y-height*0.5f))/height,0.f,1.f);
+
+  // splashing in: the first wheel, then the body, each takes away a share of the horizontal speed
+  btVector3 v = body->getLinearVelocity();
+  btVector3 h(v.x(),0,v.z());
+  float keep = 1;
+  if(wet<=0 && wetNow>0)
+    keep *= 1.f-prm.waterDropWheels;
+  if(sub<=0 && subNow>0)
+    keep *= 1.f-prm.waterDropBody;
+  if(keep<1) {
+    v -= h*(1.f-keep);
+    h *= keep;
+    body->setLinearVelocity(v);
+    }
+
+  // deep sand and water hold the car back in proportion to its speed (a force on the scaled body: m * k * v)
+  const float sand = n>0 ? float(inSand)/float(n) : 0.f;
+  const float drag = prm.deepSandDrag*sand + prm.waterDrag*std::max(wetNow,subNow);
+  if(drag>0)
+    body->applyCentralForce(-h*(prm.mass*drag));
+
+  // under water: everything slows down, falling and tumbling included
+  if(subNow>0) {
+    const float k = std::pow(prm.waterDamping,dt*30.f*subNow);
+    body->setLinearVelocity (body->getLinearVelocity()*k);
+    body->setAngularVelocity(body->getAngularVelocity()*k);
+    }
+
+  wet        = wetNow;
+  sub        = subNow;
+  underWater = sub>=1.f ? underWater+dt : 0.f;
+  if(wet>0 || sub>0) {
+    under = Surface::Water;
+    }
+  else {
+    under = Surface::Default;
+    size_t best = 0;
+    for(size_t i=0; i<std::size(count); ++i)
+      if(count[i]>best) {
+        best  = count[i];
+        under = Surface(i);
+        }
+    }
   }
 
 Mat4 Vehicle::pose() const {

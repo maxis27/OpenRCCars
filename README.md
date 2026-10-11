@@ -32,6 +32,13 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   dopalacz jedzie po krzywej `Splines/OVERKILL|BUGGY|HUMMER.bspl` (32/38/30 km/h zamiast 25/30/20), zbiornik turbo
   ładuje się z czasem (w oryginale na torze; jak dokładnie, jeszcze nie wiemy); skok (akcja `Jump` w `RCCars.exe`, bez parametru w danych, więc wysokość
   ok. 0,3 m jest dobrana na oko); auto przewrócone na dach wraca na koła po 2 s
+- **nawierzchnie i woda**: rodzaj nawierzchni pochodzi z bitów materiału tekstury (`GLTX`): piasek, mokry piasek,
+  głęboki piasek (`Sand_trample`), żwir i reszta. Jak w danych oryginału, jazdę zmieniają tylko głęboki piasek i woda
+  (`Settings/tires<N>.ini`: `coeffDeepSand`, `coeffWater`; Hummer na dużych kołach mniej traci w wodzie); pozostałe
+  nawierzchnie różnią się w oryginale tylko kurzem spod kół. Woda (tekstura `sea`: morze, strumienie, kałuże,
+  wodospady) nie jest twarda: auto brodzi w płytkiej wodzie i zwalnia, w głębokiej tonie, a po 1 s całkiem pod wodą (po dach, antena się nie liczy)
+  wraca do ostatniego punktu kontrolnego, jak w instrukcji („jeśli utoniesz w morzu”). Tam też wraca po klawiszu R
+  i po wypadnięciu poza trasę. Nazwa nawierzchni pod autem jest w tytule okna
 - **narzędzia**: `rcinfo` (inspekcja/eksport danych i jazda testowa, bez GPU) i `rcshot` (render offscreen do PNG)
 
 ![Auto na starcie (beach_1)](docs/car_beach_1.jpg)
@@ -39,6 +46,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 ![Nakładka kolizji (beach_1, klawisz K)](docs/collision_beach_1.jpg)
 
 ![Jazda: skręt w lewo (beach_1)](docs/driving_beach_1.jpg)
+
+![Auto wjeżdża do morza: na plaży, przy brzegu, w wodzie (beach_1)](docs/water_beach_1.jpg)
 
 ![Urban 1](docs/urban_1.jpg)
 
@@ -97,7 +106,7 @@ Jazda (kamera za autem):
 | Shift | dopalacz (zużywa turbo, ok. 3 s z pełnego zbiornika; procent w tytule okna) |
 | B | zablokuj koła (tylne, do poślizgu) |
 | T | postaw auto na koła w miejscu |
-| R | powrót na start |
+| R | powrót do ostatniego punktu kontrolnego (przed pierwszym: na start) |
 | U | następny poziom ulepszeń (0–3: dopalacze, rezonatory, opony razem) |
 | 1 / 2 / 3 | auto: Overkill / Buggy / Hummer |
 
@@ -106,7 +115,7 @@ Pozostałe:
 | Klawisz | Akcja |
 |---|---|
 | V | kamera za autem ↔ kamera swobodna (auto wtedy stoi) |
-| K | nakładka kolizji (debug) |
+| K | nakładka kolizji (debug; turkusowa woda, fioletowy głęboki piasek) |
 | W / S / A / D | ruch kamery swobodnej |
 | E, Spacja / Q, C | w górę / w dół |
 | Shift | szybciej ×4 |
@@ -134,6 +143,8 @@ RCSHOT_COLL=1 rcshot ...                                        # z nakładką k
 RCSHOT_DRIVE=3 RCSHOT_STEER=1 rcshot ...                        # najpierw 3 s jazdy na pełnym gazie, druga połowa ze skrętem
 RCSHOT_DRIVE=2 RCSHOT_JUMP=1.6 rcshot ...                       # skok w 1,6 s, zdjęcie w 2 s
 RCSHOT_DRIVE=3 RCSHOT_BOOST=1 rcshot ...                        # z dopalaczem
+RCSHOT_START="-8 -41 90" RCSHOT_DRIVE=1.6 rcshot ...            # auto najpierw w punkcie x z, obrócone o yaw (tu: do morza)
+RCSHOT_TIME=2.5 rcshot ...                                       # chwila animacji wody (fale, piana)
 ```
 
 ## Struktura
@@ -144,12 +155,13 @@ formats/        formaty danych, czyste C++ bez zależności
   pack.*        RCCars.pack + deszyfrowanie
   csi.*         tekstury
   scene.*       sceny .sb
-  collision.*   siatka kolizji z węzła COLL, raycast
+  collision.*   siatka kolizji z węzła COLL, raycast, nawierzchnie
   settings.*    pliki suwaków Settings/*.ini, Scripts/upgrades.ini, krzywe .bspl
 physics/        fizyka jazdy (Bullet, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
-  vehicle.*     świat Bulleta trasy, btRaycastVehicle z promieniami przez siatkę COLL
+  vehicle.*     świat Bulleta trasy, btRaycastVehicle z promieniami przez siatkę COLL, nawierzchnie i woda
+  checkpoints.* kolejność punktów kontrolnych, postęp auta, powrót do ostatniego punktu
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
   camera.*      kamera swobodna
@@ -166,7 +178,10 @@ lib/Tempest     silnik (submoduł git)
 - Sceny są **prawoskrętne, oś Y w górę** (eksport z Mayi). Potwierdzone porównaniem renderu z góry z mapą trasy
   z menu gry (`Textures.1/shot_beach1_L.csi`) oraz czytelnymi napisami na szyldach.
 - Ściany mają odwrotne nawinięcie względem domyślnego w Tempeście; nieprzezroczysta geometria używa `CullMode::Front`.
-- Siatki z sufiksem `_LOD1`/`_LOD2` to uproszczone kopie i są pomijane.
+- Siatki z sufiksem `_LOD<n>` to kopie pod tym samym rodzicem. Przy obiektach pełna siatka nie ma sufiksu, a `_LOD1`/`_LOD2`
+  to uproszczenia (pomijane). Morze składa się wyłącznie z LOD-ów: `_LOD1` jest najgrubszy, najwyższy numer najdokładniejszy,
+  a grupy daleko od trasy mają tylko `_LOD1`/`_LOD2`. Rysujemy najdokładniejszy z każdej grupy (wcześniej znikały całe
+  połacie morza i było widać dno).
 - Zaszyfrowany plik w archiwum to `[31 14][u32 koniec][u32 rozmiar][dane]`; rozmiar w katalogu to rozmiar samych danych,
   więc cały blok jest o 10 bajtów dłuższy (wcześniej czytaliśmy o 10 bajtów za mało i "brakowało" końcówek plików).
 - `Settings/*.ini` to pliki suwaków narzędzia do strojenia: `Key "nazwa"`, `Values min max pozycja`, opcjonalnie
@@ -186,6 +201,34 @@ lib/Tempest     silnik (submoduł git)
   na beach_1) z listą par (siatka, maska bitowa ścian) na komórkę; indeksy komórek `z + nz*(y + ny*x)`, bity od
   najmłodszego. Kolizje używają więc geometrii renderu, łącznie ze ścianami bez tekstury (niewidoczne bariery)
   i niektórymi siatkami `_LOD*`. Zweryfikowane na wszystkich 10 trasach: każda ściana nachodzi na swoją komórkę.
+- Nagłówek `GLTX` (element `0x08`) to tablica 5 liczb: indeks, 0, dwa słowa flag i **materiał**: bity
+  4 mokry piasek, 5 piasek (`sand_halfdry`), 6 udeptany/głęboki piasek (`Sand_trample`), 7 drewno, 8 trawa, 9 żwir
+  (`Sand_gravel`, `path_*`), 10 asfalt, 11 kamień/beton/skała, 12 metal (po jednym bicie na teksturę, na wszystkich
+  trasach). `RCCars.exe` zna tylko `surf_default|sand|wetsand|dunesand|gravel` (`Settings/surf_*.crs`: same parametry
+  kurzu), a z fizyki opon `coeffDeepSand` i `coeffWater`. Kolejność nazw i kolory kurzu pasują do bitów 4–6 i 9.
+- Woda to ściany z teksturą `sea` (bez bitu materiału; `RCCars.exe` szuka jej po nazwie). Leżą w `COLL` jak reszta,
+  w kilku kopiach `_LOD1`–`_LOD4` na tej samej wysokości. Poziom morza: 0 na beach_1, 2,15 na beach_3; dno pod nim
+  to zwykłe ściany kolizji (na beach_1 piasek opada od -0,3 m przy brzegu do -1,4 m). Na country_1 płytkie kałuże
+  (`pool1..3`), na country_3 strumień (kilka cm) i wodospady. `Settings/Water.ini` (`speedDropCenter` 125/500,
+  `speedDropOther` 76/500, `DampingVelocity2` 950/1000) czytamy jako utratę prędkości przy wpadnięciu do wody
+  nadwozia i kół oraz tłumienie pod wodą; to nasze odczytanie nazw.
+- Wygląd wody: tekstura `sea` nie ma kanału alfa, ale oryginał rysuje wodę półprzezroczystą (`Settings/WLOD_*.ini`:
+  `alphaMin` 26 … `alphaMax` 255, `distAlphaClampMax` 8, fale, env mapa). U nas płytka woda jest przezroczysta wg
+  głębokości nad dnem z kolizji (pełne krycie od 0,8 m; jednostka `distAlphaClampMax` to nasze zgadywanie), bez fal.
+  Piana przy brzegu to ściany `coast*` z teksturą `coast_base` i maską `ALP1` `coast` bez `BAS2`: maska to
+  przezroczystość piany (falista krawędź). W oryginale piana przesuwa się po plaży (`waterLOD_coast.ini`:
+  `HeightOn/HeightOff`, `ScrollVel`, `AlphaMin` 36); u nas co 4 s podchodzi na plażę i cofa się (maska przesuwa się
+  o 32% paska, przezroczystość 36…255), przesunięta w fazie wzdłuż brzegu.
+- Fale: dwie fale kierunkowe wg `WLOD_beach_1_more1.ini` (`angle` 6 i `angle2` 4 w krokach 10°, `amp` 16 i `amp2` 25
+  czytane jako pół centymetra, `length2` 161 cm), liczone na piksel (wierzchołki morza są co kilka metrów), z białymi
+  grzbietami i odblaskiem słońca; tekstura morza płynie (`texSpeedMin/Max`). Długości i prędkości fal dobrane na oko.
+- Brzeg: tafla morza jest płaska (beach_1: 0 m) i kończy się w powietrzu tam, gdzie plaża leży niżej (piasek przy
+  brzegu na -0,31 m, tam leży też piana), a na zrzutach z oryginału woda schodzi do poziomu plaży. Oryginał ma do tego
+  suwaki `magnetOffset`/`magnetRadius`/`clampY*` w `WLOD_*.ini`, ale ich kod w `RCCars.exe` jest zaszyfrowany
+  (zabezpieczenie Steam). U nas na ostatnim metrze przed brzegiem tafla wygina się w dół do wysokości gruntu za
+  brzegiem (`CollisionMesh::shoreHeight`); dalej jest płaska. Brzeg to miejsca, gdzie woda (wszystkie grupy i LOD-y
+  razem, siatka 0,25 m) graniczy z co najmniej 0,75 m bez wody, a grunt tam leży niżej niż woda — szwy między
+  grupami morza i skały wystające z wody się nie liczą. Tak samo dla rysowania i fizyki. Piana leży na wodzie.
 - Start auta gracza to `INST 'Player'` w folderze `Players`; jego oś +Z wskazuje kierunek jazdy. Auta są w skali
   modeli RC (ok. 0,4–0,6 m długości), przód modelu to +Z.
 
@@ -194,7 +237,9 @@ lib/Tempest     silnik (submoduł git)
 1. ~~Model auta postawiony na starcie~~ (zrobione; LOD-y i ulepszenia `UPGRADES*` jeszcze niewyświetlane)
 2. ~~Kolizje trasy z węzła `COLL`~~ (zrobione: siatka kolizji, raycast, nakładka debug)
 3. ~~Fizyka jazdy: Bullet `btRaycastVehicle` + parametry z ustawień gry~~ (zrobione; do dostrojenia na wyczucie
-   względem oryginału; powierzchnie `surf_*` i woda jeszcze nie spowalniają, kolizje kul z `cdt*.ini` nieużyte)
+   względem oryginału; kolizje kul z `cdt*.ini` nieużyte)
+   - ~~nawierzchnie i woda~~ (zrobione: głęboki piasek i woda spowalniają, w głębokiej wodzie auto tonie i wraca do
+     ostatniego punktu kontrolnego); brakuje kurzu i plusków spod kół oraz stref `car_reset_volume_*` („dziury”)
 4. Węzły `INST` (instancje obiektów), `HHID` (widoczność/sektory), animacje (`SPLN`/`ANIM`/`ASEQ`)
 5. Dźwięk: odszyfrowane WAV z `Sound/`, muzyka MP3 z `Tracks/`
 6. Linie jazdy AI z `CarProfiles/` i logika wyścigu (checkpointy `cp_*`, okrążenia, tryby)

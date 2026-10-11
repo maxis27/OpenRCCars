@@ -3,8 +3,36 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
+#include <tuple>
 
 using namespace rc;
+
+Surface rc::surfaceOf(const SbTexture* texture) {
+  if(texture==nullptr)
+    return Surface::Default;
+  // the game finds its water by this name too (RCCars.exe: "sea", "sea_alpha" next to the water code)
+  if(texture->name=="sea")
+    return Surface::Water;
+  const uint32_t m = texture->material;
+  if(m & (1u<<4)) return Surface::WetSand;
+  if(m & (1u<<5)) return Surface::Sand;
+  if(m & (1u<<6)) return Surface::DeepSand;
+  if(m & (1u<<9)) return Surface::Gravel;
+  return Surface::Default;
+  }
+
+const char* rc::surfaceName(Surface s) {
+  switch(s) {
+    case Surface::Default:  return "default";
+    case Surface::Sand:     return "sand";
+    case Surface::WetSand:  return "wet sand";
+    case Surface::DeepSand: return "deep sand";
+    case Surface::Gravel:   return "gravel";
+    case Surface::Water:    return "water";
+    }
+  return "?";
+  }
 
 CollisionMesh::CollisionMesh(const SbScene& scene) {
   const auto& grid = scene.collision;
@@ -32,6 +60,9 @@ CollisionMesh::CollisionMesh(const SbScene& scene) {
       if(!used[mi][fi])
         continue;
       const SbFace& f = m.faces[fi];
+      const auto*   base = f.layer(LayerTag::Base);
+      const Surface surf = surfaceOf(base ? scene.texture(base->texture,m.model) : nullptr);
+      water = water || surf==Surface::Water;
       auto at = [&](size_t i) {
         return f.pos[i]<m.positions.size() ? m.world.point(m.positions[f.pos[i]]) : Vec3{};
         };
@@ -48,6 +79,7 @@ CollisionMesh::CollisionMesh(const SbScene& scene) {
         t.normal = n*(1.f/l);
         t.mesh   = uint32_t(mi);
         t.face   = uint32_t(fi);
+        t.surface = surf;
         tris.push_back(t);
         }
       faceTris[mi][fi] = {first,uint32_t(tris.size())-first};
@@ -79,7 +111,109 @@ CollisionMesh::CollisionMesh(const SbScene& scene) {
       }
     }
   cellStart[cells] = uint32_t(cellTris.size());
+
+  // 4. the shore of the sea: water cells (0.25 m) on the ground plan next to a cell no water covers, where the
+  //    ground is still below that water (the sheet would end in mid-air). Taken from all sea triangles together,
+  //    so seams between sea groups, their _LOD copies and holes around rocks sticking out are not a shore.
+  if(!water)
+    return;
+  Vec3 mn = { 1e9f,0, 1e9f}, mx = {-1e9f,0,-1e9f};
+  for(auto& t:tris)
+    if(t.surface==Surface::Water)
+      for(const Vec3* v:{&t.a,&t.b,&t.c}) {
+        mn.x = std::min(mn.x,v->x); mn.z = std::min(mn.z,v->z);
+        mx.x = std::max(mx.x,v->x); mx.z = std::max(mx.z,v->z);
+        }
+  const float step = 0.25f;
+  const int   w    = int(std::ceil((mx.x-mn.x)/step))+3, h = int(std::ceil((mx.z-mn.z)/step))+3;
+  const float x0   = mn.x-step, z0 = mn.z-step;
+  constexpr float none = -1e9f;
+  std::vector<float> level(size_t(w)*size_t(h),none); // water height per cell, none = dry
+  for(auto& t:tris) {
+    if(t.surface!=Surface::Water)
+      continue;
+    const int ix0 = std::max(0,  int(std::floor((std::min({t.a.x,t.b.x,t.c.x})-x0)/step)));
+    const int ix1 = std::min(w-1,int(std::ceil ((std::max({t.a.x,t.b.x,t.c.x})-x0)/step)));
+    const int iz0 = std::max(0,  int(std::floor((std::min({t.a.z,t.b.z,t.c.z})-z0)/step)));
+    const int iz1 = std::min(h-1,int(std::ceil ((std::max({t.a.z,t.b.z,t.c.z})-z0)/step)));
+    const float d = (t.b.x-t.a.x)*(t.c.z-t.a.z)-(t.c.x-t.a.x)*(t.b.z-t.a.z);
+    if(d==0)
+      continue;
+    for(int ix=ix0; ix<=ix1; ++ix)
+      for(int iz=iz0; iz<=iz1; ++iz) {
+        const float px = x0+(float(ix)+0.5f)*step, pz = z0+(float(iz)+0.5f)*step;
+        const float u  = ((px-t.a.x)*(t.c.z-t.a.z)-(t.c.x-t.a.x)*(pz-t.a.z))/d;
+        const float v  = ((t.b.x-t.a.x)*(pz-t.a.z)-(px-t.a.x)*(t.b.z-t.a.z))/d;
+        if(u<0 || v<0 || u+v>1)
+          continue;
+        float& l = level[size_t(ix)*size_t(h)+size_t(iz)];
+        l = std::max(l,t.a.y+u*(t.b.y-t.a.y)+v*(t.c.y-t.a.y));
+        }
+    }
+  for(int ix=1; ix+1<w; ++ix)
+    for(int iz=1; iz+1<h; ++iz) {
+      const float l = level[size_t(ix)*size_t(h)+size_t(iz)];
+      if(l==none)
+        continue;
+      for(int n=0; n<4; ++n) {
+        const int jx = ix+(n==0)-(n==1), jz = iz+(n==2)-(n==3);
+        // dry for 0.75 m on: thin cracks between sea groups don't count
+        bool dry = true;
+        for(int k=1; k<=3 && dry; ++k) {
+          const int kx = ix+k*((n==0)-(n==1)), kz = iz+k*((n==2)-(n==3));
+          dry = kx<0 || kz<0 || kx>=w || kz>=h || level[size_t(kx)*size_t(h)+size_t(kz)]==none;
+          }
+        if(!dry)
+          continue;
+        const float px = x0+(float(jx)+0.5f)*step, pz = z0+(float(jz)+0.5f)*step;
+        // the ground there, looked for from a little above the water: rocks overhanging the sea don't count
+        const auto g = groundHeight(Vec3{px,l+0.5f,pz},50.f);
+        if(!g || *g>=l-0.05f || l-*g>=1.f)
+          continue; // the ground meets the water, or open sea at the edge of the map
+        const float cx = x0+(float(ix)+0.5f)*step, cz = z0+(float(iz)+0.5f)*step;
+        const ShorePoint e = {cx,cz,l-*g};
+        shore[(uint64_t(uint32_t(int(std::floor(cx/shoreCell))))<<32) | uint32_t(int(std::floor(cz/shoreCell)))].push_back(e);
+        break;
+        }
+      }
   }
+
+const CollisionMesh::ShorePoint* CollisionMesh::nearestShore(float x, float z, float maxDistance, float& distance) const {
+  const ShorePoint* best = nullptr;
+  distance = maxDistance;
+  const int cx = int(std::floor(x/shoreCell)), cz = int(std::floor(z/shoreCell));
+  const int r  = int(std::ceil(maxDistance/shoreCell));
+  for(int ix=cx-r; ix<=cx+r; ++ix)
+    for(int iz=cz-r; iz<=cz+r; ++iz) {
+      auto it = shore.find((uint64_t(uint32_t(ix))<<32) | uint32_t(iz));
+      if(it==shore.end())
+        continue;
+      for(auto& e:it->second) {
+        const float d = std::hypot(x-e.x,z-e.z);
+        if(d<distance) {
+          distance = d;
+          best     = &e;
+          }
+        }
+      }
+  return best;
+  }
+
+float CollisionMesh::shoreHeight(const Vec3& p) const {
+  if(shore.empty())
+    return p.y;
+  float d = 0;
+  const ShorePoint* s = nearestShore(p.x,p.z,shoreBand,d);
+  if(s==nullptr)
+    return p.y;
+  const float k     = 1.f-d/shoreBand;
+  float       y     = p.y - s->gap*k*k*(3.f-2.f*k);
+  const auto  floor = groundHeight(p+Vec3{0,0.05f,0},50.f);
+  if(floor)
+    y = std::max(y,std::min(p.y,*floor));
+  return y;
+  }
+
 
 bool CollisionMesh::intersect(const Triangle& t, const Vec3& from, const Vec3& dir, float maxT, Hit& out) const {
   // Moller-Trumbore, two-sided
@@ -107,8 +241,9 @@ bool CollisionMesh::intersect(const Triangle& t, const Vec3& from, const Vec3& d
   return true;
   }
 
-std::optional<CollisionMesh::Hit> CollisionMesh::raycast(const Vec3& from, const Vec3& dir, float maxDistance) const {
-  if(tris.empty())
+std::optional<CollisionMesh::Hit> CollisionMesh::raycast(const Vec3& from, const Vec3& dir, float maxDistance,
+                                                          Layer layer) const {
+  if(tris.empty() || (layer==Layer::Water && !water))
     return std::nullopt;
 
   const float o[3]  = {from.x,from.y,from.z};
@@ -166,8 +301,11 @@ std::optional<CollisionMesh::Hit> CollisionMesh::raycast(const Vec3& from, const
   while(true) {
     const size_t idx = size_t(c[2]) + size_t(dims[2])*(size_t(c[1]) + size_t(dims[1])*size_t(c[0]));
     for(uint32_t i=cellStart[idx]; i<cellStart[idx+1]; ++i) {
+      const Triangle& tri = tris[cellTris[i]];
+      if((tri.surface==Surface::Water)!=(layer==Layer::Water))
+        continue;
       const float limit = best ? best->distance : t1;
-      if(intersect(tris[cellTris[i]],from,dir,limit,h)) {
+      if(intersect(tri,from,dir,limit,h)) {
         h.triangle = cellTris[i];
         best       = h;
         }
@@ -190,5 +328,22 @@ std::optional<CollisionMesh::Hit> CollisionMesh::raycast(const Vec3& from, const
 std::optional<float> CollisionMesh::groundHeight(const Vec3& from, float maxDepth) const {
   if(auto h = raycast(from,Vec3{0,-1,0},maxDepth))
     return h->point.y;
+  return std::nullopt;
+  }
+
+Surface CollisionMesh::surfaceBelow(const Vec3& from, float maxDepth) const {
+  if(auto h = raycast(from,Vec3{0,-1,0},maxDepth))
+    return tris[h->triangle].surface;
+  return Surface::Default;
+  }
+
+std::optional<float> CollisionMesh::waterLevel(const Vec3& at, float range) const {
+  if(!water)
+    return std::nullopt;
+  // the nearest surface above (under water), else the nearest one below
+  if(auto h = raycast(at,Vec3{0,1,0},range,Layer::Water))
+    return shoreHeight(h->point);
+  if(auto h = raycast(at,Vec3{0,-1,0},range,Layer::Water))
+    return shoreHeight(h->point);
   return std::nullopt;
   }

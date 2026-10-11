@@ -7,7 +7,8 @@
 //   env RCSHOT_COLL=1 draws the collision overlay (key K in the game).
 //   env RCSHOT_DRIVE=<seconds> drives the car (physics) with full throttle first, RCSHOT_STEER=<-1..1> steering
 //   (positive = left) for the last half of that time, RCSHOT_JUMP=<seconds> jumps at that moment,
-//   RCSHOT_BOOST=1 holds the boost.
+//   RCSHOT_BOOST=1 holds the boost, RCSHOT_START="x z yaw" puts the car somewhere else first.
+//   env RCSHOT_TIME=<seconds> is the moment of the water animation (default: the drive time, else 0).
 
 #include <Tempest/Device>
 #include <Tempest/Fence>
@@ -16,6 +17,7 @@
 #include <Tempest/VulkanApi>
 
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -53,6 +55,14 @@ int main(int argc, const char** argv) {
       carSb   = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
       car     = std::make_unique<CarMesh>(device,res,carSb,carName ? carName : "Car1");
       carPose = level.carStart(car->bboxMin().y);
+      if(const char* start = std::getenv("RCSHOT_START")) {
+        // "x z yaw": somewhere else on the track, standing on the ground
+        float x = 0, z = 0, yaw = 0;
+        std::sscanf(start,"%f %f %f",&x,&z,&yaw);
+        carPose = rc::Mat4::translate({x,0,z})*rc::Mat4::rotate(1,yaw);
+        if(auto g = level.groundHeight({x,1000.f,z}))
+          carPose.m[1][3] = *g - car->bboxMin().y;
+        }
       if(const char* drive = std::getenv("RCSHOT_DRIVE")) {
         const char*      steer = std::getenv("RCSHOT_STEER");
         const char*      jump  = std::getenv("RCSHOT_JUMP");
@@ -81,7 +91,8 @@ int main(int argc, const char** argv) {
           }
         const rc::Vec3 at = carPose.translation();
         Log::i("drove ",time," s: ",veh.speed()*3.6f," km/h, ",veh.wheelsOnGround()," wheels on the ground, at ",
-               at.x," ",at.y," ",at.z);
+               at.x," ",at.y," ",at.z,", on ",rc::surfaceName(veh.surface()),", ",int(veh.submerged()*100.f),
+               "% under water");
         }
       // chase view from behind, level with the horizon
       const rc::Vec3 f = carPose.vector({0,0,1});
@@ -107,14 +118,20 @@ int main(int argc, const char** argv) {
     push.cameraPos[3] = 250.f;
     push.sunDir[0] = 0.4f; push.sunDir[1] = 0.8f; push.sunDir[2] = 0.3f;
     push.sunDir[3] = 1.0f;
+    if(const char* t = std::getenv("RCSHOT_TIME"))
+      push.time = float(std::atof(t));
+    else if(const char* d = std::getenv("RCSHOT_DRIVE"))
+      push.time = float(std::atof(d));
 
     CommandBuffer cmd;
     {
       auto enc = cmd.startEncoding(device);
       enc.setFramebuffer({{color,Vec4(0.62f,0.72f,0.82f,1.f),Tempest::Preserve}},{depth,1.f,Tempest::Preserve});
-      level.mesh().draw(enc,push,std::getenv("RCSHOT_NOSKY")==nullptr);
+      const bool sky = std::getenv("RCSHOT_NOSKY")==nullptr;
+      level.mesh().draw(enc,push,LevelMesh::Pass::Opaque,sky);
       if(car)
         car->draw(enc,viewProj,push,carPose,parts.empty() ? nullptr : &parts);
+      level.mesh().draw(enc,push,LevelMesh::Pass::Translucent,sky);
       if(std::getenv("RCSHOT_COLL")!=nullptr)
         level.collisionView().draw(enc,push);
     }

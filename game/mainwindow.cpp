@@ -38,7 +38,9 @@ void MainWindow::loadLevel(const std::string& name) {
     auto next = std::make_unique<Level>(device,resources,name);
     vehicle.reset();
     physics.reset();
+    checkpoints.reset();
     level   = std::move(next);
+    checkpoints = std::make_unique<rc::Checkpoints>(level->scene(),level->collision());
     camera  = level->startCamera();
     setupPhysics();
     setWindowTitle(("OpenRCCars - "+name).c_str());
@@ -67,16 +69,19 @@ void MainWindow::setupPhysics() {
   const auto geom = rc::carGeometry(carScene,Cars[carId]);
   const auto prm  = rc::CarParams::load(resources.pack(),int32_t(carId+1),upgrade);
   vehicle  = std::make_unique<rc::Vehicle>(*physics,geom,prm,carPose);
+  checkpoints->reset(carPose);
   chaseYaw = level->startCamera().yaw;
   Log::i("car ",Cars[carId],", upgrade ",upgrade,": top speed ",prm.topSpeed*3.6f," km/h, grip ",prm.gripFront);
   }
 
-void MainWindow::resetCar() {
+void MainWindow::respawnCar() {
   if(level==nullptr || vehicle==nullptr)
     return;
-  carPose = level->carStart(car->bboxMin().y);
+  carPose = checkpoints->respawn(car->bboxMin().y);
   vehicle->reset(carPose);
   upsideDown = 0;
+  const rc::Vec3 f = carPose.vector({0,0,1});
+  chaseYaw = std::atan2(f.x,f.z)*180.f/3.14159265f;
   }
 
 std::vector<rc::Mat4> MainWindow::carPartPoses() const {
@@ -137,11 +142,9 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     }
   if(e.key==Event::K_K)
     showCollision = !showCollision;
-  if(e.key==Event::K_R && level) {
-    camera = level->startCamera();
-    resetCar();
-    chaseYaw = camera.yaw;
-    }
+  // R: back to the last checkpoint, as in the original
+  if(e.key==Event::K_R && level)
+    respawnCar();
   }
 
 void MainWindow::keyUpEvent(KeyEvent& e) {
@@ -181,6 +184,7 @@ void MainWindow::tick(float dt) {
     vehicle->update(in,dt);
     physics->step(dt);
     carPose = vehicle->pose();
+    checkpoints->update(carPose.translation());
 
     // on its roof or side for a while: back on the wheels
     upsideDown = carPose.vector({0,1,0}).y<0.3f ? upsideDown+dt : 0;
@@ -188,10 +192,10 @@ void MainWindow::tick(float dt) {
       vehicle->recover();
       upsideDown = 0;
       }
-    // fell off the world
+    // drowned or fell off the world: back to the last checkpoint
     auto& grid = level->scene().collision;
-    if(!grid.empty() && carPose.translation().y<grid.min.y-20.f)
-      resetCar();
+    if(vehicle->drowned() || (!grid.empty() && carPose.translation().y<grid.min.y-20.f))
+      respawnCar();
     }
 
   if(!freeCamera) {
@@ -230,6 +234,7 @@ void MainWindow::render() {
     const uint64_t now = Application::tickCount();
     const float    dt  = float(now-lastTick)/1000.f;
     lastTick = now;
+    time    += std::min(dt,0.1f);
     tick(std::min(dt,0.1f));
 
     frameId = uint8_t((frameId+1)%MaxFramesInFlight);
@@ -246,17 +251,20 @@ void MainWindow::render() {
     push.cameraPos[3] = 250.f;                 // fog distance
     push.sunDir[0] = 0.4f; push.sunDir[1] = 0.8f; push.sunDir[2] = 0.3f;
     push.sunDir[3] = 1.0f;                     // lightmap scale
+    push.time      = time;
 
     {
       auto enc = cmd.startEncoding(device);
       enc.setFramebuffer({{swapchain[swapchain.currentImage()],Vec4(0.62f,0.72f,0.82f,1.f),Tempest::Preserve}},
                          {zbuffer,1.f,Tempest::Preserve});
       if(level)
-        level->mesh().draw(enc,push);
+        level->mesh().draw(enc,push,LevelMesh::Pass::Opaque);
       if(car) {
         const auto parts = carPartPoses();
         car->draw(enc,viewProj,push,carPose,&parts);
         }
+      if(level)
+        level->mesh().draw(enc,push,LevelMesh::Pass::Translucent);
       if(level && showCollision)
         level->collisionView().draw(enc,push);
     }
@@ -272,6 +280,7 @@ void MainWindow::render() {
       if(vehicle)
         title += " - "+std::to_string(int(std::round(std::abs(vehicle->speed())*3.6f)))+" km/h"+
                  " - turbo "+std::to_string(int(std::round(vehicle->boostLevel()*100.f)))+"%"+
+                 " - "+rc::surfaceName(vehicle->surface())+
                  (upgrade>0 ? " - upgrade "+std::to_string(upgrade) : std::string());
       setWindowTitle(title.c_str());
       fpsTime  = 0;

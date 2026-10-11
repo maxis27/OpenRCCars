@@ -29,7 +29,7 @@ add_library(rcformats STATIC
   )
 target_include_directories(rcformats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-# --- Bullet (only LinearMath, BulletCollision and BulletDynamics, through Bullet's own unity sources) ---
+# --- Bullet (only LinearMath, BulletCollision and BulletDynamics) ---
 include(FetchContent)
 FetchContent_Declare(bullet
   GIT_REPOSITORY https://github.com/bulletphysics/bullet3.git
@@ -38,11 +38,14 @@ FetchContent_Declare(bullet
   SOURCE_SUBDIR  do-not-add-subdirectory
   )
 FetchContent_MakeAvailable(bullet)
-add_library(bullet STATIC
-  ${bullet_SOURCE_DIR}/src/btLinearMathAll.cpp
-  ${bullet_SOURCE_DIR}/src/btBulletCollisionAll.cpp
-  ${bullet_SOURCE_DIR}/src/btBulletDynamicsAll.cpp
+# Not Bullet's bt*All.cpp unity files: some of its sources define BT_USE_SSE_IN_API before their includes,
+# which breaks the other sources of a unity build with MSVC (SSE is on by default there).
+file(GLOB_RECURSE BULLET_SOURCES
+  ${bullet_SOURCE_DIR}/src/LinearMath/*.cpp
+  ${bullet_SOURCE_DIR}/src/BulletCollision/*.cpp
+  ${bullet_SOURCE_DIR}/src/BulletDynamics/*.cpp
   )
+add_library(bullet STATIC ${BULLET_SOURCES})
 target_include_directories(bullet SYSTEM PUBLIC ${bullet_SOURCE_DIR}/src)
 if(MSVC)
   target_compile_options(bullet PRIVATE /W0)

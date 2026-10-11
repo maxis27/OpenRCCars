@@ -4,3 +4,10 @@ build*/
 out/
 *.user
 CMakeSettings.json
+.idea/
+compile_commands.json
+.cache/
+# game data must never be committed
+*.pack
+*.sb
+*.csi

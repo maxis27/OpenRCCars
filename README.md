@@ -225,9 +225,10 @@ lib/Tempest     silnik (submoduł git)
 - Brzeg: tafla morza jest płaska (beach_1: 0 m) i kończy się w powietrzu tam, gdzie plaża leży niżej (piasek przy
   brzegu na -0,31 m, tam leży też piana), a na zrzutach z oryginału woda schodzi do poziomu plaży. Oryginał ma do tego
   suwaki `magnetOffset`/`magnetRadius`/`clampY*` w `WLOD_*.ini`, ale ich kod w `RCCars.exe` jest zaszyfrowany
-  (zabezpieczenie Steam). U nas głębokość wody jest ograniczona do 0,3 × odległość od krawędzi morza, za którą
-  grunt jest nadal pod wodą (`CollisionMesh::shoreHeight`); tak samo dla rysowania i fizyki, więc przy brzegu auto
-  brodzi, a tonie dalej. Piana leży na wodzie.
+  (zabezpieczenie Steam). U nas na ostatnim metrze przed brzegiem tafla wygina się w dół do wysokości gruntu za
+  brzegiem (`CollisionMesh::shoreHeight`); dalej jest płaska. Brzeg to miejsca, gdzie woda (wszystkie grupy i LOD-y
+  razem, siatka 0,25 m) graniczy z co najmniej 0,75 m bez wody, a grunt tam leży niżej niż woda — szwy między
+  grupami morza i skały wystające z wody się nie liczą. Tak samo dla rysowania i fizyki. Piana leży na wodzie.
 - Start auta gracza to `INST 'Player'` w folderze `Players`; jego oś +Z wskazuje kierunek jazdy. Auta są w skali
   modeli RC (ok. 0,4–0,6 m długości), przód modelu to +Z.
 

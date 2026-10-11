@@ -73,11 +73,11 @@ class CollisionMesh {
 
     // The sea is a flat sheet that ends in mid-air where the beach is lower than the water (on beach_1 the
     // surface is at 0 and the sand along the shore at -0.31). The original pulls the water down to the sand
-    // there (WaterLOD magnet/clampY sliders, code not readable); we limit the depth of the water to
-    // `shoreSlope` times the distance to the nearest shore edge of the sea. `p` is a point on the water as
-    // the scene has it, the result the height of the water surface there.
+    // there (WaterLOD magnet/clampY sliders, code not readable); we bend it down over the last `shoreBand`
+    // metres to the height of the ground past the shore, never below the ground under it. `p` is a point on
+    // the water as the scene has it, the result the height of the water surface there.
     float                        shoreHeight(const Vec3& p) const;
-    static constexpr float       shoreSlope = 0.3f;
+    static constexpr float       shoreBand = 1.f;
 
     // triangles listed in a cell; the same triangle shows up in every cell it touches
     template<class F>
@@ -97,13 +97,12 @@ class CollisionMesh {
     std::vector<uint32_t> cellStart; // cells+1 offsets into cellTris
     std::vector<uint32_t> cellTris;
 
-    // edges of the sea meshes not shared with another sea triangle, less than 1 m above the ground and with the
-    // ground just past them below the water,
-    // bucketed in shoreCell x shoreCell squares
-    struct Edge { float ax, az, bx, bz; };
-    float                 shoreDistance(float x, float z, float maxDistance) const;
+    // the shore of the sea (points, as zero-length edges), bucketed in shoreCell x shoreCell squares
+    struct ShorePoint { float x, z, gap; }; // gap: how far the water is above the ground just past the shore
+    // the nearest shore point within maxDistance and the distance to it
+    const ShorePoint*     nearestShore(float x, float z, float maxDistance, float& distance) const;
     static constexpr float shoreCell = 2.f;
-    std::unordered_map<uint64_t,std::vector<Edge>> shore;
+    std::unordered_map<uint64_t,std::vector<ShorePoint>> shore;
   };
 
 }

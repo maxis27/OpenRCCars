@@ -47,7 +47,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 
 ![Jazda: skręt w lewo (beach_1)](docs/driving_beach_1.jpg)
 
-![Auto wjeżdża do morza i tonie: na piasku, na brzegu, pod wodą widać tylko antenę (beach_1)](docs/water_beach_1.jpg)
+![Auto wjeżdża do morza i tonie: na piasku, na brzegu, pod wodą (beach_1)](docs/water_beach_1.jpg)
 
 ![Urban 1](docs/urban_1.jpg)
 
@@ -211,6 +211,12 @@ lib/Tempest     silnik (submoduł git)
   (`pool1..3`), na country_3 strumień (kilka cm) i wodospady. `Settings/Water.ini` (`speedDropCenter` 125/500,
   `speedDropOther` 76/500, `DampingVelocity2` 950/1000) czytamy jako utratę prędkości przy wpadnięciu do wody
   nadwozia i kół oraz tłumienie pod wodą; to nasze odczytanie nazw.
+- Wygląd wody: tekstura `sea` nie ma kanału alfa, ale oryginał rysuje wodę półprzezroczystą (`Settings/WLOD_*.ini`:
+  `alphaMin` 26 … `alphaMax` 255, `distAlphaClampMax` 8, fale, env mapa). U nas płytka woda jest przezroczysta wg
+  głębokości nad dnem z kolizji (pełne krycie od 0,8 m; jednostka `distAlphaClampMax` to nasze zgadywanie), bez fal.
+  Piana przy brzegu to ściany `coast*` z teksturą `coast_base` i maską `ALP1` `coast` bez `BAS2`: maska to
+  przezroczystość piany (falista krawędź). W oryginale piana przesuwa się po plaży (`waterLOD_coast.ini`:
+  `HeightOn/HeightOff`, `ScrollVel`, `AlphaMin` 36), u nas stoi.
 - Start auta gracza to `INST 'Player'` w folderze `Players`; jego oś +Z wskazuje kierunek jazdy. Auta są w skali
   modeli RC (ok. 0,4–0,6 m długości), przód modelu to +Z.
 

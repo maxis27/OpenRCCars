@@ -256,11 +256,13 @@ void MainWindow::render() {
       enc.setFramebuffer({{swapchain[swapchain.currentImage()],Vec4(0.62f,0.72f,0.82f,1.f),Tempest::Preserve}},
                          {zbuffer,1.f,Tempest::Preserve});
       if(level)
-        level->mesh().draw(enc,push);
+        level->mesh().draw(enc,push,LevelMesh::Pass::Opaque);
       if(car) {
         const auto parts = carPartPoses();
         car->draw(enc,viewProj,push,carPose,&parts);
         }
+      if(level)
+        level->mesh().draw(enc,push,LevelMesh::Pass::Translucent);
       if(level && showCollision)
         level->collisionView().draw(enc,push);
     }

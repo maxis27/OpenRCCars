@@ -122,9 +122,11 @@ int main(int argc, const char** argv) {
     {
       auto enc = cmd.startEncoding(device);
       enc.setFramebuffer({{color,Vec4(0.62f,0.72f,0.82f,1.f),Tempest::Preserve}},{depth,1.f,Tempest::Preserve});
-      level.mesh().draw(enc,push,std::getenv("RCSHOT_NOSKY")==nullptr);
+      const bool sky = std::getenv("RCSHOT_NOSKY")==nullptr;
+      level.mesh().draw(enc,push,LevelMesh::Pass::Opaque,sky);
       if(car)
         car->draw(enc,viewProj,push,carPose,parts.empty() ? nullptr : &parts);
+      level.mesh().draw(enc,push,LevelMesh::Pass::Translucent,sky);
       if(std::getenv("RCSHOT_COLL")!=nullptr)
         level.collisionView().draw(enc,push);
     }

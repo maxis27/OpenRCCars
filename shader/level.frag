@@ -27,6 +27,16 @@ void main() {
     color.rgb = mix(c2.rgb, color.rgb, m);
     }
 
+  if((push.flags & F_WATER)!=0u) {
+    // WLOD_*.ini alphaMin 26/255 .. alphaMax 255; full opacity at 0.8 m deep (distAlphaClampMax 8, a guess
+    // at its unit), nothing where the ground is above the sea plane
+    float depth = inUvMask.x;
+    color.a = depth<=0.0 ? 0.0 : mix(26.0/255.0, 1.0, pow(clamp(depth/0.8, 0.0, 1.0), 0.6));
+    }
+
+  if((push.flags & F_MASK)!=0u)
+    color.a = texture(texMask, inUvMask).a;
+
   if((push.flags & F_CUTOUT)!=0u && color.a<0.5)
     discard;
 

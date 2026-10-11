@@ -3,6 +3,8 @@
 #include <Tempest/Log>
 
 #include <algorithm>
+#include <cmath>
+#include <functional>
 #include <map>
 #include <tuple>
 
@@ -51,7 +53,7 @@ std::vector<bool> LevelMesh::hiddenMeshes(const rc::SbScene& scene) {
   return hidden;
   }
 
-LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene)
+LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, const rc::CollisionMesh* ground)
   :pso(device) {
   bbox[0] = { 1e9f, 1e9f, 1e9f};
   bbox[1] = {-1e9f,-1e9f,-1e9f};
@@ -83,10 +85,44 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene)
       key.model = m.model;
       key.base  = base->texture;
       key.light = light ? light->texture : -1;
-      if(mask && base2) {
+      if(mask) {
         key.mask  = mask->texture;
-        key.base2 = base2->texture;
+        key.base2 = base2 ? base2->texture : -1;
         }
+      // water (texture "sea") carries its depth above the solid ground in uvMask.x, see F_Water
+      const bool water = ground!=nullptr && mask==nullptr &&
+                         rc::surfaceOf(scene.texture(base->texture,m.model))==rc::Surface::Water;
+      if(water)
+        key.mask = -2; // own batch
+      auto depthAt = [&](const rc::Vec3& p) {
+        const auto floor = ground->groundHeight(p+rc::Vec3{0,0.05f,0},50.f); // not from higher up: rocks overhang the sea
+        return floor ? p.y-*floor : 100.f;
+        };
+      // the depth is interpolated per vertex: split big sea triangles near the shore so that it follows the seabed
+      std::function<void(std::vector<Vertex>&,const Vertex&,const Vertex&,const Vertex&,int)> subdivideWater;
+      subdivideWater = [&](std::vector<Vertex>& dst, const Vertex& a, const Vertex& b, const Vertex& c, int level) {
+        auto len = [](const Vertex& x, const Vertex& y) { return std::hypot(x.pos[0]-y.pos[0],x.pos[2]-y.pos[2]); };
+        const float shallowest = std::min({a.uvMask[0],b.uvMask[0],c.uvMask[0]});
+        if(level==0 || shallowest>1.f || std::max({len(a,b),len(b,c),len(c,a)})<0.3f) {
+          dst.push_back(a); dst.push_back(b); dst.push_back(c);
+          return;
+          }
+        auto mid = [&](const Vertex& x, const Vertex& y) {
+          Vertex v;
+          auto lerp = [](const float* s, const float* t, float* o, int k) { for(int i=0;i<k;++i) o[i] = (s[i]+t[i])*0.5f; };
+          lerp(x.pos,y.pos,v.pos,3);       lerp(x.normal,y.normal,v.normal,3);
+          lerp(x.uvBase,y.uvBase,v.uvBase,2); lerp(x.uvLight,y.uvLight,v.uvLight,2);
+          lerp(x.uvBase2,y.uvBase2,v.uvBase2,2);
+          v.uvMask[0] = depthAt({v.pos[0],v.pos[1],v.pos[2]});
+          v.uvMask[1] = 0;
+          return v;
+          };
+        const Vertex ab = mid(a,b), bc = mid(b,c), ca = mid(c,a);
+        subdivideWater(dst,a,ab,ca,level-1);
+        subdivideWater(dst,ab,b,bc,level-1);
+        subdivideWater(dst,ca,bc,c,level-1);
+        subdivideWater(dst,ab,bc,ca,level-1);
+        };
       auto& out = buckets[key];
 
       auto uv = [&](const rc::SbFace::Layer* l, size_t corner, float* dst) {
@@ -109,6 +145,10 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene)
         uv(light,corner,v.uvLight);
         uv(mask, corner,v.uvMask);
         uv(base2,corner,v.uvBase2);
+        if(water)
+          v.uvMask[0] = depthAt(p);
+        if(mask!=nullptr && base2==nullptr)
+          v.pos[1] += 0.01f; // shore foam lies on the sand, lift it to keep it from z-fighting
         bbox[0] = {std::min(bbox[0].x,p.x),std::min(bbox[0].y,p.y),std::min(bbox[0].z,p.z)};
         bbox[1] = {std::max(bbox[1].x,p.x),std::max(bbox[1].y,p.y),std::max(bbox[1].z,p.z)};
         return v;
@@ -116,6 +156,10 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene)
       // polygon -> triangle fan
       const Vertex v0 = vert(0);
       for(size_t i=1; i+1<n; ++i) {
+        if(water) {
+          subdivideWater(out,v0,vert(i),vert(i+1),3);
+          continue;
+          }
         out.push_back(v0);
         out.push_back(vert(i));
         out.push_back(vert(i+1));
@@ -136,12 +180,21 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene)
       }
     b.tex[1] = key.light>=0 ? sceneTexture(res,scene,key.light,key.model,nullptr) : nullptr;
     b.tex[2] = key.mask >=0 ? sceneTexture(res,scene,key.mask, key.model,nullptr) : nullptr;
+    if(key.mask==-2) {
+      b.flags |= F_Water;
+      b.mode   = rc::AlphaMode::Translucent;
+      }
     b.tex[3] = key.base2>=0 ? sceneTexture(res,scene,key.base2,key.model,nullptr) : nullptr;
     if(b.tex[1]!=nullptr)
       b.flags |= F_Lightmap;
     if(b.tex[2]!=nullptr && b.tex[3]!=nullptr) {
       b.flags |= F_Blend;
       b.mode   = rc::AlphaMode::Opaque; // base alpha is not used for transparency on blended terrain
+      }
+    else if(b.tex[2]!=nullptr) {
+      // a mask without a second texture fades the base out: the foam along the shore (coast_base / coast)
+      b.flags |= F_Mask;
+      b.mode   = rc::AlphaMode::Translucent;
       }
     if(b.mode==rc::AlphaMode::Cutout)
       b.flags |= F_Cutout;
@@ -152,9 +205,10 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene)
     batches.push_back(b);
     }
 
-  // opaque first, translucent last
-  std::stable_sort(batches.begin(),batches.end(),[](const Batch& a, const Batch& b){
-    return (a.mode==rc::AlphaMode::Translucent) < (b.mode==rc::AlphaMode::Translucent);
+  // opaque first, translucent last, and of those the water at the very end: foam and the like lie under it
+  auto order = [](const Batch& b) { return b.mode!=rc::AlphaMode::Translucent ? 0 : (b.flags & F_Water) ? 2 : 1; };
+  std::stable_sort(batches.begin(),batches.end(),[&](const Batch& a, const Batch& b){
+    return order(a) < order(b);
     });
 
   vbo            = device.vbo(all);
@@ -225,11 +279,13 @@ const Texture2d* LevelMesh::sceneTexture(Resources& res, const rc::SbScene& scen
   return &r->tex;
   }
 
-void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, bool drawSky) const {
+void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass, bool drawSky) const {
   Push push = frame;
   const RenderPipeline* current = nullptr;
   for(auto& b:batches) {
     if(b.sky && !drawSky)
+      continue;
+    if((b.mode==rc::AlphaMode::Translucent)!=(pass==Pass::Translucent))
       continue;
     auto& p = pso.get(b.mode);
     if(current!=&p) {

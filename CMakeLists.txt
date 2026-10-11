@@ -54,6 +54,8 @@ add_library(rcengine STATIC
   )
 target_include_directories(rcengine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} lib/Tempest/Engine/include)
 target_link_libraries(rcengine PUBLIC rcformats Tempest Shaders)
+# Tempest is static here, so its private link directory for vulkan-1.lib does not reach our executables.
+target_link_directories(rcengine PUBLIC "$ENV{VULKAN_SDK}/lib")
 
 # --- game ---
 add_executable(OpenRCCars game/main.cpp game/mainwindow.h game/mainwindow.cpp)

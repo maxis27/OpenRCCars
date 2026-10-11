@@ -120,6 +120,8 @@ std::vector<uint8_t> PackFile::read(std::string_view name) {
   }
 
 std::vector<uint8_t> PackFile::read(const Entry& e) {
+  // An encrypted blob is [31 14][u32 end][u32 payload size][payload]; the directory size is the payload size,
+  // so the blob is 10 bytes longer than the directory says. Reading only `size` bytes drops the file's tail.
   std::vector<uint8_t> blob(e.size);
   {
     std::lock_guard<std::mutex> guard(sync);
@@ -127,6 +129,17 @@ std::vector<uint8_t> PackFile::read(const Entry& e) {
     file.read(reinterpret_cast<char*>(blob.data()),std::streamsize(blob.size()));
     if(!file)
       throw FormatError("pack: read error: "+e.name);
+    if(blob.size()>=10 && blob[0]==0x31 && blob[1]==0x14) {
+      uint32_t payload = 0;
+      std::memcpy(&payload,blob.data()+6,4);
+      if(payload+10u>blob.size() && payload<=e.size+10u) {
+        const size_t have = blob.size();
+        blob.resize(payload+10u);
+        file.read(reinterpret_cast<char*>(blob.data()+have),std::streamsize(blob.size()-have));
+        if(!file)
+          throw FormatError("pack: read error: "+e.name);
+        }
+      }
   }
   return decodeBlob(blob);
   }

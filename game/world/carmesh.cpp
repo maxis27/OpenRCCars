@@ -7,16 +7,9 @@
 #include <stdexcept>
 
 #include "game/resources.h"
+#include "physics/cargeometry.h"
 
 using namespace Tempest;
-
-namespace {
-
-bool startsWith(const std::string& s, std::string_view prefix) {
-  return s.compare(0,prefix.size(),prefix)==0;
-  }
-
-}
 
 CarMesh::CarMesh(Device& device, Resources& res, const rc::SbScene& sb, std::string_view model)
   :modelName(model), pso(device) {
@@ -28,30 +21,26 @@ CarMesh::CarMesh(Device& device, Resources& res, const rc::SbScene& sb, std::str
   bbox[1] = {-1e9f,-1e9f,-1e9f};
   partList.push_back(Part{});
 
-  // part of each mesh: the nearest WHEEL_* ancestor (or itself); -1 = hidden
+  // part of each mesh: body (0) or the WHEEL_* node above it; -1 = hidden
   auto partOf = [&](size_t mesh) -> int32_t {
-    int32_t part = 0;
-    for(int32_t i=int32_t(mesh); i>=0; i=sb.meshes[size_t(i)].parent) {
-      auto& name = sb.meshes[size_t(i)].name;
-      if(startsWith(name,"UPGRADES"))
-        return -1; // boosters and compressors, shown only once bought
-      if(part==0 && startsWith(name,"WHEEL_")) {
-        auto it = std::find_if(partList.begin(),partList.end(),[&](const Part& p){ return p.name==name; });
-        if(it==partList.end()) {
-          partList.push_back(Part{name,{}});
-          it = partList.end()-1;
-          }
-        part = int32_t(it-partList.begin());
-        }
+    auto name = rc::carPart(sb,mesh);
+    if(!name)
+      return -1;
+    if(name->empty())
+      return 0;
+    auto it = std::find_if(partList.begin(),partList.end(),[&](const Part& p){ return p.name==*name; });
+    if(it==partList.end()) {
+      partList.push_back(Part{*name,{}});
+      it = partList.end()-1;
       }
-    return part;
+    return int32_t(it-partList.begin());
     };
 
   // 1. model space triangles, bucketed by part and texture
   std::map<std::pair<size_t,int32_t>,std::vector<LevelMesh::Vertex>> buckets;
   for(size_t mi=0; mi<sb.meshes.size(); ++mi) {
     auto& m = sb.meshes[mi];
-    if(m.model!=modelId || m.positions.empty() || LevelMesh::isHiddenMesh(m.name))
+    if(m.model!=modelId || m.positions.empty())
       continue;
     const int32_t part = partOf(mi);
     if(part<0)
@@ -136,14 +125,16 @@ CarMesh::CarMesh(Device& device, Resources& res, const rc::SbScene& sb, std::str
   }
 
 void CarMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
-                   const LevelMesh::Push& frame, const rc::Mat4& world) const {
+                   const LevelMesh::Push& frame, const rc::Mat4& world,
+                   const std::vector<rc::Mat4>* partPoses) const {
   const rc::Vec3 camera = {frame.cameraPos[0],frame.cameraPos[1],frame.cameraPos[2]};
   const rc::Vec3 sun    = {frame.sunDir[0],   frame.sunDir[1],   frame.sunDir[2]};
 
   // the shader works in the space of the vertices, so camera and sun go into part space
   std::vector<LevelMesh::Push> push(partList.size(),frame);
   for(size_t i=0; i<partList.size(); ++i) {
-    const rc::Mat4 m   = world*rc::Mat4::translate(partList[i].pivot);
+    const bool     own = partPoses!=nullptr && i<partPoses->size();
+    const rc::Mat4 m   = world*(own ? (*partPoses)[i] : rc::Mat4::translate(partList[i].pivot));
     const rc::Mat4 inv = m.inverseRigid();
     (viewProj*m).toColumnMajor(push[i].viewProj);
     const rc::Vec3 c = inv.point(camera);

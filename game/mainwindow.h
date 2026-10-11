@@ -12,6 +12,7 @@
 #include <memory>
 
 #include "camera.h"
+#include "physics/vehicle.h"
 #include "resources.h"
 #include "world/carmesh.h"
 #include "world/level.h"
@@ -35,7 +36,10 @@ class MainWindow : public Tempest::Window {
     void resetSwapchain();
     void tick(float dt);
     void loadLevel(const std::string& name);
-    void loadCar(const std::string& model);
+    void loadCar(size_t id);
+    void resetCar();
+    void setupPhysics();
+    std::vector<rc::Mat4> carPartPoses() const;
 
     Tempest::Device&        device;
     Resources&              resources;
@@ -45,8 +49,15 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<Level>  level;
     rc::SbScene             carScene;       // RCCarsDB/Car.sb, all cars
     std::unique_ptr<CarMesh> car;
+    size_t                  carId    = 0;   // 0..2: Car1..Car3
+    int32_t                 upgrade  = 0;   // 0..3, Scripts/upgrades.ini column
     rc::Mat4                carPose;
+    // declared after `level`: the physics world refers to the level's collision mesh
+    std::unique_ptr<rc::PhysicsWorld> physics;
+    std::unique_ptr<rc::Vehicle>      vehicle;
+    float                   upsideDown = 0; // seconds on the roof or side, then the car is put back
     Camera                  camera;
+    float                   chaseYaw = 0;   // smoothed heading for the chase camera, degrees
     bool                    freeCamera = false;
     bool                    showCollision = false; // K: collision debug overlay
 

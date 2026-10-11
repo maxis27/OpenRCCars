@@ -5,6 +5,8 @@
 //   env RCSHOT_CAR=Car1|Car2|Car3|none picks the car (default Car1), none = track only, start camera behind cp_1.
 //   env RCSHOT_NOSKY=1 hides the sky dome (useful for top-down views).
 //   env RCSHOT_COLL=1 draws the collision overlay (key K in the game).
+//   env RCSHOT_DRIVE=<seconds> drives the car (physics) with full throttle first, RCSHOT_STEER=<-1..1> steering
+//   (positive = left) for the last half of that time.
 
 #include <Tempest/Device>
 #include <Tempest/Fence>
@@ -12,6 +14,7 @@
 #include <Tempest/Pixmap>
 #include <Tempest/VulkanApi>
 
+#include <cmath>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -19,6 +22,7 @@
 #include "game/resources.h"
 #include "game/world/carmesh.h"
 #include "game/world/level.h"
+#include "physics/vehicle.h"
 
 using namespace Tempest;
 
@@ -43,11 +47,40 @@ int main(int argc, const char** argv) {
     std::unique_ptr<CarMesh> car;
     rc::Mat4                 carPose;
     rc::SbScene              carSb;
+    std::vector<rc::Mat4>    parts;
     if(carName==nullptr || std::string(carName)!="none") {
       carSb   = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
       car     = std::make_unique<CarMesh>(device,res,carSb,carName ? carName : "Car1");
       carPose = level.carStart(car->bboxMin().y);
-      cam.chase(carPose,ChaseDistance,ChaseHeight);
+      if(const char* drive = std::getenv("RCSHOT_DRIVE")) {
+        const char*      steer = std::getenv("RCSHOT_STEER");
+        const float      time  = float(std::atof(drive));
+        const int        carNo = std::atoi(car->name().c_str()+3);
+        rc::PhysicsWorld world(level.collision());
+        rc::Vehicle      veh(world,rc::carGeometry(carSb,car->name()),rc::CarParams::load(res.pack(),carNo),carPose);
+        for(float t=0; t<time; t+=1.f/60.f) {
+          rc::Vehicle::Input in;
+          in.throttle = 1;
+          in.steer    = (steer!=nullptr && t>time*0.5f) ? float(std::atof(steer)) : 0.f;
+          veh.update(in,1.f/60.f);
+          world.step(1.f/60.f);
+          }
+        carPose = veh.pose();
+        for(auto& p:car->parts()) {
+          rc::Mat4 m = rc::Mat4::translate(p.pivot);
+          for(size_t i=0; i<veh.geometry().wheels.size(); ++i)
+            if(veh.geometry().wheels[i].name==p.name)
+              m = veh.wheelPose(i);
+          parts.push_back(m);
+          }
+        const rc::Vec3 at = carPose.translation();
+        Log::i("drove ",time," s: ",veh.speed()*3.6f," km/h, ",veh.wheelsOnGround()," wheels on the ground, at ",
+               at.x," ",at.y," ",at.z);
+        }
+      // chase view from behind, level with the horizon
+      const rc::Vec3 f = carPose.vector({0,0,1});
+      cam.chase(rc::Mat4::translate(carPose.translation())*rc::Mat4::rotate(1,std::atan2(f.x,f.z)*57.29578f),
+                ChaseDistance,ChaseHeight);
       }
     if(argc>10) {
       cam.position = {float(std::atof(argv[6])),float(std::atof(argv[7])),float(std::atof(argv[8]))};
@@ -75,7 +108,7 @@ int main(int argc, const char** argv) {
       enc.setFramebuffer({{color,Vec4(0.62f,0.72f,0.82f,1.f),Tempest::Preserve}},{depth,1.f,Tempest::Preserve});
       level.mesh().draw(enc,push,std::getenv("RCSHOT_NOSKY")==nullptr);
       if(car)
-        car->draw(enc,viewProj,push,carPose);
+        car->draw(enc,viewProj,push,carPose,parts.empty() ? nullptr : &parts);
       if(std::getenv("RCSHOT_COLL")!=nullptr)
         level.collisionView().draw(enc,push);
     }

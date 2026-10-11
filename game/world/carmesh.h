@@ -17,7 +17,7 @@ class Resources;
 
 // One car from RCCarsDB/Car.sb: MODL "Car1" (Overkill), "Car2" (Buggy) or "Car3" (Hummer).
 // Model space: +Z forward, +Y up, about 0.4 m long (radio controlled scale).
-// The body and every WHEEL_* node are separate parts, so wheels can spin and steer on their own later.
+// The body and every WHEEL_* node are separate parts, so wheels can spin, steer and move with the suspension.
 class CarMesh {
   public:
     struct Part {
@@ -27,9 +27,11 @@ class CarMesh {
 
     CarMesh(Tempest::Device& device, Resources& res, const rc::SbScene& sb, std::string_view model);
 
-    // `world` places the model (rotation + translation only)
+    // `world` places the model (rotation + translation only); `partPoses`, if given, places each part in model
+    // space (index as in parts(), rotation + translation), default: translate(pivot) - the modelled position
     void                     draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, const rc::Mat4& viewProj,
-                                  const LevelMesh::Push& frame, const rc::Mat4& world) const;
+                                  const LevelMesh::Push& frame, const rc::Mat4& world,
+                                  const std::vector<rc::Mat4>* partPoses = nullptr) const;
 
     const std::string&       name()    const { return modelName; }
     const std::vector<Part>& parts()   const { return partList; }

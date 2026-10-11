@@ -5,6 +5,7 @@
 #include <Tempest/Except>
 #include <Tempest/Log>
 
+#include <cmath>
 #include <iterator>
 #include <string>
 
@@ -22,7 +23,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name)
   : Window(Maximized), device(device), resources(res), swapchain(device,hwnd()) {
   resetSwapchain();
   carScene = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
-  loadCar(Cars[0]);
+  loadCar(0);
   loadLevel(name);
   lastTick = Application::tickCount();
   }
@@ -35,9 +36,11 @@ void MainWindow::loadLevel(const std::string& name) {
   device.waitIdle();
   try {
     auto next = std::make_unique<Level>(device,resources,name);
+    vehicle.reset();
+    physics.reset();
     level   = std::move(next);
     camera  = level->startCamera();
-    carPose = level->carStart(car->bboxMin().y);
+    setupPhysics();
     setWindowTitle(("OpenRCCars - "+name).c_str());
     }
   catch(const std::exception& e) {
@@ -47,11 +50,48 @@ void MainWindow::loadLevel(const std::string& name) {
     }
   }
 
-void MainWindow::loadCar(const std::string& model) {
+void MainWindow::loadCar(size_t id) {
   device.waitIdle();
-  car = std::make_unique<CarMesh>(device,resources,carScene,model);
-  if(level)
-    carPose = level->carStart(car->bboxMin().y);
+  carId = id;
+  car   = std::make_unique<CarMesh>(device,resources,carScene,Cars[id]);
+  setupPhysics();
+  }
+
+void MainWindow::setupPhysics() {
+  if(level==nullptr || car==nullptr)
+    return;
+  carPose = level->carStart(car->bboxMin().y);
+  vehicle.reset();
+  if(physics==nullptr)
+    physics = std::make_unique<rc::PhysicsWorld>(level->collision());
+  const auto geom = rc::carGeometry(carScene,Cars[carId]);
+  const auto prm  = rc::CarParams::load(resources.pack(),int32_t(carId+1),upgrade);
+  vehicle  = std::make_unique<rc::Vehicle>(*physics,geom,prm,carPose);
+  chaseYaw = level->startCamera().yaw;
+  Log::i("car ",Cars[carId],", upgrade ",upgrade,": top speed ",prm.topSpeed*3.6f," km/h, grip ",prm.gripFront);
+  }
+
+void MainWindow::resetCar() {
+  if(level==nullptr || vehicle==nullptr)
+    return;
+  carPose = level->carStart(car->bboxMin().y);
+  vehicle->reset(carPose);
+  upsideDown = 0;
+  }
+
+std::vector<rc::Mat4> MainWindow::carPartPoses() const {
+  std::vector<rc::Mat4> ret;
+  for(auto& p:car->parts()) {
+    rc::Mat4 m = rc::Mat4::translate(p.pivot);
+    if(vehicle!=nullptr && !p.name.empty()) {
+      auto& wheels = vehicle->geometry().wheels;
+      for(size_t i=0; i<wheels.size(); ++i)
+        if(wheels[i].name==p.name)
+          m = vehicle->wheelPose(i);
+      }
+    ret.push_back(m);
+    }
+  return ret;
   }
 
 void MainWindow::resetSwapchain() {
@@ -77,7 +117,17 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     }
   // 1..3 - switch car
   if(e.key>=Event::K_1 && e.key<=Event::K_3)
-    loadCar(Cars[e.key-Event::K_1]);
+    loadCar(size_t(e.key-Event::K_1));
+  // U - next upgrade level (boosters, resonators and tires together)
+  if(e.key==Event::K_U) {
+    upgrade = (upgrade+1)%4;
+    const rc::Mat4 at = carPose;
+    setupPhysics();
+    if(vehicle)
+      vehicle->reset(at);   // same place, standing still
+    }
+  if(e.key==Event::K_T && vehicle)
+    vehicle->recover();
   if(e.key==Event::K_V) {
     freeCamera = !freeCamera;
     if(freeCamera)
@@ -86,8 +136,9 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
   if(e.key==Event::K_K)
     showCollision = !showCollision;
   if(e.key==Event::K_R && level) {
-    camera  = level->startCamera();
-    carPose = level->carStart(car->bboxMin().y);
+    camera = level->startCamera();
+    resetCar();
+    chaseYaw = camera.yaw;
     }
   }
 
@@ -111,8 +162,45 @@ void MainWindow::mouseWheelEvent(MouseEvent& e) {
   }
 
 void MainWindow::tick(float dt) {
+  if(vehicle!=nullptr) {
+    rc::Vehicle::Input in;
+    if(!freeCamera) {
+      const bool up    = keys[Event::K_W] || keys[Event::K_Up];
+      const bool down  = keys[Event::K_S] || keys[Event::K_Down];
+      const bool left  = keys[Event::K_A] || keys[Event::K_Left];
+      const bool right = keys[Event::K_D] || keys[Event::K_Right];
+      in.throttle  = (up ? 1.f : 0.f) - (down ? 1.f : 0.f);
+      in.steer     = (left ? 1.f : 0.f) - (right ? 1.f : 0.f);
+      in.handbrake = keys[Event::K_Space];
+      }
+    vehicle->update(in,dt);
+    physics->step(dt);
+    carPose = vehicle->pose();
+
+    // on its roof or side for a while: back on the wheels
+    upsideDown = carPose.vector({0,1,0}).y<0.3f ? upsideDown+dt : 0;
+    if(upsideDown>2.f) {
+      vehicle->recover();
+      upsideDown = 0;
+      }
+    // fell off the world
+    auto& grid = level->scene().collision;
+    if(!grid.empty() && carPose.translation().y<grid.min.y-20.f)
+      resetCar();
+    }
+
   if(!freeCamera) {
-    camera.chase(carPose,ChaseDistance,ChaseHeight);
+    // follow the heading with a lag, ignoring roll and pitch
+    const rc::Vec3 f = carPose.vector({0,0,1});
+    if(std::abs(f.x)+std::abs(f.z)>1e-3f) {
+      const float yaw = std::atan2(f.x,f.z)*180.f/3.14159265f;
+      float d = yaw-chaseYaw;
+      while(d> 180.f) d -= 360.f;
+      while(d<-180.f) d += 360.f;
+      chaseYaw += d*std::min(1.f,dt*5.f);
+      }
+    const rc::Mat4 target = rc::Mat4::translate(carPose.translation())*rc::Mat4::rotate(1,chaseYaw);
+    camera.chase(target,ChaseDistance,ChaseHeight);
     return;
     }
   const float s = speed*dt*((keys[Event::K_LShift] || keys[Event::K_RShift]) ? 4.f : 1.f);
@@ -160,8 +248,10 @@ void MainWindow::render() {
                          {zbuffer,1.f,Tempest::Preserve});
       if(level)
         level->mesh().draw(enc,push);
-      if(car)
-        car->draw(enc,viewProj,push,carPose);
+      if(car) {
+        const auto parts = carPartPoses();
+        car->draw(enc,viewProj,push,carPose,&parts);
+        }
       if(level && showCollision)
         level->collisionView().draw(enc,push);
     }
@@ -171,9 +261,12 @@ void MainWindow::render() {
 
     fpsTime += dt;
     fpsCount++;
-    if(fpsTime>1.f) {
+    if(fpsTime>0.25f) {
       std::string title = "OpenRCCars - "+(level ? level->name() : std::string())+
                           " - "+std::to_string(int(float(fpsCount)/fpsTime))+" fps";
+      if(vehicle)
+        title += " - "+std::to_string(int(std::round(std::abs(vehicle->speed())*3.6f)))+" km/h"+
+                 (upgrade>0 ? " - upgrade "+std::to_string(upgrade) : std::string());
       setWindowTitle(title.c_str());
       fpsTime  = 0;
       fpsCount = 0;

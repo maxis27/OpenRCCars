@@ -36,6 +36,11 @@ CarParams CarParams::load(PackFile& pack, int32_t car, int32_t upgrade) {
     p.accel = Spline::parse(pack.read(*e));
   if(p.accel.empty())
     p.accel = Spline({{0,8.f},{25.f,0}});
+  static const char* const BoostSpline[] = {"OVERKILL","BUGGY","HUMMER"};
+  if(auto e = pack.find(std::string("Splines\\")+BoostSpline[p.car-1]+".bspl"))
+    p.boostAccel = Spline::parse(pack.read(*e));
+  if(p.boostAccel.empty())
+    p.boostAccel = p.accel;
 
   if(auto e = pack.find("Scripts\\upgrades.ini")) {
     auto d  = pack.read(*e);
@@ -86,7 +91,8 @@ CarParams CarParams::load(PackFile& pack, int32_t car, int32_t upgrade) {
   return p;
   }
 
-float CarParams::acceleration(float v) const {
+float CarParams::acceleration(float v, bool boost) const {
   const float kmh = v*3.6f/speedScale;   // RESONATORS stretch the curve to a higher top speed
-  return std::max(accel.at(kmh),0.f)*accelScale;
+  const float a   = boost ? std::max(boostAccel.at(kmh),accel.at(kmh)) : accel.at(kmh);
+  return std::max(a,0.f)*accelScale;
   }

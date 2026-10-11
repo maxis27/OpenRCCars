@@ -6,7 +6,8 @@
 //   env RCSHOT_NOSKY=1 hides the sky dome (useful for top-down views).
 //   env RCSHOT_COLL=1 draws the collision overlay (key K in the game).
 //   env RCSHOT_DRIVE=<seconds> drives the car (physics) with full throttle first, RCSHOT_STEER=<-1..1> steering
-//   (positive = left) for the last half of that time, RCSHOT_JUMP=<seconds> jumps at that moment.
+//   (positive = left) for the last half of that time, RCSHOT_JUMP=<seconds> jumps at that moment,
+//   RCSHOT_BOOST=1 holds the boost.
 
 #include <Tempest/Device>
 #include <Tempest/Fence>
@@ -63,6 +64,7 @@ int main(int argc, const char** argv) {
         for(float t=0; t<time; t+=1.f/60.f) {
           rc::Vehicle::Input in;
           in.throttle = 1;
+          in.boost    = std::getenv("RCSHOT_BOOST")!=nullptr;
           in.steer    = (steer!=nullptr && t>time*0.5f) ? float(std::atof(steer)) : 0.f;
           if(jump!=nullptr && !jumped && t>=float(std::atof(jump)))
             in.jump = jumped = true;

@@ -189,6 +189,7 @@ void Vehicle::reset(const Mat4& start) {
     }
   steer        = 0;
   jumpCooldown = 0;
+  tank         = 1;
   }
 
 void Vehicle::recover() {
@@ -222,11 +223,16 @@ void Vehicle::update(const Input& in, float dt) {
   // pushes against air drag
   const float drag   = prm.airDrag*v*v;
   float accel = 0, brake = 0;
+  const bool boosting = in.boost && in.throttle>0 && tank>0;
+  if(boosting)
+    tank = std::max(tank-dt/prm.boostTime,0.f);
+  else
+    tank = std::min(tank+dt/prm.boostRecharge,1.f);
   if(in.throttle>0) {
     if(v<-0.5f)
       brake = prm.brakeDecel*in.throttle;
     else
-      accel = (prm.acceleration(v)+drag)*in.throttle;
+      accel = (prm.acceleration(v,boosting)+drag)*in.throttle;
     }
   else if(in.throttle<0) {
     if(v>0.5f)

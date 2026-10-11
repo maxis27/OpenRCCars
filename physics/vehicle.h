@@ -68,6 +68,7 @@ class Vehicle {
       float steer     = 0;     // -1 (right) .. 1 (left)
       bool  handbrake = false;
       bool  jump      = false; // pressed this frame; works with at least two wheels on the ground
+      bool  boost     = false; // held: uses the turbo tank
       };
 
     // `start` places the model like CarMesh::draw expects (model -> world, rotation + translation)
@@ -84,6 +85,8 @@ class Vehicle {
     Mat4                       pose()  const;
     // forward speed, m/s (negative when reversing)
     float                      speed() const;
+    // turbo tank, 0..1
+    float                      boostLevel() const { return tank; }
     bool                       onGround() const;
     size_t                     wheelsOnGround() const;
 
@@ -101,6 +104,7 @@ class Vehicle {
     Vec3                                  com;       // centre of mass, model space
     float                                 steer = 0; // smoothed, -1..1
     float                                 jumpCooldown = 0;
+    float                                 tank = 1;
 
     std::unique_ptr<btBoxShape>           box;
     std::unique_ptr<btCompoundShape>      shape;

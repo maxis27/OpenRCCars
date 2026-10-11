@@ -28,7 +28,9 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   zderzający się z tymi samymi trójkątami (ściany, słupy, niewidoczne bariery). Parametry każdego auta z
   `Settings/engine|springs|tires|steering|resistance|cdt<N>.ini`, krzywa przyspieszenia z `Splines/splAccelBase<N>.bspl`,
   ulepszenia (dopalacze, rezonatory, opony) z `Scripts/upgrades.ini`. Koła kręcą się, skręcają i pracują na
-  zawieszeniu; spacja to skok jak w oryginale (akcja `Jump` w `RCCars.exe`, bez parametru w danych, więc wysokość
+  zawieszeniu; klawisze jak w instrukcji oryginału (`Instrukcja.pdf`: spacja skok, Shift dopalacz, B blokada kół);
+  dopalacz jedzie po krzywej `Splines/OVERKILL|BUGGY|HUMMER.bspl` (32/38/30 km/h zamiast 25/30/20), zbiornik turbo
+  ładuje się z czasem (w oryginale na torze; jak dokładnie, jeszcze nie wiemy); skok (akcja `Jump` w `RCCars.exe`, bez parametru w danych, więc wysokość
   ok. 0,3 m jest dobrana na oko); auto przewrócone na dach wraca na koła po 2 s
 - **narzędzia**: `rcinfo` (inspekcja/eksport danych i jazda testowa, bez GPU) i `rcshot` (render offscreen do PNG)
 
@@ -92,7 +94,8 @@ Jazda (kamera za autem):
 | S / ↓ | hamulec, po zatrzymaniu wsteczny |
 | A / ← , D / → | skręt w lewo / w prawo |
 | Spacja | skok |
-| Shift | hamulec ręczny (tylne koła) |
+| Shift | dopalacz (zużywa turbo, ok. 3 s z pełnego zbiornika; procent w tytule okna) |
+| B | zablokuj koła (tylne, do poślizgu) |
 | T | postaw auto na koła w miejscu |
 | R | powrót na start |
 | U | następny poziom ulepszeń (0–3: dopalacze, rezonatory, opony razem) |
@@ -130,6 +133,7 @@ RCSHOT_CAR=Car3 rcshot ...                                      # inne auto (Car
 RCSHOT_COLL=1 rcshot ...                                        # z nakładką kolizji
 RCSHOT_DRIVE=3 RCSHOT_STEER=1 rcshot ...                        # najpierw 3 s jazdy na pełnym gazie, druga połowa ze skrętem
 RCSHOT_DRIVE=2 RCSHOT_JUMP=1.6 rcshot ...                       # skok w 1,6 s, zdjęcie w 2 s
+RCSHOT_DRIVE=3 RCSHOT_BOOST=1 rcshot ...                        # z dopalaczem
 ```
 
 ## Struktura

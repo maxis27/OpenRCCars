@@ -10,7 +10,7 @@ namespace rc {
 
 // Driving parameters of one car (1 = Overkill, 2 = Buggy, 3 = Hummer), from RCCars.pack:
 //   Settings\engine<N>.ini, springs<N>.ini, tires<N>.ini, steering<N>.ini, resistance<N>.ini, cdt<N>.ini,
-//   Splines\splAccelBase<N>.bspl and Scripts\upgrades.ini.
+//   Splines\splAccelBase<N>.bspl, Splines\OVERKILL|BUGGY|HUMMER.bspl (boost) and Scripts\upgrades.ini.
 // The tuning sliders (1..100) have no units in the data. How a slider becomes a physical value is our guess,
 // kept in one place (CarParams::load) so it can be tuned against the original game.
 struct CarParams {
@@ -20,6 +20,9 @@ struct CarParams {
   float   mass        = 1.5f;   // kg
   float   topSpeed    = 7.f;    // m/s, end of the acceleration spline
   Spline  accel;                // m/s^2 over speed in km/h (splAccelBase<N>.bspl)
+  Spline  boostAccel;           // the same while boosting (Shift): OVERKILL/BUGGY/HUMMER.bspl, top 32/38/30 km/h
+  float   boostTime   = 3.f;    // s of boost in a full turbo tank (the manual: units charged on the track)
+  float   boostRecharge = 15.f; // s to refill an empty tank while driving
   float   accelScale  = 1.f;    // BOOSTERS upgrade
   float   speedScale  = 1.f;    // RESONATORS upgrade
   float   reverseSpeed = 0.35f; // fraction of top speed
@@ -48,7 +51,7 @@ struct CarParams {
   static CarParams load(PackFile& pack, int32_t car, int32_t upgrade = 0);
 
   // engine acceleration at forward speed `v` (m/s), upgrades included
-  float   acceleration(float v) const;
+  float   acceleration(float v, bool boost = false) const;
   };
 
 }

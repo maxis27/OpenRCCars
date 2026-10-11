@@ -173,7 +173,8 @@ void MainWindow::tick(float dt) {
       const bool right = keys[Event::K_D] || keys[Event::K_Right];
       in.throttle  = (up ? 1.f : 0.f) - (down ? 1.f : 0.f);
       in.steer     = (left ? 1.f : 0.f) - (right ? 1.f : 0.f);
-      in.handbrake = keys[Event::K_LShift] || keys[Event::K_RShift];
+      in.handbrake = keys[Event::K_B];
+      in.boost     = keys[Event::K_LShift] || keys[Event::K_RShift];
       in.jump      = jumpPressed;
       }
     jumpPressed = false;
@@ -270,6 +271,7 @@ void MainWindow::render() {
                           " - "+std::to_string(int(float(fpsCount)/fpsTime))+" fps";
       if(vehicle)
         title += " - "+std::to_string(int(std::round(std::abs(vehicle->speed())*3.6f)))+" km/h"+
+                 " - turbo "+std::to_string(int(std::round(vehicle->boostLevel()*100.f)))+"%"+
                  (upgrade>0 ? " - upgrade "+std::to_string(upgrade) : std::string());
       setWindowTitle(title.c_str());
       fpsTime  = 0;

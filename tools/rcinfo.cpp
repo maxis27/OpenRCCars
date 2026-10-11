@@ -285,6 +285,8 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   for(auto& w:geom.wheels)
     std::printf("  %-18s hub (%.3f %.3f %.3f) radius %.3f width %.3f\n",w.name.c_str(),
                 w.center.x,w.center.y,w.center.z,w.radius,w.width);
+  std::printf("boost: top %.1f km/h, accel %.1f m/s^2 at 0, %.1f s per tank\n",
+              prm.boostAccel.points().back().x*prm.speedScale,prm.acceleration(0,true),prm.boostTime);
   std::printf("params: top %.1f km/h, accel %.1f m/s^2 at 0, steer %.0f deg, spring %.0f/s^2 damp %.1f/%.1f rest %.3f m,"
               " grip %.2f/%.2f, drag %.4f, rolling %.2f\n",prm.topSpeed*3.6f,prm.acceleration(0),prm.steerAngle,
               prm.suspStiffness,prm.suspDamping,prm.suspCompression,prm.suspRest,prm.gripFront,prm.gripRear,
@@ -384,7 +386,7 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
 
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|check ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|check|drive ...\n");
     return 1;
     }
   try {

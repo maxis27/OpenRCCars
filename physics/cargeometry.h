@@ -26,6 +26,7 @@ struct CarGeometry {
   std::vector<Wheel> wheels;
   Vec3               bodyMin, bodyMax; // bounding box of everything but the wheels
   Vec3               min, max;         // whole car
+  float              roof = 0;         // top of the car without the thin antenna (how deep it sits in water)
   };
 
 CarGeometry carGeometry(const SbScene& sb, std::string_view model);

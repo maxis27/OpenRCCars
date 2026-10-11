@@ -305,9 +305,10 @@ void Vehicle::surfaces(float dt) {
     }
   const float wetNow = n>0 ? wetSum/float(n) : 0.f;
 
-  // body: how much of its height is below the water surface
-  const Vec3  centre = m.point((geom.bodyMin+geom.bodyMax)*0.5f);
-  const float height = std::max(geom.max.y-geom.min.y,0.01f);
+  // body: how much of its height (from the bottom of the wheels to the roof, antenna aside) is below the water surface
+  const float height = std::max(geom.roof-geom.min.y,0.01f);
+  const Vec3  centre = m.point(Vec3{(geom.bodyMin.x+geom.bodyMax.x)*0.5f,geom.min.y+height*0.5f,
+                                    (geom.bodyMin.z+geom.bodyMax.z)*0.5f});
   float subNow = 0;
   if(auto level = track.waterLevel(centre,5.f))
     subNow = std::clamp((*level-(centre.y-height*0.5f))/height,0.f,1.f);

@@ -47,7 +47,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 
 ![Jazda: skręt w lewo (beach_1)](docs/driving_beach_1.jpg)
 
-![Auto wjechało do morza i tonie (beach_1)](docs/water_beach_1.jpg)
+![Auto wjeżdża do morza i tonie: na piasku, na brzegu, pod wodą widać tylko antenę (beach_1)](docs/water_beach_1.jpg)
 
 ![Urban 1](docs/urban_1.jpg)
 

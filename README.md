@@ -29,7 +29,7 @@ Wymagania:
 - Git
 
 ```bat
-git clone --recursive <adres-repo> OpenRCCars
+git clone --recursive https://github.com/maxis27/OpenRCCars.git
 cd OpenRCCars
 :: jeśli sklonowano bez --recursive albo rozpakowano z archiwum:
 git submodule update --init --recursive

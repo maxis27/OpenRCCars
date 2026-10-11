@@ -8,6 +8,7 @@
 //   env RCSHOT_DRIVE=<seconds> drives the car (physics) with full throttle first, RCSHOT_STEER=<-1..1> steering
 //   (positive = left) for the last half of that time, RCSHOT_JUMP=<seconds> jumps at that moment,
 //   RCSHOT_BOOST=1 holds the boost, RCSHOT_START="x z yaw" puts the car somewhere else first.
+//   env RCSHOT_TIME=<seconds> is the moment of the water animation (default: the drive time, else 0).
 
 #include <Tempest/Device>
 #include <Tempest/Fence>
@@ -117,6 +118,10 @@ int main(int argc, const char** argv) {
     push.cameraPos[3] = 250.f;
     push.sunDir[0] = 0.4f; push.sunDir[1] = 0.8f; push.sunDir[2] = 0.3f;
     push.sunDir[3] = 1.0f;
+    if(const char* t = std::getenv("RCSHOT_TIME"))
+      push.time = float(std::atof(t));
+    else if(const char* d = std::getenv("RCSHOT_DRIVE"))
+      push.time = float(std::atof(d));
 
     CommandBuffer cmd;
     {

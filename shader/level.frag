@@ -18,7 +18,8 @@ layout(location = 5) in vec3 inWorld;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-  vec4 color = texture(texBase, inUvBase);
+  vec4 color  = texture(texBase, inUvBase);
+  vec3 normal = normalize(inNormal);
 
   if((push.flags & F_BLEND)!=0u) {
     // ALP1 mask selects between the two terrain textures
@@ -32,10 +33,27 @@ void main() {
     // at its unit), nothing where the ground is above the sea plane
     float depth = inUvMask.x;
     color.a = depth<=0.0 ? 0.0 : mix(26.0/255.0, 1.0, pow(clamp(depth/0.8, 0.0, 1.0), 0.6));
+    // waves (dying out towards the shore) light the surface, white caps on the crests ("colorMin" 175 ..
+    // "colorMax" 255)
+    vec3  w     = waterWaves(inWorld.xz, push.time) * clamp(depth/0.3, 0.0, 1.0);
+    float crest = smoothstep(0.45, 0.95, w.x/0.205);
+    color.rgb = mix(color.rgb, vec3(0.95), crest*0.6);
+    color.a   = max(color.a, crest*0.8*step(0.0, depth));
+    normal    = normalize(vec3(-w.y, 1.0, -w.z));
     }
 
-  if((push.flags & F_MASK)!=0u)
-    color.a = texture(texMask, inUvMask).a;
+  if((push.flags & F_MASK)!=0u) {
+    // the foam washes up and down the beach (waterLOD_coast.ini: "HeightOn" 100, "HeightOff" 68 read as how
+    // much of the strip it covers, "AlphaMin" 36 .. "AlphaMax" 255, "ScrollVel" 11). The mask's V runs from
+    // the top of the strip (0, the wavy edge) down into the sea (1). A wave every 4 s, out of step along the shore.
+    float phase = push.time*6.2831853/4.0 - dot(inWorld.xz, vec2(0.35, 0.21));
+    float s     = 0.5 + 0.5*sin(phase);                // 1 = washed up
+    float shift = (1.0-s)*0.32;
+    vec2  uv    = inUvMask + vec2(0.0, -shift);
+    color.a     = uv.y<0.0 ? 0.0 : texture(texMask, uv).a;
+    color.a    *= mix(36.0/255.0, 1.0, s);
+    color.rgb   = texture(texBase, inUvBase + vec2(0.0, -push.time*0.11*0.1)).rgb;
+    }
 
   if((push.flags & F_CUTOUT)!=0u && color.a<0.5)
     discard;
@@ -44,9 +62,14 @@ void main() {
   if((push.flags & F_LIGHTMAP)!=0u) {
     light = texture(texLight, inUvLight).rgb * push.sunDir.w;
     } else {
-    vec3  n = normalize(inNormal);
-    float d = max(dot(n, normalize(push.sunDir.xyz)), 0.0);
+    float d = max(dot(normal, normalize(push.sunDir.xyz)), 0.0);
     light   = vec3(0.55) + vec3(0.55)*d;
+    }
+  if((push.flags & F_WATER)!=0u) {
+    // sun glitter on the waves
+    vec3  v = normalize(push.cameraPos.xyz - inWorld);
+    vec3  h = normalize(v + normalize(push.sunDir.xyz));
+    light  += vec3(0.6)*pow(max(dot(normal, h), 0.0), 60.0);
     }
   color.rgb *= light;
 

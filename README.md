@@ -144,6 +144,7 @@ RCSHOT_DRIVE=3 RCSHOT_STEER=1 rcshot ...                        # najpierw 3 s j
 RCSHOT_DRIVE=2 RCSHOT_JUMP=1.6 rcshot ...                       # skok w 1,6 s, zdjęcie w 2 s
 RCSHOT_DRIVE=3 RCSHOT_BOOST=1 rcshot ...                        # z dopalaczem
 RCSHOT_START="-8 -41 90" RCSHOT_DRIVE=1.6 rcshot ...            # auto najpierw w punkcie x z, obrócone o yaw (tu: do morza)
+RCSHOT_TIME=2.5 rcshot ...                                       # chwila animacji wody (fale, piana)
 ```
 
 ## Struktura
@@ -216,7 +217,11 @@ lib/Tempest     silnik (submoduł git)
   głębokości nad dnem z kolizji (pełne krycie od 0,8 m; jednostka `distAlphaClampMax` to nasze zgadywanie), bez fal.
   Piana przy brzegu to ściany `coast*` z teksturą `coast_base` i maską `ALP1` `coast` bez `BAS2`: maska to
   przezroczystość piany (falista krawędź). W oryginale piana przesuwa się po plaży (`waterLOD_coast.ini`:
-  `HeightOn/HeightOff`, `ScrollVel`, `AlphaMin` 36), u nas stoi.
+  `HeightOn/HeightOff`, `ScrollVel`, `AlphaMin` 36); u nas co 4 s podchodzi na plażę i cofa się (maska przesuwa się
+  o 32% paska, przezroczystość 36…255), przesunięta w fazie wzdłuż brzegu.
+- Fale: dwie fale kierunkowe wg `WLOD_beach_1_more1.ini` (`angle` 6 i `angle2` 4 w krokach 10°, `amp` 16 i `amp2` 25
+  czytane jako pół centymetra, `length2` 161 cm), liczone na piksel (wierzchołki morza są co kilka metrów), z białymi
+  grzbietami i odblaskiem słońca; tekstura morza płynie (`texSpeedMin/Max`). Długości i prędkości fal dobrane na oko.
 - Brzeg: tafla morza jest płaska (beach_1: 0 m) i kończy się w powietrzu tam, gdzie plaża leży niżej (piasek przy
   brzegu na -0,31 m, tam leży też piana), a na zrzutach z oryginału woda schodzi do poziomu plaży. Oryginał ma do tego
   suwaki `magnetOffset`/`magnetRadius`/`clampY*` w `WLOD_*.ini`, ale ich kod w `RCCars.exe` jest zaszyfrowany

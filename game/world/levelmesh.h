@@ -51,7 +51,8 @@ class LevelMesh {
       float    cameraPos[4];   // xyz, w = fog distance
       float    sunDir[4];      // xyz, w = lightmap scale
       uint32_t flags = 0;
-      uint32_t padding[3] = {};
+      float    time = 0;       // seconds, animates the water and the foam
+      uint32_t padding[2] = {};
       };
 
     struct Stats {

@@ -29,6 +29,67 @@ LayerTag parseTag(const Chunk& c) {
   return LayerTag::Unknown;
   }
 
+SbCollisionGrid loadCollision(const Chunk& coll) {
+  SbCollisionGrid g;
+  const Chunk* counts = nullptr;
+  const Chunk* meshes = nullptr;
+  const Chunk* faces  = nullptr;
+  const Chunk* masks  = nullptr;
+  std::vector<Chunk> ch;
+  for(auto& c:coll.children())
+    ch.push_back(c);
+  for(auto& c:ch) {
+    switch(c.id) {
+      case 0x98:
+        c.check(16);
+        for(int i=0; i<3; ++i)
+          g.dims[i] = c.u32(4+size_t(i)*4);
+        break;
+      case 0x99: g.min = {c.f32(0),c.f32(4),c.f32(8)}; break;
+      case 0x9a: g.max = {c.f32(0),c.f32(4),c.f32(8)}; break;
+      case 0x9d: counts = &c; break;
+      case 0x9c: meshes = &c; break;
+      case 0x9f: faces  = &c; break;
+      case 0x00: masks  = &c; break;
+      }
+    }
+  if(counts==nullptr || meshes==nullptr || faces==nullptr || masks==nullptr)
+    throw FormatError("sb: incomplete COLL");
+
+  const size_t cells = g.cells();
+  counts->check(cells*2);
+  g.cellEntries.resize(cells);
+  std::memcpy(g.cellEntries.data(),counts->data(),cells*2);
+  size_t total = 0;
+  for(auto n:g.cellEntries)
+    total += n;
+
+  std::vector<uint32_t> faceCount;
+  readArray(*faces,faceCount);
+  if(faceCount.size()!=total)
+    throw FormatError("sb: COLL entry count mismatch");
+  meshes->check(total*2);
+
+  const uint32_t blob = masks->u32(0);
+  masks->check(4+size_t(blob));
+  g.masks.assign(masks->data()+4,masks->data()+4+blob);
+
+  g.entries.resize(total);
+  size_t at = 0;
+  for(size_t i=0; i<total; ++i) {
+    auto& e = g.entries[i];
+    uint16_t m;
+    std::memcpy(&m,meshes->data()+i*2,2);
+    e.mesh  = m;
+    e.faces = faceCount[i];
+    e.mask  = at;
+    at += (size_t(e.faces)+7)/8;
+    }
+  if(at!=g.masks.size())
+    throw FormatError("sb: COLL face masks size mismatch");
+  return g;
+  }
+
 class Loader {
   public:
     explicit Loader(SbScene& s):scene(s) {}
@@ -45,6 +106,9 @@ class Loader {
         }
       else if(c.is("INST")) {
         instance(c,parentWorld);
+        }
+      else if(c.is("COLL")) {
+        scene.collision = loadCollision(c);
         }
       else if(c.is("MODL")) {
         const int32_t prev = model;
@@ -63,7 +127,7 @@ class Loader {
           if(ch.type==0x92)
             node(ch,parent,parentWorld);
         }
-      // COLL, HHID, EVOL, SCRI, SPLN, ANIM ... - not needed for rendering yet
+      // HHID, EVOL, SCRI, SPLN, ANIM ... - not needed for rendering yet
       }
 
   private:
@@ -210,6 +274,9 @@ SbScene SbScene::load(const std::vector<uint8_t>& file) {
     if(c.type==0x92 && c.is("DESC"))
       ld.node(c,-1,Mat4::identity());
     }
+  for(auto& e:scene.collision.entries)
+    if(e.mesh>=scene.meshes.size() || scene.meshes[e.mesh].faces.size()!=e.faces)
+      throw FormatError("sb: COLL refers to a missing mesh");
   return scene;
   }
 

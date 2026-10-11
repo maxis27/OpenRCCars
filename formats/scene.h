@@ -76,12 +76,38 @@ struct SbInstance {
   Mat4        world;
   };
 
+// COLL - top level node of track scenes (MOD_COLLISION). The game collides with the render geometry itself:
+// COLL is a uniform grid over the track that lists, for every cell, the faces of SbScene::meshes that touch it.
+//   0x98 u32[3] cell counts (x, y, z), 0x99 vec3 grid min, 0x9a vec3 grid max, 0x9e u32 number of entries,
+//   0x9d u16 per cell: number of entries in the cell, cell index = z + nz*(y + ny*x), entries stored in cell order,
+//   0x9c u16 per entry: mesh index (SbScene::meshes order), 0x9f counted u32 per entry: face count of that mesh,
+//   0x00 (type 0x15) u32 size + per entry a bitmask of the mesh's faces, LSB first, ceil(faces/8) bytes.
+// Verified on all 10 tracks: every referenced face's bounding box overlaps its cell.
+struct SbCollisionGrid {
+  struct Entry {
+    uint32_t mesh  = 0;
+    uint32_t faces = 0;
+    size_t   mask  = 0; // offset of the face bitmask in `masks`
+    };
+  uint32_t              dims[3] = {};
+  Vec3                  min, max;
+  std::vector<uint16_t> cellEntries; // entry count per cell
+  std::vector<Entry>    entries;
+  std::vector<uint8_t>  masks;
+
+  bool     empty() const { return entries.empty(); }
+  size_t   cells() const { return size_t(dims[0])*dims[1]*dims[2]; }
+  size_t   cellIndex(uint32_t x, uint32_t y, uint32_t z) const { return z + size_t(dims[2])*(y + size_t(dims[1])*x); }
+  bool     hasFace(const Entry& e, uint32_t face) const { return face<e.faces && (masks[e.mask+face/8]>>(face%8))&1; }
+  };
+
 struct SbScene {
   std::vector<std::string> models; // MODL names, e.g. a track ("beach_1") or cars in Car.sb ("Car1", "Car2LOD1" ...)
   std::vector<SbTexture>   textures;
   std::vector<SbMesh>      meshes;
   std::vector<SbMarker>    markers;
   std::vector<SbInstance>  instances;
+  SbCollisionGrid          collision; // empty for scenes without COLL (cars, props)
 
   const SbTexture*  texture(int32_t index, int32_t model) const;
   const SbMarker*   marker(std::string_view name) const;

@@ -110,8 +110,8 @@ constexpr float CpArrowShift   = 128.f/256.f;
 constexpr float CpArrowMinDist = 2.37f;
 constexpr float CpArrowMaxDist = 9.f;
 constexpr float CpArrowFrame   = 0.1f;
-constexpr float GateFlash  = 1.2f;                  // the gate just passed flashes green
-constexpr float GateRange  = 150.f;                 // gates farther away are not outlined
+constexpr float GateFlash  = 1.2f;                  // the checkpoint just passed flashes green
+constexpr float GateRange  = 150.f;                 // checkpoints farther away are not outlined
 
 }
 
@@ -276,7 +276,7 @@ void Hud::event(rc::Race::Event e) {
       lapAt     = clock;
       break;
     }
-  // a main checkpoint passed (a lap ends on cp_1): its gate flashes
+  // a main checkpoint passed (a lap ends on cp_1): its sphere flashes
   flashAt = clock;
   }
 
@@ -382,17 +382,19 @@ void Hud::gates(const rc::Race& race, const rc::Mat4& vp) {
       c = {1.f,1.f,1.f,0.45f};
     // skip the far ones (clip w is the distance along the view direction)
     const float w = vp.m[3][0]*p.position.x+vp.m[3][1]*p.position.y+vp.m[3][2]*p.position.z+vp.m[3][3];
-    if(w>GateRange || w<-p.width)
+    if(w>GateRange || w<-rc::Checkpoints::PassRadius)
       continue;
-    const rc::Vec3 side = rc::Vec3{-p.dir.z,0,p.dir.x}*(p.width*0.5f);
-    const float    top  = p.position.y+p.height+0.5f;
-    const rc::Vec3 l0 = {p.position.x-side.x,p.bottom,p.position.z-side.z};
-    const rc::Vec3 r0 = {p.position.x+side.x,p.bottom,p.position.z+side.z};
-    const rc::Vec3 l1 = {l0.x,top,l0.z}, r1 = {r0.x,top,r0.z};
-    line3d(vp,l0,l1,wdt,c);
-    line3d(vp,r0,r1,wdt,c);
-    line3d(vp,l1,r1,wdt,c);
-    line3d(vp,l0,r0,wdt,c);
+    // the sphere the car has to touch, as three circles: flat, along the route and across it
+    const float    r     = rc::Checkpoints::PassRadius;
+    const rc::Vec3 along = p.dir, side = {-p.dir.z,0,p.dir.x}, up = {0,1,0};
+    const rc::Vec3 axes[3][2] = {{along,side},{along,up},{side,up}};
+    constexpr int  Segments = 24;
+    for(auto& ax:axes)
+      for(int k=0; k<Segments; ++k) {
+        const float a0 = float(k)*6.2831853f/Segments, a1 = float(k+1)*6.2831853f/Segments;
+        line3d(vp,p.position+(ax[0]*std::cos(a0)+ax[1]*std::sin(a0))*r,
+                  p.position+(ax[0]*std::cos(a1)+ax[1]*std::sin(a1))*r,wdt,c);
+        }
     }
   }
 

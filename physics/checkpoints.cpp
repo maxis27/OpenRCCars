@@ -51,7 +51,7 @@ Checkpoints::Checkpoints(const SbScene& scene, const CollisionMesh& track) : col
     return;
   points.push_back(points.front());
 
-  // the gates face along the route: from the previous checkpoint towards the next one
+  // the direction along the route through each point: from the previous one towards the next one
   const size_t n = points.size();
   for(size_t i=0; i<n; ++i) {
     const Vec3 prev = points[(i>0) ? i-1 : (n>2 ? n-2 : 0)].position;
@@ -65,25 +65,10 @@ Checkpoints::Checkpoints(const SbScene& scene, const CollisionMesh& track) : col
   distances.resize(n,0.f);
   for(size_t i=1; i<n; ++i)
     distances[i] = distances[i-1]+flat(points[i].position-points[i-1].position).length();
-  // the lower edge: the lowest ground across the gate, under whatever stands on it. The markers are often placed
-  // on top of a prop (beach_3: cp_1_2 and cp_3_1 on a rock a metre high, the road beside it lower) or on a pier
-  // with sand under it (beach_1: cp_2_2), and a car on the road beside the prop or on the sand passes the gate too
   for(auto& p:points) {
-    const Vec3 side = {-p.dir.z,0,p.dir.x};
     p.ground = p.position.y;
     if(auto g = coll.groundHeight(p.position+Vec3{0,0.5f,0},0.5f+MaxDepth))
       p.ground = *g;
-    p.bottom = p.position.y-1.f;
-    for(float s:{-0.5f,-0.25f,0.f,0.25f,0.5f}) {
-      Vec3 from = p.position+side*(s*p.width)+Vec3{0,0.5f,0};
-      for(int layer=0; layer<8; ++layer) {
-        auto g = coll.groundHeight(from,from.y-(p.position.y-MaxDepth));
-        if(!g)
-          break;
-        p.bottom = std::min(p.bottom,*g-0.5f);
-        from.y   = *g-0.05f;
-        }
-      }
     }
   }
 
@@ -111,24 +96,18 @@ void Checkpoints::reset(const Mat4& start) {
   hasLast   = false;
   }
 
-bool Checkpoints::passes(size_t i, const Vec3& from, const Vec3& to) const {
-  const Point& p    = points[i];
-  const Vec3   side = {-p.dir.z,0,p.dir.x};
-  auto inGate = [&](const Vec3& at) {
-    const Vec3 d = at-p.position;
-    return std::abs(Vec3::dot(d,side))<=p.width*0.5f && at.y>=p.bottom && d.y<=p.height+0.5f;
-    };
-  // close enough in front of or behind the gate
-  const float f1 = Vec3::dot(flat(to-p.position),p.dir);
-  if(std::abs(f1)<=p.expand && inGate(to))
+bool Checkpoints::passes(size_t i, const Vec3& from, const Vec3& to, float radius) const {
+  const Vec3 c = points[i].position;
+  if((to-c).length()<=radius)
     return true;
-  // drove through it between two frames; not across a jump back to a checkpoint (R, drowning)
-  const float f0 = Vec3::dot(flat(from-p.position),p.dir);
-  if(f0<0 && f1>=0 && (to-from).length()<5.f) {
-    const float t = f0/(f0-f1);
-    return inGate(from+(to-from)*t);
-    }
-  return false;
+  // or on the way between two frames, at the move's point closest to the marker; not across a jump back to a
+  // checkpoint (R, drowning)
+  const Vec3  d  = to-from;
+  const float dd = Vec3::dot(d,d);
+  if(dd<1e-8f || dd>=25.f)
+    return false;
+  const float t = std::clamp(Vec3::dot(c-from,d)/dd,0.f,1.f);
+  return (from+d*t-c).length()<=radius;
   }
 
 bool Checkpoints::update(const Vec3& car) {
@@ -137,20 +116,19 @@ bool Checkpoints::update(const Vec3& car) {
   hasLast = true;
   if(target>=points.size())
     return false;
-  // the arrow moves on past the sub-checkpoint it shows once the car drives through its gate, crosses its line
-  // beside the gate close by, or just comes near it (round the outside of a hairpin). One at a time and in order:
-  // a later one passed early is a shortcut (country_1 crosses cp_1_5 right behind the start)
+  // the arrow moves on past the sub-checkpoint it shows once the car crosses its line close by, or just comes near
+  // it (round the outside of a hairpin). One at a time and in order: a later one passed early is a shortcut
+  // (country_1 crosses cp_1_5 right behind the start)
   if(way<target) {
     const Point& p  = points[way];
     const float  f0 = Vec3::dot(flat(from-p.position),p.dir), f1 = Vec3::dot(flat(car-p.position),p.dir);
     const float  d  = flat(car-p.position).length();
-    if(passes(way,from,car) || (f0<0 && f1>=0 && d<GuideRadius && (car-from).length()<5.f) ||
+    if((f0<0 && f1>=0 && d<GuideRadius && (car-from).length()<5.f) ||
        d<p.width*0.5f+NearMargin)
       ++way;
     }
-  // a main checkpoint counts only on the way shown: some tracks pass by a later main one early (country_3 runs
-  // the same loop twice, cp_2_2 .. cp_2_6 and again cp_3_1 .. cp_3_5, and cp_3 stands at its entry)
-  if(way<target || !passes(target,from,car))
+  // the next main checkpoint, whatever the arrow shows, as in RCCars.exe
+  if(!passes(target,from,car))
     return false;
   passed   = true;
   lastMain = target;

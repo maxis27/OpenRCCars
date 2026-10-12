@@ -72,9 +72,8 @@ float RouteTracker::update(const Vec3& car, size_t laps) {
 Opponent::Opponent(PhysicsWorld& world, const CarGeometry& g, std::vector<CarProfile> p, const Checkpoints& route,
                    const Spline& band)
   : owner(world), geom(g), profiles(std::move(p)), tracker(route), bandSpline(band) {
-  // the lap's end: where each recording comes back to cp_1 in the second half of its loop, through the gate or
-  // past it close by as the player's laps count (Checkpoints::passes; on beach_2 the drivers turn round just
-  // before its line)
+  // the lap's end: where each recording comes back to cp_1 in the second half of its loop, within the computer's
+  // radius of it as in RCCars.exe (Checkpoints::passes)
   for(auto& r:profiles) {
     float line = r.duration();
     if(!route.empty()) {
@@ -82,7 +81,7 @@ Opponent::Opponent(PhysicsWorld& world, const CarGeometry& g, std::vector<CarPro
       const float  half = r.cycleStart()+(r.duration()-r.cycleStart())*0.5f;
       const auto&  fr   = r.frames();
       for(size_t i=1; i<fr.size(); ++i)
-        if(fr[i].time>=half && route.passes(end,fr[i-1].position,fr[i].position)) {
+        if(fr[i].time>=half && route.passes(end,fr[i-1].position,fr[i].position,Checkpoints::AiPassRadius)) {
           line = fr[i].time;
           break;
           }

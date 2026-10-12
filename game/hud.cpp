@@ -89,6 +89,8 @@ Hud::Hud(Device& device, Resources& res) : device(device) {
   st.setBlendSource(RenderState::BlendMode::SrcAlpha);
   st.setBlendDest  (RenderState::BlendMode::OneMinusSrcAlpha);
   pso = device.pipeline(Topology::Triangles,st,vert,frag);
+  st.setZTestMode(RenderState::ZTestMode::LEqual);
+  psoDepth = device.pipeline(Topology::Triangles,st,vert,frag);
   }
 
 Hud::Image Hud::loadImage(Resources& res, std::string_view file, std::vector<uint8_t>* rgba) {
@@ -211,16 +213,16 @@ void Hud::quad(const Texture2d& tex, int tw, int th, const Rect& src, float x, f
     };
   const float hw = w*0.5f, hh = h*0.5f;
   const Vertex a = vert(-hw,-hh,u0,v0), b = vert(hw,-hh,u1,v0), d = vert(hw,hh,u1,v1), e = vert(-hw,hh,u0,v1);
-  if(draws.empty() || draws.back().tex!=&tex)
-    draws.push_back({&tex,verts.size(),0});
+  if(draws.empty() || draws.back().tex!=&tex || draws.back().depth)
+    draws.push_back({&tex,verts.size(),0,false});
   for(auto& v:{a,b,d,a,d,e})
     verts.push_back(v);
   draws.back().count += 6;
   }
 
 void Hud::poly(const Texture2d& tex, const std::array<std::array<float,2>,4>& p, const Color& c) {
-  if(draws.empty() || draws.back().tex!=&tex)
-    draws.push_back({&tex,verts.size(),0});
+  if(draws.empty() || draws.back().tex!=&tex || draws.back().depth)
+    draws.push_back({&tex,verts.size(),0,false});
   for(int i:{0,1,2,0,2,3})
     verts.push_back(Vertex{{p[i][0],p[i][1]},{0.5f,0.5f},{c[0],c[1],c[2],c[3]}});
   draws.back().count += 6;
@@ -317,24 +319,45 @@ void Hud::checkpointArrow(const rc::Race& race, const rc::Mat4& vp) {
     return;
   const auto&    p  = route[next];
   const rc::Vec3 at = {p.position.x,std::max(p.position.y,p.bottom+0.5f)+CpArrowShift,p.position.z};
+  float depth = 0;
   auto project = [&](const rc::Vec3& v, float& sx, float& sy) {
     const float w = vp.m[3][0]*v.x+vp.m[3][1]*v.y+vp.m[3][2]*v.z+vp.m[3][3];
     const rc::Vec3 c = vp.point(v);
-    sx = (c.x/w*0.5f+0.5f)*float(scrW);
-    sy = (c.y/w*0.5f+0.5f)*float(scrH);
+    sx    = (c.x/w*0.5f+0.5f)*float(scrW);
+    sy    = (c.y/w*0.5f+0.5f)*float(scrH);
+    depth = c.z/w;
     return w;
     };
   float x, y, x0, y0, x1, y1;
   const float dist = project(at,x,y);
   if(dist<CpArrowMinDist)
     return;
+  // a flat picture facing the camera at the arrow's distance, brought half a metre nearer so that the ground right
+  // under it does not cut off its shadow: terrain and objects in front of it hide it. The 4th row of the matrix is
+  // the camera's forward direction.
+  const rc::Vec3 fwd = {vp.m[3][0],vp.m[3][1],vp.m[3][2]};
+  float sx, sy;
+  project(at-fwd*0.5f,sx,sy);
+  const float z = depth;
   // the size on the screen: the arrow's height projected, kept from growing smaller beyond MaxDist
   const float size = CpArrowSize*std::max(1.f,dist/CpArrowMaxDist);
   project(at+rc::Vec3{0,size*0.5f,0},x0,y0);
   project(at-rc::Vec3{0,size*0.5f,0},x1,y1);
   const float h     = std::abs(y1-y0);
   const float alpha = std::min(1.f,dist-CpArrowMinDist);   // fades in over the first metre
-  quad(*tex,256,256,{0,0,256,256},x-h*0.5f,y-h*0.5f,h,h,Color{1,1,1,alpha});
+  quadAt(*tex,x-h*0.5f,y-h*0.5f,h,h,z,Color{1,1,1,alpha});
+  }
+
+void Hud::quadAt(const Texture2d& tex, float x, float y, float w, float h, float depth, const Color& c) {
+  if(draws.empty() || draws.back().tex!=&tex || !draws.back().depth)
+    draws.push_back({&tex,verts.size(),0,true});
+  const Vertex a = {{x,  y  },{0,0},{c[0],c[1],c[2],c[3]},depth};
+  const Vertex b = {{x+w,y  },{1,0},{c[0],c[1],c[2],c[3]},depth};
+  const Vertex d = {{x+w,y+h},{1,1},{c[0],c[1],c[2],c[3]},depth};
+  const Vertex e = {{x,  y+h},{0,1},{c[0],c[1],c[2],c[3]},depth};
+  for(auto& v:{a,b,d,a,d,e})
+    verts.push_back(v);
+  draws.back().count += 6;
   }
 
 void Hud::sprite(const Image& img, const Rect& src, float cx, float cy, float size, const Color& c) {
@@ -497,9 +520,9 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
   struct Push {
     float screen[2];
     } push = {{float(w),float(h)}};
-  enc.setPipeline(pso);
-  enc.setPushData(push);
   for(auto& d:draws) {
+    enc.setPipeline(d.depth ? psoDepth : pso);
+    enc.setPushData(push);
     enc.setBinding(0,*d.tex,Sampler::bilinear(ClampMode::ClampToEdge));
     enc.draw(vbo[frame%2],d.first,d.count);
     }

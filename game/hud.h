@@ -55,6 +55,7 @@ class Hud {
       float pos[2];
       float uv[2];
       float color[4];
+      float depth = 0;  // used by the depth-tested pipeline only
       };
     struct Image {
       Tempest::Texture2d tex;
@@ -77,6 +78,7 @@ class Hud {
     struct Draw {
       const Tempest::Texture2d* tex = nullptr;
       size_t                    first = 0, count = 0;
+      bool                      depth = false;  // hidden behind the scene (sprites in the 3D view)
       };
     enum class Message { None, Go, BestLap, Finish };
     using Color = std::array<float,4>;
@@ -96,12 +98,15 @@ class Hud {
     void   checkpointArrow(const rc::Race& race, const rc::Mat4& viewProj);
     void   quad(const Tempest::Texture2d& tex, int tw, int th, const Rect& src, float x, float y, float w, float h,
                 const Color& c, float angle = 0, float squash = 1);
+    // a sprite standing in the 3D view at the given depth (0..1), hidden where the scene is nearer
+    void   quadAt(const Tempest::Texture2d& tex, float x, float y, float w, float h, float depth, const Color& c);
     void   sprite(const Image& img, const Rect& src, float cx, float cy, float size, const Color& c);
     float  text(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align = -1);
     float  textWidth(const Font& f, std::string_view s, float size) const;
 
     Tempest::Device&                 device;
     Tempest::RenderPipeline          pso;
+    Tempest::RenderPipeline          psoDepth;  // the same, tested against the scene's depth
     std::string                      lang;
     Image                            msg321, msgGo, msgBest, msgWrong, msgPause, lapLabel;
     const Tempest::Texture2d*        arrow = nullptr; // coc_str_2, 128x128

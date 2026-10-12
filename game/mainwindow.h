@@ -15,8 +15,9 @@
 #include "physics/checkpoints.h"
 #include "physics/vehicle.h"
 #include "resources.h"
-#include "world/carmesh.h"
+#include "world/modelmesh.h"
 #include "world/level.h"
+#include "world/objects.h"
 
 class MainWindow : public Tempest::Window {
   public:
@@ -49,12 +50,14 @@ class MainWindow : public Tempest::Window {
 
     std::unique_ptr<Level>  level;
     rc::SbScene             carScene;       // RCCarsDB/Car.sb, all cars
-    std::unique_ptr<CarMesh> car;
+    rc::ObjectLibrary       library;        // stone.sb ...: models of the objects placed on tracks
+    std::unique_ptr<ModelMesh> car;
     size_t                  carId    = 0;   // 0..2: Car1..Car3
     int32_t                 upgrade  = 0;   // 0..3, Scripts/upgrades.ini column
     rc::Mat4                carPose;
     // declared after `level`: the physics world refers to the level's collision mesh
     std::unique_ptr<rc::PhysicsWorld> physics;
+    std::unique_ptr<Objects>          objects; // props: bodies in `physics`
     std::unique_ptr<rc::Vehicle>      vehicle;
     std::unique_ptr<rc::Checkpoints>  checkpoints;
     bool                    jumpPressed = false;

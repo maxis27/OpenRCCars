@@ -24,7 +24,8 @@ struct btDefaultMotionState;
 namespace rc {
 
 // Bullet world of one track. The track is a static triangle mesh made of the COLL triangles (what the car
-// body hits); wheels do not use it: they are rays cast through the COLL grid (CollisionMesh::raycast).
+// body hits); wheels do not use it: they are rays cast through the COLL grid (CollisionMesh::raycast) and
+// against the props (Prop) standing on the track.
 //
 // Bullet is tuned for objects of about a metre and the cars are ~0.4 m long, so the simulation runs
 // Scale times larger than the data, with gravity scaled the same way: motion looks identical, only the
@@ -40,6 +41,16 @@ class PhysicsWorld {
 
     // advances the simulation in fixed steps of FixedDt (at most 8 per call)
     void                     step(float dt);
+
+    // btCollisionObject::getUserIndex() of props (Prop), the only bodies suspension rays hit besides the track
+    static constexpr int     PropTag = 1;
+    struct PropHit {
+      btRigidBody* body = nullptr;
+      Vec3         point, normal;
+      float        fraction = 1;   // along the segment, 0..1
+      };
+    // nearest prop on the segment from `from` to `to`
+    PropHit                  rayProps(const Vec3& from, const Vec3& to);
 
     const CollisionMesh&     track() const { return coll; }
     btDiscreteDynamicsWorld& bullet()      { return *world; }
@@ -73,7 +84,7 @@ class Vehicle {
       bool  boost     = false; // held: uses the turbo tank
       };
 
-    // `start` places the model like CarMesh::draw expects (model -> world, rotation + translation)
+    // `start` places the model like ModelMesh::draw expects (model -> world, rotation + translation)
     Vehicle(PhysicsWorld& world, const CarGeometry& geometry, const CarParams& params, const Mat4& start);
     ~Vehicle();
 

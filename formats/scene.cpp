@@ -2,6 +2,7 @@
 
 #include "chunk.h"
 
+#include <algorithm>
 #include <cstring>
 
 using namespace rc;
@@ -107,6 +108,9 @@ class Loader {
       else if(c.is("INST")) {
         instance(c,parentWorld);
         }
+      else if(c.is("SCRI")) {
+        script(c);
+        }
       else if(c.is("EVOL")) {
         volume(c);
         }
@@ -130,7 +134,7 @@ class Loader {
           if(ch.type==0x92)
             node(ch,parent,parentWorld);
         }
-      // HHID, SCRI, SPLN, ANIM ... - not needed for rendering yet
+      // HHID, SPLN, ANIM ... - not needed for rendering yet
       }
 
   private:
@@ -263,8 +267,27 @@ class Loader {
       for(auto& ch:c.children()) {
         if(ch.id==0x03 && ch.type!=0x92) in.name  = std::string(ch.str());
         if(ch.id==0x0b)                  in.world = parentWorld*readTransform(ch);
+        if(ch.id==0x0a && ch.size()>=4)  in.kind   = ch.u32();
+        if(ch.id==0x72)                  in.model  = std::string(ch.str());
+        if(ch.id==0x74)                  in.source = std::string(ch.str());
         }
       scene.instances.push_back(std::move(in));
+      }
+
+    void script(const Chunk& c) {
+      SbScript s;
+      s.model = model;
+      for(auto& ch:c.children()) {
+        if(ch.id==0x03 && ch.type!=0x92) s.name = std::string(ch.str());
+        // u32 length, then the text
+        if(ch.id==0x7e && ch.size()>=4) {
+          const size_t n = std::min<size_t>(ch.u32(),ch.size()-4);
+          s.text.assign(reinterpret_cast<const char*>(ch.data()+4),n);
+          while(!s.text.empty() && s.text.back()=='\0')
+            s.text.pop_back();
+          }
+        }
+      scene.scripts.push_back(std::move(s));
       }
 
     SbScene& scene;
@@ -332,6 +355,13 @@ const SbInstance* SbScene::instance(std::string_view name) const {
   for(auto& i:instances)
     if(i.name==name)
       return &i;
+  return nullptr;
+  }
+
+const SbScript* SbScene::script(int32_t model, std::string_view name) const {
+  for(auto& s:scripts)
+    if(s.model==model && (name.empty() || s.name==name))
+      return &s;
   return nullptr;
   }
 

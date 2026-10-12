@@ -57,7 +57,7 @@ CarGeometry rc::carGeometry(const SbScene& sb, std::string_view model) {
     Box& box = part->empty() ? body : wheels[*part];
     const bool antenna = startsWith(m.name,"ANTENNA");
     for(auto& f:m.faces) {
-      // only faces that are drawn (have a texture), like CarMesh
+      // only faces that are drawn (have a texture), like ModelMesh
       if(f.pos.size()<3 || f.layer(LayerTag::Base)==nullptr)
         continue;
       for(auto pi:f.pos) {

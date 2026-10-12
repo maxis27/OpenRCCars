@@ -52,7 +52,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   i miga na czerwono, gdy jedziesz w złą stronę. Nad następnym głównym punktem wisi animowana strzałka z gry
   (`cp_ar_2_f1..3` zielona, a nad `cp_1`, gdzie kończy się okrążenie, czerwona `cp_ar_3_*`), z rozmiarem i odległościami
   z `Settings/anim_cp.ini`. Na dole zegary z gry (`cockpit_sp1`/`cockpit_sp2`/`cockpit_sp4`): dopalacz po lewej,
-  prędkość po prawej (pełny przy 38 km/h); pod numerem okrążenia mapa trasy (`trackmap_<n>`) wokół auta w ramce
+  prędkość po prawej (pełny przy 50 km/h); pod numerem okrążenia mapa trasy (`trackmap_<n>`) wokół auta w ramce
   `messagebox`, z punktami głównymi (`map_cp`, następny świeci) i autem (`map_arrow`); strzałka kierunku zielona
   w nawiasach z `overtaking.csi`; w lewym górnym rogu miejsce (`place1..6`), gdy będą przeciwnicy. Spoza
   oryginału: pod mapą „Punkt n/m” (główne punkty zaliczone w tym okrążeniu), zielony „Punkt n/m” na

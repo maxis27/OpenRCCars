@@ -49,9 +49,9 @@ constexpr float GaugeCX     = 130, GaugeCY     = 126.6f, GaugeR = 87;
 constexpr float GaugeGreyAt = 184;                  // cockpit_sp2's grey tube (from 140) turned onto the scale
 constexpr float GaugeSize   = 240;
 constexpr float GaugeX      = 10.f-36.f*GaugeSize/256.f, GaugeY = 590.f-219.f*GaugeSize/256.f;
-// a full speed gauge: the stock Buggy's top speed with turbo (the fastest car); the original's Overkill reaches 0.85
-// of its gauge, close to its 32 km/h of 38
-constexpr float GaugeKmh    = 38;
+// a full speed gauge, km/h: in the screenshot the fully upgraded Overkill (turbo tank 82, 42.7 km/h with turbo)
+// reaches 0.85 of it
+constexpr float GaugeKmh    = 50;
 // cockpit_sp4: the cap (where the car's range ends) and the clamp (on the value), texels; drawn at 0.38 of the
 // dial's scale with their x across the tube
 const float GaugeCap[4]   = { 29,69, 75, 95};

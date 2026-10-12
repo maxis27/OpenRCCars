@@ -41,22 +41,23 @@ constexpr float PlaceX     = 25,   PlaceY    = -20; // "placePosX/Y": place<n>.c
 // (130, 126.6 of 256, radius 87). As in the original (Mateusz's screenshot): the tube fills from its lower end (127,
 // zero) towards the upper one (-34, full) in red; above the value it stays yellow up to what the car can reach (its
 // turbo tank, its top speed), with the dark cap of cockpit_sp4 there, and grey beyond it. The silver clamp of
-// cockpit_sp4 sits on the value. The size and the place in the corner are measured from the original's picture of
-// its cockpit (opt_cock_all) and a screenshot: 256 texels are 240 units, the dial's edge 10 units from the side and
-// the bottom.
+// cockpit_sp4 sits on the value. The size and the place are measured from a screenshot of the original at 800x600:
+// the dial's brown plate is 107 units across with its middle at (94, 497), the number 30 units high.
 constexpr float GaugeAngMin = -34, GaugeAngMax = 127;
 constexpr float GaugeCX     = 130, GaugeCY     = 126.6f, GaugeR = 87;
 constexpr float GaugeGreyAt = 184;                  // cockpit_sp2's grey tube (from 140) turned onto the scale
-constexpr float GaugeSize   = 240;
-constexpr float GaugeX      = 10.f-36.f*GaugeSize/256.f, GaugeY = 590.f-219.f*GaugeSize/256.f;
+constexpr float GaugeSize   = 245;
+constexpr float GaugeMidX   = 94,  GaugeMidY = 497;  // the dial's middle, from the left (right) and the top
+constexpr float GaugeX      = GaugeMidX-GaugeCX*GaugeSize/256.f, GaugeY = GaugeMidY-GaugeCY*GaugeSize/256.f;
 // a full speed gauge, km/h: in the screenshot the fully upgraded Overkill (turbo tank 82, 42.7 km/h with turbo)
 // reaches 0.85 of it
 constexpr float GaugeKmh    = 50;
-// cockpit_sp4: the cap (where the car's range ends) and the clamp (on the value), texels; drawn at 0.38 of the
-// dial's scale with their x across the tube
+// cockpit_sp4: the cap (where the car's range ends) and the clamp (on the value), texels, and their size on the
+// dial (texels of cockpit_sp1) along and across the tube, as in the screenshot: the picture's x goes along the tube
 const float GaugeCap[4]   = { 29,69, 75, 95};
 const float GaugeClamp[4] = {149,55,227,111};
-constexpr float GaugePiece  = 0.38f;
+constexpr float GaugeCapSize[2]   = { 5,19};
+constexpr float GaugeClampSize[2] = {10,27};
 // Settings/cockpit.ini "overtakingLeftPosX/Y" (400, 530) and "overtakingBRectOffsetX" -57: overtaking.csi's bracket
 // (x 50..86, y 14..116 of 128) on both sides of the direction arrow; its red mark (x 14..27) shows a car behind
 const float Bracket[4]    = { 50,14, 86,116};
@@ -280,7 +281,7 @@ std::string Hud::formatTime(float seconds) {
   }
 
 void Hud::quad(const Texture2d& tex, int tw, int th, const Rect& src, float x, float y, float w, float h,
-               const Color& c, float angle, float squash) {
+               const Color& c, float angle, float squash, const Color* bottom) {
   const float u0 = src.x0/float(tw), u1 = src.x1/float(tw);
   const float v0 = src.y0/float(th), v1 = src.y1/float(th);
   const float cx = x+w*0.5f, cy = y+h*0.5f;
@@ -289,7 +290,8 @@ void Hud::quad(const Texture2d& tex, int tw, int th, const Rect& src, float x, f
     // turn on the screen (positive = counter-clockwise), then flatten vertically (lying on the ground)
     const float rx =  dx*cs + dy*sn;
     const float ry = -dx*sn + dy*cs;
-    Vertex vx = {{cx+rx, cy+ry*squash},{u,v},{c[0],c[1],c[2],c[3]}};
+    const Color& col = (bottom!=nullptr && dy>0) ? *bottom : c;
+    Vertex vx = {{cx+rx, cy+ry*squash},{u,v},{col[0],col[1],col[2],col[3]}};
     return vx;
     };
   const float hw = w*0.5f, hh = h*0.5f;
@@ -466,14 +468,14 @@ void Hud::gauge(bool right, float value, float reach, const std::string& number,
       draws.back().count += 6;
       }
     };
-  // a piece of cockpit_sp4 across the tube at angle `a`
-  auto piece = [&](const float* r, float a) {
+  // a piece of cockpit_sp4 on the tube at angle `a`
+  auto piece = [&](const float* r, const float* size, float a) {
     if(gaugePieces==nullptr)
       return;
     const auto  c  = at(GaugeCX+GaugeR*std::sin(a*Deg),GaugeCY-GaugeR*std::cos(a*Deg));
-    const float w  = (r[2]-r[0])*GaugePiece*k, h = (r[3]-r[1])*GaugePiece*k;
-    // the picture's x along the radius
-    const float turn = right ? 3.14159265f*0.5f+a*Deg : 3.14159265f*0.5f-a*Deg;
+    const float w  = size[0]*k, h = size[1]*k;
+    // the picture's x along the tube: level at the top, turned with the angle
+    const float turn = right ? a*Deg : -a*Deg;
     quad(*gaugePieces,256,256,{r[0],r[1],r[2],r[3]},c[0]-w*0.5f,c[1]-h*0.5f,w,h,white4,turn);
     };
 
@@ -490,14 +492,14 @@ void Hud::gauge(bool right, float value, float reach, const std::string& number,
   if(reach<1.f)
     tube(*gaugeFill,GaugeAngMin-10.f,reachAt,GaugeGreyAt);
   if(reach<1.f)
-    piece(GaugeCap,reachAt);
-  piece(GaugeClamp,valueAt);
+    piece(GaugeCap,GaugeCapSize,reachAt);
+  piece(GaugeClamp,GaugeClampSize,valueAt);
 
   // the number over a line, the unit under it, in the dial's middle
   const auto c = at(GaugeCX,GaugeCY);
-  shadowText(font,number,c[0],c[1]-44.f*scale,46,white4,0);
-  quad(*white,1,1,{0,0,1,1},c[0]-36.f*scale,c[1]+2.f*scale,72.f*scale,2.f*scale,Color{1,1,1,0.9f});
-  shadowText(font,label,c[0],c[1]+8.f*scale,27,white4,0);
+  metalText(font,number,c[0],c[1]-44.f*scale,53,0);
+  quad(*white,1,1,{0,0,1,1},c[0]-46.f*scale,c[1]+1.f*scale,92.f*scale,2.5f*scale,Color{1,1,1,0.9f});
+  shadowText(font,label,c[0],c[1]+8.f*scale,29,white4,0);
   }
 
 void Hud::trackMap(const rc::Race& race, const Info& info) {
@@ -567,6 +569,16 @@ void Hud::trackMap(const rc::Race& race, const Info& info) {
     }
   }
 
+void Hud::metalText(const Font& f, std::string_view s, float x, float y, float size, int align) {
+  // the original's numbers: white fading to grey downwards, outlined dark
+  const float d = std::max(1.f,size*0.035f*scale);
+  const Color dark = {0.08f,0.06f,0.05f,0.9f};
+  for(auto [ox,oy]:{std::pair{-d,0.f},{d,0.f},{0.f,-d},{0.f,d},{d,d}})
+    text(f,s,x+ox,y+oy,size,dark,align);
+  const Color top = {1,1,1,1}, bottom = {0.55f,0.55f,0.58f,1};
+  text(f,s,x,y,size,top,align,&bottom);
+  }
+
 void Hud::shadowText(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align) {
   const float d = std::max(1.f,size*0.06f*scale);
   text(f,s,x+d,y+d,size,Color{0,0,0,0.75f*c[3]},align);
@@ -605,7 +617,8 @@ float Hud::textWidth(const Font& f, std::string_view s, float size) const {
   return w;
   }
 
-float Hud::text(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align) {
+float Hud::text(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align,
+               const Color* bottom) {
   if(!f.img.loaded)
     return x;
   const float k = size*scale/f.cell;
@@ -618,7 +631,7 @@ float Hud::text(const Font& f, std::string_view s, float x, float y, float size,
       continue;
     const Glyph& g = f.glyphs[cc];
     if(g.v1>g.v0)
-      quad(f.img.tex,f.img.w,f.img.h,{g.u0,g.v0,g.u1,g.v1},x,y,(g.u1-g.u0)*k,(g.v1-g.v0)*k,c);
+      quad(f.img.tex,f.img.w,f.img.h,{g.u0,g.v0,g.u1,g.v1},x,y,(g.u1-g.u0)*k,(g.v1-g.v0)*k,c,0,1,bottom);
     x += (g.u1-g.u0+2.f)*k;
     }
   return x;

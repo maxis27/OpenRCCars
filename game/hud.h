@@ -112,13 +112,17 @@ class Hud {
     void   trackMap(const rc::Race& race, const Info& info);
     void   checkpointArrow(const rc::Race& race, const rc::Mat4& viewProj);
     void   quad(const Tempest::Texture2d& tex, int tw, int th, const Rect& src, float x, float y, float w, float h,
-                const Color& c, float angle = 0, float squash = 1);
+                const Color& c, float angle = 0, float squash = 1, const Color* bottom = nullptr);
     // a sprite standing in the 3D view at the given depth (0..1), hidden where the scene is nearer
     void   quadAt(const Tempest::Texture2d& tex, float x, float y, float w, float h, float depth, const Color& c);
     void   sprite(const Image& img, const Rect& src, float cx, float cy, float size, const Color& c);
-    float  text(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align = -1);
+    // `bottom`: the colour at the bottom of the letters, fading from `c` at their top
+    float  text(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align = -1,
+                const Color* bottom = nullptr);
     float  textWidth(const Font& f, std::string_view s, float size) const;
-    // text with a dark shadow under it, as the original's numbers
+    // the gauges' numbers: white to grey, outlined
+    void   metalText(const Font& f, std::string_view s, float x, float y, float size, int align);
+    // text with a dark shadow under it
     void   shadowText(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align = -1);
 
     Tempest::Device&                 device;

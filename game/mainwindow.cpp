@@ -309,6 +309,10 @@ void MainWindow::tick(float dt) {
       }
     jumpPressed = false;
     vehicle->update(in,dt);
+    if(const auto hit = vehicle->hit(); hit!=rc::Vehicle::Hit::None) {
+      hud->hit(hit==rc::Vehicle::Hit::Great);
+      Log::i(hit==rc::Vehicle::Hit::Great ? "great hit" : "hit"," at ",Hud::formatTime(race->time()));
+      }
     if(opponents)
       opponents->update(dt,!race->holdCar(),carPose.translation(),checkpoints->laps(),playerFinish>=0,race->time(),
                         race->laps());

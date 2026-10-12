@@ -16,7 +16,7 @@ using namespace rc::bt;
 // (a wheel rolls over a can, a bucket ...), which then feel the wheel's friction.
 class Vehicle::Raycaster : public btVehicleRaycaster {
   public:
-    explicit Raycaster(PhysicsWorld& w) : world(w) {}
+    Raycaster(PhysicsWorld& w, bool& onProp) : world(w), onProp(onProp) {}
 
     void* castRay(const btVector3& from, const btVector3& to, btVehicleRaycasterResult& result) override {
       const Vec3 f = fromBt(from)*(1.f/S);
@@ -27,6 +27,7 @@ class Vehicle::Raycaster : public btVehicleRaycaster {
         result.m_hitPointInWorld  = toBt(prop.point)*S;
         result.m_hitNormalInWorld = toBt(prop.normal);
         result.m_distFraction     = prop.fraction;
+        onProp = true;
         return prop.body;
         }
       if(!hit)
@@ -39,6 +40,7 @@ class Vehicle::Raycaster : public btVehicleRaycaster {
 
   private:
     PhysicsWorld& world;
+    bool&         onProp;
   };
 
 PhysicsWorld::PhysicsWorld(const CollisionMesh& track) : coll(track) {
@@ -152,7 +154,7 @@ Vehicle::Vehicle(PhysicsWorld& w, const CarGeometry& g, const CarParams& p, cons
   body->setCcdSweptSphereRadius(std::min({half.x,half.y,half.z})*S*0.8f);
   owner.bullet().addRigidBody(body.get());
 
-  raycaster = std::make_unique<Raycaster>(owner);
+  raycaster = std::make_unique<Raycaster>(owner,wheelProp);
   btRaycastVehicle::btVehicleTuning tuning;
   vehicle = std::make_unique<btRaycastVehicle>(tuning,body.get(),raycaster.get());
   vehicle->setCoordinateSystem(0,1,2);
@@ -204,6 +206,11 @@ void Vehicle::reset(const Mat4& start) {
   sub          = 0;
   wet          = 0;
   underWater   = 0;
+  lastHit      = Hit::None;
+  wheelProp    = false;
+  sinceProp    = 1e3f;
+  sinceCar     = 1e3f;
+  shakeLeft    = 0;
   }
 
 void Vehicle::recover() {
@@ -333,6 +340,83 @@ void Vehicle::update(const Input& in, float dt) {
     body->applyCentralForce(-lv.normalized()*(prm.mass*S*resist*std::min(ls/0.1f,1.f)));
 
   surfaces(dt);
+  hits(dt);
+  }
+
+// RCCars.exe gives the player's car a hit, shown as "Łup!" or "Wielkie Łup!" (msg_hits.csi) for a second and worth
+// HitBoost turbo units, when it
+//  - touches a prop of stone.sb faster than PropHitSpeed, at most every PropHitPause s (0x533ee0);
+//  - touches another car, both at least CarHitPause s after their last car contact (0x533990): for CarShakeTime s
+//    the game sums the car's rotation in its own axes, and from the average angular velocity over the window
+//    (x: pitch, z: roll) decides a great hit (x > 3, z > 5 or all > 7 rad/s) or a hit (0.8, 1, 2) (0x4f6460);
+//  - (not here yet: no characters on the tracks) hits people, a guard faster than 10 km/h or a dog faster than
+//    15 km/h: a great hit, at most every 2 s.
+// Road traffic, crabs, spiders and gulls give nothing.
+namespace {
+constexpr float HitBoost      = 5.f;
+constexpr float PropHitSpeed  = 1.944445f; // m/s, 7 km/h
+constexpr float PropHitPause  = 0.3f;
+constexpr float CarHitPause   = 2.f;
+constexpr float CarShakeTime  = 0.5f;
+}
+
+void Vehicle::hits(float dt) {
+  lastHit    = Hit::None;
+  sinceProp += dt;
+  sinceCar  += dt;
+
+  // what the body touches after the last steps (a wheel touches props through its ray)
+  bool prop = wheelProp, car = false;
+  wheelProp = false;
+  auto& disp = *owner.bullet().getDispatcher();
+  for(int i=0; i<disp.getNumManifolds(); ++i) {
+    const btPersistentManifold* m = disp.getManifoldByIndexInternal(i);
+    const btCollisionObject*    other = nullptr;
+    if(m->getBody0()==body.get())
+      other = m->getBody1();
+    else if(m->getBody1()==body.get())
+      other = m->getBody0();
+    if(other==nullptr)
+      continue;
+    bool touching = false;
+    for(int c=0; c<m->getNumContacts() && !touching; ++c)
+      touching = m->getContactPoint(c).getDistance()<=0;
+    if(!touching)
+      continue;
+    prop |= other->getUserIndex()==PhysicsWorld::PropTag;
+    car  |= other->getUserIndex()==PhysicsWorld::CarTag;
+    }
+
+  Hit h = Hit::None;
+  if(prop && sinceProp>PropHitPause && float(body->getLinearVelocity().length())/S>PropHitSpeed) {
+    h         = Hit::Hit;
+    sinceProp = 0;
+    addBoost(HitBoost);
+    }
+
+  if(car && sinceCar>CarHitPause) {
+    sinceCar  = 0;
+    shakeLeft = CarShakeTime;
+    shake     = Vec3{};
+    }
+  if(shakeLeft>0) {
+    // angular velocity in the car's own axes (rad/s, not affected by Scale)
+    const btVector3 w = body->getWorldTransform().getBasis().transpose()*body->getAngularVelocity();
+    const float     t = std::min(dt,shakeLeft);
+    shake     += fromBt(w)*t;
+    shakeLeft -= dt;
+    if(shakeLeft<=0) {
+      const Vec3  a  = shake*(1.f/CarShakeTime);
+      const float ax = std::abs(a.x), az = std::abs(a.z), al = a.length();
+      const Hit   c  = (ax>3.f || az>5.f || al>7.f) ? Hit::Great :
+                       (ax>0.8f || az>1.f || al>2.f) ? Hit::Hit : Hit::None;
+      if(c!=Hit::None) {
+        h = std::max(h,c);
+        addBoost(HitBoost);
+        }
+      }
+    }
+  lastHit = h;
   }
 
 void Vehicle::surfaces(float dt) {

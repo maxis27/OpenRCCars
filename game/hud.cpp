@@ -129,6 +129,7 @@ Hud::Hud(Device& device, Resources& res) : device(device), resources(res) {
   msgBest  = loadImage(res,"msg_bestlap.csi");
   msgWrong = loadImage(res,"msg_wrong_way.csi");
   msgPause = loadImage(res,"msg_pause.csi");
+  msgHits  = loadImage(res,"msg_hits.csi");
   lapLabel = loadImage(res,"lap.csi");
   loadFont(res,"Smash26",font);
   for(int i=0; i<6; ++i)
@@ -761,6 +762,12 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     }
   else if(phase==rc::Race::Phase::Finished) {
     sprite(msg321,{CountFinish[0],CountFinish[1],CountFinish[2],CountFinish[3]},px(400),my,1,white4);
+    }
+  else if(clock-hitAt<1.f) {
+    // msg_hits.csi: "Łup!" in the top half, "Wielkie Łup!" in the bottom one. RCCars.exe ranks it over the wrong way
+    // and the best lap and shows it for 1 s (0x4afba0, 0x56d2fc)
+    const float half = float(msgHits.h)*0.5f;
+    sprite(msgHits,{0,hitGreat ? half : 0.f,float(msgHits.w),hitGreat ? float(msgHits.h) : half},px(400),my,1,white4);
     }
   else if(race.wrongWay()) {
     if(blink)

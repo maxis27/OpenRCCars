@@ -48,6 +48,8 @@ class MainWindow : public Tempest::Window {
     // the car on the start line and the race from the countdown; `again`: "Jeszcze raz", no delay before "3"
     void setupPhysics(bool restartRace = true, bool again = false);
     void setupOpponents();                      // the opponents of the track for aiLevel
+    // engines, checkpoint voice: once per frame after the physics
+    void tickSounds(float dt);
     std::vector<rc::Mat4> carPartPoses() const;
     std::vector<rc::Mat4> opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const;
     Hud::Info             hudInfo() const;
@@ -80,6 +82,13 @@ class MainWindow : public Tempest::Window {
     rc::Vec3                lastCarPos;     // for the car's velocity
     std::unique_ptr<Hud>    hud;
     std::unique_ptr<Sounds> sounds;
+    std::unique_ptr<rc::CarSound>   carSound;   // the player's engine
+    std::vector<rc::AiCarSound>     aiSounds;   // one per opponent
+    float                   airborne   = 0;     // s without a wheel on the ground
+    bool                    wasWrongWay = false;
+    size_t                  besideTarget = 0;   // cp_beside: the checkpoint watched,
+    float                   besideMin    = 1e9f; // how close the car came to it
+    bool                    besideDone   = false;
     bool                    jumpPressed = false;
     float                   upsideDown = 0; // seconds on the roof or side, then the car is put back
     Camera                  camera;

@@ -26,9 +26,10 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name)
   resetSwapchain();
   carScene = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
   hud      = std::make_unique<Hud>(device,res);
-  sounds   = std::make_unique<Sounds>(res.pack());
+  sounds   = std::make_unique<Sounds>(res);
   loadCar(0);
   loadLevel(name);
+  sounds->startMusic();
   lastTick = Application::tickCount();
   }
 
@@ -64,10 +65,15 @@ void MainWindow::loadCar(size_t id) {
   device.waitIdle();
   carId = id;
   car   = std::make_unique<ModelMesh>(device,resources,carScene,Cars[id]);
+  if(carSound)
+    carSound->stop();
+  carSound = std::make_unique<rc::CarSound>(sounds->mixer(),sounds->library(),int(id));
   setupPhysics();
   }
 
 void MainWindow::setupOpponents() {
+  for(auto& s:aiSounds)
+    s.stop();
   opponents.reset();
   if(physics==nullptr || checkpoints==nullptr)
     return;
@@ -85,6 +91,9 @@ void MainWindow::setupOpponents() {
     if(m==nullptr)
       m = std::make_unique<ModelMesh>(device,resources,carScene,Cars[o.car],rc::Vec3{},o.skin);
     }
+  // the channels stay in the mixer, so they are made once and reused
+  while(aiSounds.size()<opponents->size())
+    aiSounds.emplace_back(sounds->mixer(),sounds->library());
   Log::i("opponents (",rc::Opponents::levelName(aiLevel),"): ",opponents->size());
   }
 
@@ -109,6 +118,10 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
   if(restartRace) {
     race->restart(carPose,again);
     sounds->stopAll();
+    if(carSound)
+      carSound->stop();
+    wasWrongWay = false;
+    besideDone  = true;
     if(opponents)
       opponents->restart();
     playerFinish = -1;
@@ -124,6 +137,8 @@ void MainWindow::respawnCar() {
     return;
   carPose = checkpoints->respawn(car->bboxMin().y);
   vehicle->reset(carPose);
+  sounds->play("Checkpoint","cp_reset");
+  besideDone = true;
   if(opponents)
     opponents->playerMoved();
   lastCarPos = carPose.translation();
@@ -292,6 +307,7 @@ void MainWindow::mouseWheelEvent(MouseEvent& e) {
 
 void MainWindow::tick(float dt) {
   sounds->tick();
+  sounds->setPaused(paused);
   if(paused)
     return;
   if(vehicle!=nullptr) {
@@ -332,10 +348,11 @@ void MainWindow::tick(float dt) {
     hud->event(ev);
     // with "3" the original plays cp_start (Checkpoint channel) and prestart (Prestart channel) together
     if(ev==rc::Race::Event::Count) {
-      sounds->play("cp_start");
-      sounds->play("prestart");
+      sounds->play("Checkpoint","cp_start");
+      sounds->play("Prestart","prestart");
       }
     if(checkpoints->next()!=was) {
+      sounds->play("Checkpoint","cp");
       vehicle->addBoost(rc::CarParams::BoostPerCheckpoint);
       Log::i("checkpoint ",checkpoints->route()[was].name," passed at ",Hud::formatTime(race->time()),
              " (",at.x," ",at.y," ",at.z,")");
@@ -353,6 +370,7 @@ void MainWindow::tick(float dt) {
     if(vehicle->drowned() || (!grid.empty() && carPose.translation().y<grid.min.y-20.f)) {
       respawnCar();
       }
+    tickSounds(dt);
     }
 
   if(!freeCamera) {
@@ -384,6 +402,53 @@ void MainWindow::tick(float dt) {
   if(keys[Event::K_Right]) camera.rotate( rs,0);
   if(keys[Event::K_Up])    camera.rotate(0, rs);
   if(keys[Event::K_Down])  camera.rotate(0,-rs);
+  }
+
+void MainWindow::tickSounds(float dt) {
+  const bool racing = race->phase()==rc::Race::Phase::Racing;
+  const bool control = !race->holdCar() && !freeCamera;
+  const float fwd   = vehicle->speed();
+  airborne = vehicle->wheelsOnGround()==0 ? airborne+dt : 0.f;
+
+  rc::CarSound::Input in;
+  in.speed    = std::abs(fwd)*3.6f;
+  in.gas      = control && (keys[Event::K_W] || keys[Event::K_Up]);
+  in.back     = control && (keys[Event::K_S] || keys[Event::K_Down]);
+  in.braking  = (in.back && fwd*3.6f>1.f) || (control && keys[Event::K_B]);
+  in.airborne = airborne>0.05f;
+  in.racing   = racing;
+  carSound->update(in,dt);
+
+  // the computer's cars, heard from the camera
+  const rc::Vec3 ear   = camera.position;
+  const rc::Vec3 right = camera.right();
+  for(size_t i=0; opponents && i<opponents->size() && i<aiSounds.size(); ++i) {
+    const auto&    o  = (*opponents)[i];
+    const rc::Vec3 to = o.pose().translation()-ear;
+    const float    d  = to.length();
+    aiSounds[i].update(std::abs(o.speed())*3.6f,racing,d,d>1e-3f ? rc::Vec3::dot(to,right)/d : 0.f);
+    }
+
+  // "wrong way" is said once each time the warning comes up
+  if(race->wrongWay() && !wasWrongWay)
+    sounds->play("Checkpoint","cp_wrongway");
+  wasWrongWay = race->wrongWay();
+
+  // cp_beside: the car came close to the next checkpoint (4 m) but missed it and is driving off (5 m) (0x4eb5be)
+  if(!checkpoints->empty() && racing) {
+    const size_t next = checkpoints->next();
+    const float  d    = (checkpoints->route()[next].position-carPose.translation()).length();
+    if(next!=besideTarget || besideDone) {
+      besideTarget = next;
+      besideMin    = d;
+      besideDone   = d<4.f;  // already close (just put back here): nothing to say until it moves off and back
+      }
+    besideMin = std::min(besideMin,d);
+    if(!besideDone && besideMin<4.f && d>5.f) {
+      sounds->play("Checkpoint","cp_beside");
+      besideDone = true;
+      }
+    }
   }
 
 void MainWindow::render() {

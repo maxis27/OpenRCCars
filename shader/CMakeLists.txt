@@ -5,7 +5,8 @@ project(Shaders)
 set(HEADER "${PROJECT_BINARY_DIR}/sprv/shader.h")
 set(CPP    "${PROJECT_BINARY_DIR}/sprv/shader.cpp")
 
-file(GLOB SOURCES      "${CMAKE_CURRENT_SOURCE_DIR}/*.vert" "${CMAKE_CURRENT_SOURCE_DIR}/*.frag" "${CMAKE_CURRENT_SOURCE_DIR}/*.glsl")
+file(GLOB SOURCES      "${CMAKE_CURRENT_SOURCE_DIR}/*.vert" "${CMAKE_CURRENT_SOURCE_DIR}/*.frag"
+                       "${CMAKE_CURRENT_SOURCE_DIR}/*.tesc" "${CMAKE_CURRENT_SOURCE_DIR}/*.tese" "${CMAKE_CURRENT_SOURCE_DIR}/*.glsl")
 file(GLOB GLSL_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.glsl")
 
 # GLSL to SPIR-V compiler (part of the Vulkan SDK)
@@ -28,6 +29,8 @@ endfunction(add_shader)
 
 add_shader(level.vert level.vert)
 add_shader(level.frag level.frag)
+add_shader(water.tesc water.tesc)
+add_shader(water.tese water.tese)
 add_shader(collision.vert collision.vert)
 add_shader(collision.frag collision.frag)
 add_shader(hud.vert hud.vert)

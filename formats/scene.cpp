@@ -2,6 +2,7 @@
 
 #include "chunk.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 
@@ -108,6 +109,12 @@ class Loader {
       else if(c.is("INST")) {
         instance(c,parentWorld);
         }
+      else if(c.is("SCRI")) {
+        script(c);
+        }
+      else if(c.is("EVOL")) {
+        volume(c);
+        }
       else if(c.is("COLL")) {
         scene.collision = loadCollision(c);
         }
@@ -128,7 +135,7 @@ class Loader {
           if(ch.type==0x92)
             node(ch,parent,parentWorld);
         }
-      // HHID, EVOL, SCRI, SPLN, ANIM ... - not needed for rendering yet
+      // HHID, SPLN, ANIM ... - not needed for rendering yet
       }
 
   private:
@@ -253,14 +260,45 @@ class Loader {
         node(ch,-1,parentWorld);
       }
 
+    void volume(const Chunk& c) {
+      SbVolume v;
+      for(auto& ch:c.children()) {
+        if(ch.id==0x03 && ch.type==0x40) v.name  = std::string(ch.str());
+        if(ch.id==0xd0 && ch.type==0x30) v.shape = ch.u32();
+        if(ch.id==0xd4)
+          for(size_t i=0; i+4<=ch.size(); i+=4)
+            v.data.push_back(ch.f32(i));
+        }
+      scene.volumes.push_back(std::move(v));
+      }
+
     void instance(const Chunk& c, const Mat4& parentWorld) {
       SbInstance in;
       in.world = parentWorld;
       for(auto& ch:c.children()) {
         if(ch.id==0x03 && ch.type!=0x92) in.name  = std::string(ch.str());
         if(ch.id==0x0b)                  in.world = parentWorld*readTransform(ch);
+        if(ch.id==0x0a && ch.size()>=4)  in.kind   = ch.u32();
+        if(ch.id==0x72)                  in.model  = std::string(ch.str());
+        if(ch.id==0x74)                  in.source = std::string(ch.str());
         }
       scene.instances.push_back(std::move(in));
+      }
+
+    void script(const Chunk& c) {
+      SbScript s;
+      s.model = model;
+      for(auto& ch:c.children()) {
+        if(ch.id==0x03 && ch.type!=0x92) s.name = std::string(ch.str());
+        // u32 length, then the text
+        if(ch.id==0x7e && ch.size()>=4) {
+          const size_t n = std::min<size_t>(ch.u32(),ch.size()-4);
+          s.text.assign(reinterpret_cast<const char*>(ch.data()+4),n);
+          while(!s.text.empty() && s.text.back()=='\0')
+            s.text.pop_back();
+          }
+        }
+      scene.scripts.push_back(std::move(s));
       }
 
     SbScene& scene;
@@ -302,10 +340,39 @@ const SbTexture* SbScene::texture(int32_t index, int32_t model) const {
   return nullptr;
   }
 
+const SbVolume* SbScene::volume(std::string_view name) const {
+  for(auto& v:volumes)
+    if(v.name==name)
+      return &v;
+  return nullptr;
+  }
+
+bool SbVolume::contains(const Vec3& p) const {
+  if(shape!=2 || data.size()<8 || p.y<data[0] || p.y>data[1])
+    return false;
+  // even-odd test against the outline
+  bool         in = false;
+  const size_t n  = (data.size()-2)/2;
+  for(size_t i=0, j=n-1; i<n; j=i++) {
+    const float xi = data[2+i*2], zi = data[3+i*2];
+    const float xj = data[2+j*2], zj = data[3+j*2];
+    if((zi>p.z)!=(zj>p.z) && p.x < (xj-xi)*(p.z-zi)/(zj-zi)+xi)
+      in = !in;
+    }
+  return in;
+  }
+
 const SbInstance* SbScene::instance(std::string_view name) const {
   for(auto& i:instances)
     if(i.name==name)
       return &i;
+  return nullptr;
+  }
+
+const SbScript* SbScene::script(int32_t model, std::string_view name) const {
+  for(auto& s:scripts)
+    if(s.model==model && (name.empty() || s.name==name))
+      return &s;
   return nullptr;
   }
 

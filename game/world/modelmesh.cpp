@@ -1,8 +1,9 @@
-#include "carmesh.h"
+#include "modelmesh.h"
 
 #include <Tempest/Log>
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <stdexcept>
 
@@ -11,11 +12,12 @@
 
 using namespace Tempest;
 
-CarMesh::CarMesh(Device& device, Resources& res, const rc::SbScene& sb, std::string_view model)
+ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
+                     const rc::Vec3& origin)
   :modelName(model), pso(device) {
   const int32_t modelId = sb.findModel(model);
   if(modelId<0)
-    throw std::runtime_error("car model \""+std::string(model)+"\" not found");
+    throw std::runtime_error("model \""+std::string(model)+"\" not found");
 
   bbox[0] = { 1e9f, 1e9f, 1e9f};
   bbox[1] = {-1e9f,-1e9f,-1e9f};
@@ -58,7 +60,7 @@ CarMesh::CarMesh(Device& device, Resources& res, const rc::SbScene& sb, std::str
         const uint32_t pi = f.pos[corner];
         if(pi>=m.positions.size())
           return v;
-        const rc::Vec3 p  = m.world.point(m.positions[pi]);
+        const rc::Vec3 p  = m.world.point(m.positions[pi])-origin;
         const rc::Vec3 nr = corner<f.normals.size() ? m.world.vector(f.normals[corner]).normalized() : rc::Vec3{0,1,0};
         v.pos[0]    = p.x;  v.pos[1]    = p.y;  v.pos[2]    = p.z;
         v.normal[0] = nr.x; v.normal[1] = nr.y; v.normal[2] = nr.z;
@@ -120,11 +122,11 @@ CarMesh::CarMesh(Device& device, Resources& res, const rc::SbScene& sb, std::str
     });
 
   vbo = device.vbo(all);
-  Log::i("car \"",modelName,"\": ",all.size()/3," triangles, ",partList.size()-1," wheels, size ",
+  Log::d("model \"",modelName,"\": ",all.size()/3," triangles, ",partList.size()-1," wheels, size ",
          bbox[1].x-bbox[0].x," x ",bbox[1].y-bbox[0].y," x ",bbox[1].z-bbox[0].z);
   }
 
-void CarMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
+void ModelMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
                    const LevelMesh::Push& frame, const rc::Mat4& world,
                    const std::vector<rc::Mat4>* partPoses) const {
   const rc::Vec3 camera = {frame.cameraPos[0],frame.cameraPos[1],frame.cameraPos[2]};
@@ -135,7 +137,10 @@ void CarMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
   for(size_t i=0; i<partList.size(); ++i) {
     const bool     own = partPoses!=nullptr && i<partPoses->size();
     const rc::Mat4 m   = world*(own ? (*partPoses)[i] : rc::Mat4::translate(partList[i].pivot));
-    const rc::Mat4 inv = m.inverseRigid();
+    // uniform scale (objects placed larger, e.g. crabs): undo it, then invert the rigid rest
+    const float    k   = rc::Vec3{m.m[0][0],m.m[1][0],m.m[2][0]}.length();
+    const rc::Mat4 inv = k>0 && std::abs(k-1.f)>1e-4f ? rc::Mat4::scale({1/k,1/k,1/k})*(m*rc::Mat4::scale({1/k,1/k,1/k})).inverseRigid()
+                                                      : m.inverseRigid();
     (viewProj*m).toColumnMajor(push[i].viewProj);
     const rc::Vec3 c = inv.point(camera);
     const rc::Vec3 s = inv.vector(sun);
@@ -157,6 +162,7 @@ void CarMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
     enc.setBinding(1,*b.tex);
     enc.setBinding(2,*b.tex);
     enc.setBinding(3,*b.tex);
+    enc.setBinding(4,pso.noWater);
     enc.draw(vbo,b.first,b.count);
     }
   }

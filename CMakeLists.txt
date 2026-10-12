@@ -26,6 +26,8 @@ add_library(rcformats STATIC
   formats/scene.h  formats/scene.cpp
   formats/collision.h formats/collision.cpp
   formats/settings.h  formats/settings.cpp
+  formats/objects.h   formats/objects.cpp
+  formats/water.h     formats/water.cpp
   )
 target_include_directories(rcformats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -60,6 +62,8 @@ add_library(rcphysics STATIC
   physics/vehicle.h     physics/vehicle.cpp
   physics/checkpoints.h physics/checkpoints.cpp
   physics/race.h        physics/race.cpp
+  physics/props.h       physics/props.cpp
+  physics/btconvert.h
   )
 target_link_libraries(rcphysics PUBLIC rcformats PRIVATE bullet)
 
@@ -87,9 +91,10 @@ add_library(rcengine STATIC
   game/resources.h         game/resources.cpp
   game/hud.h               game/hud.cpp
   game/world/levelmesh.h   game/world/levelmesh.cpp
-  game/world/carmesh.h     game/world/carmesh.cpp
+  game/world/modelmesh.h     game/world/modelmesh.cpp
   game/world/level.h       game/world/level.cpp
   game/world/collisionview.h game/world/collisionview.cpp
+  game/world/objects.h     game/world/objects.cpp
   )
 target_include_directories(rcengine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} lib/Tempest/Engine/include)
 target_link_libraries(rcengine PUBLIC rcformats rcphysics Tempest Shaders)

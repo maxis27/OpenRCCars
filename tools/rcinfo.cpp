@@ -8,14 +8,18 @@
 //   rcinfo <game_dir> coll <RCCarsDB/x.sb> [out.obj]  collision grid statistics + self-test, optional OBJ export
 //   rcinfo <game_dir> drive <RCCarsDB/x.sb> [car 1-3] [upgrade 0-3]  headless test drive on a track (physics)
 //   rcinfo <game_dir> race <RCCarsDB/x.sb> [laps]  checkpoint gates + a race driven along the route (no physics)
+//   rcinfo <game_dir> objects <RCCarsDB/x.sb>    objects placed on a track (INST): model, kind, physics, settling test
 //   rcinfo <game_dir> check                      decode every texture in the pack and every RCCarsDB/*.sb
 
 #include "formats/pack.h"
 #include "formats/csi.h"
 #include "formats/scene.h"
 #include "formats/collision.h"
+#include "formats/objects.h"
+#include "formats/water.h"
 #include "physics/checkpoints.h"
 #include "physics/race.h"
+#include "physics/props.h"
 #include "physics/vehicle.h"
 
 #include <algorithm>
@@ -283,6 +287,33 @@ static int cmdColl(const fs::path& path, const char* objOut) {
   return mismatch==0 ? 0 : 3;
   }
 
+// the props of a track (stone.sb) as rigid bodies in `world`, left to settle on the ground like the game does
+struct TrackProp {
+  const rc::SbInstance*     instance = nullptr;
+  std::unique_ptr<rc::Prop> body;
+  rc::Vec3                  rest;     // where it came to rest
+  };
+
+static std::vector<TrackProp> placeProps(const fs::path& game, const rc::SbScene& scene, rc::PhysicsWorld& world) {
+  rc::ObjectLibrary      lib([&](const std::string& p){ return readFile(game/p); });
+  std::vector<TrackProp> ret;
+  for(auto& p:lib.place(scene)) {
+    if(p.model->kind!=rc::ObjectLibrary::Kind::Prop)
+      continue;
+    const rc::SbScript* s = p.model->scene->script(p.model->id);
+    TrackProp tp;
+    tp.instance = p.instance;
+    tp.body     = std::make_unique<rc::Prop>(world,rc::propGeometry(*p.model->scene,p.model->id,p.model->origin),
+                                             rc::PropParams::parse(s ? s->text : std::string()),p.instance->world);
+    ret.push_back(std::move(tp));
+    }
+  for(int i=0; i<int(2.f/rc::PhysicsWorld::FixedDt); ++i)
+    world.step(rc::PhysicsWorld::FixedDt);
+  for(auto& p:ret)
+    p.rest = p.body->pose().translation();
+  return ret;
+  }
+
 // headless test drive: an autopilot steers straight at the next checkpoint (cp_1, cp_1_1 .. cp_2 ..) for up to
 // two minutes or one lap, backing up when stuck. It knows nothing about the track's shape, so it gets stuck
 // where the straight line to the next checkpoint runs into a wall or a post. The test fails if the car does not
@@ -291,6 +322,7 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   auto scene = rc::SbScene::load(readFile(game/track));
   auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
   rc::CollisionMesh coll(scene);
+  coll.setSeas(rc::Seas::load(scene,pack,track.stem().string()));
   const std::string model = "Car"+std::to_string(car);
   const auto geom = rc::carGeometry(cars,model);
   const auto prm  = rc::CarParams::load(pack,car,upgrade);
@@ -323,6 +355,7 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   cps.reset(start);
 
   rc::PhysicsWorld world(coll);
+  auto             props = placeProps(game,scene,world);
   rc::Vehicle      veh(world,geom,prm,start);
   const float dt = 1.f/60.f, limit = 120.f;
   size_t flips = 0, reverses = 0, drowned = 0, passed = 0;
@@ -396,6 +429,15 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   std::printf("%s: %zu of %zu checkpoints in %.1f s, max speed %.1f km/h, %zu times backed up, %zu times put back"
               " on the wheels, drowned %zu times\n",lap ? "lap finished" : "lap not finished",passed,route.size()-1,t,
               maxSpeed*3.6f,reverses,flips,drowned);
+  size_t knocked = 0;
+  for(auto& p:props) {
+    const rc::Vec3 at = p.body->pose().translation();
+    if((at-p.rest).length()>0.1f) {
+      std::printf("  knocked %-18s %.2f m away\n",p.instance->name.c_str(),(at-p.rest).length());
+      ++knocked;
+      }
+    }
+  std::printf("props: %zu of %zu knocked away\n",knocked,props.size());
   std::printf("time on:");
   for(auto& [s,v]:onSurface)
     std::printf(" %s %.1f s,",rc::surfaceName(s),v);
@@ -506,9 +548,53 @@ static int cmdRace(const fs::path& game, const fs::path& track, int laps) {
   return ok ? 0 : 3;
   }
 
+static int cmdObjects(const fs::path& game, const fs::path& track) {
+  auto scene = rc::SbScene::load(readFile(game/track));
+  rc::ObjectLibrary lib([&](const std::string& p){ return readFile(game/p); });
+  rc::CollisionMesh coll(scene);
+
+  size_t missing = 0, placed = 0;
+  for(auto& in:scene.instances) {
+    if(in.name=="Player")
+      continue;
+    auto m = lib.find(in);
+    if(m==nullptr) {
+      std::printf("  ?         %-20s model \"%s\" not found\n",in.name.c_str(),in.model.c_str());
+      ++missing;
+      continue;
+      }
+    ++placed;
+    const auto geo  = rc::propGeometry(*m->scene,m->id,m->origin);
+    const auto at   = in.world.translation();
+    const auto size = geo.max-geo.min;
+    std::printf("  %-9s %-20s %-10s at %7.2f %6.2f %7.2f  size %.2f x %.2f x %.2f",
+                rc::ObjectLibrary::kindName(m->kind),in.name.c_str(),m->name.c_str(),at.x,at.y,at.z,size.x,size.y,size.z);
+    if(m->kind==rc::ObjectLibrary::Kind::Prop) {
+      const rc::SbScript* s = m->scene->script(m->id);
+      const auto prm = rc::PropParams::parse(s ? s->text : std::string());
+      std::printf("  shape %d mass %.2f bounce %.1f",prm.shape,prm.mass,prm.bounce);
+      }
+    std::printf("\n");
+    }
+
+  // the editor left most props a little above the ground: how far each drops before it comes to rest
+  rc::PhysicsWorld world(coll);
+  auto   props = placeProps(game,scene,world);
+  size_t lost  = 0;
+  for(auto& p:props) {
+    const rc::Vec3 d = p.rest-p.instance->world.translation();
+    const bool     off = !std::isfinite(p.rest.y) || p.rest.y<scene.collision.min.y;
+    std::printf("  settled %-20s dropped %5.2f m, slid %5.2f m, at %7.2f %6.2f %7.2f%s\n",p.instance->name.c_str(),-d.y,
+                std::sqrt(d.x*d.x+d.z*d.z),p.rest.x,p.rest.y,p.rest.z,off ? "  FELL THROUGH" : "");
+    lost += off ? 1 : 0;
+    }
+  std::printf("%zu objects (%zu props, %zu fell through the track), %zu models not found\n",placed,props.size(),lost,missing);
+  return (missing==0 && lost==0) ? 0 : 3;
+  }
+
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|check|drive|race ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race ...\n");
     return 1;
     }
   try {
@@ -518,6 +604,8 @@ int main(int argc, char** argv) {
       return cmdColl(game/argv[3],argc>4 ? argv[4] : nullptr);
     if(cmd=="race" && argc>3)
       return cmdRace(game,argv[3],argc>4 ? std::atoi(argv[4]) : rc::Race::DefaultLaps);
+    if(cmd=="objects" && argc>3)
+      return cmdObjects(game,argv[3]);
     if(cmd=="obj" && argc>4)
       return cmdObj(game/argv[3],argv[4]);
 

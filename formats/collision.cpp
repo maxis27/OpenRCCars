@@ -337,13 +337,26 @@ Surface CollisionMesh::surfaceBelow(const Vec3& from, float maxDepth) const {
   return Surface::Default;
   }
 
+void CollisionMesh::setSeas(const Seas& seas) {
+  seaOffset.assign(seas.ofMesh.size(),std::numeric_limits<float>::quiet_NaN());
+  for(size_t i=0; i<seas.ofMesh.size(); ++i)
+    if(seas.ofMesh[i]>=0)
+      seaOffset[i] = seas.waves[size_t(seas.ofMesh[i])].offset;
+  }
+
 std::optional<float> CollisionMesh::waterLevel(const Vec3& at, float range) const {
   if(!water)
     return std::nullopt;
+  auto level = [&](const Hit& h) {
+    const uint32_t mesh = tris[h.triangle].mesh;
+    if(mesh<seaOffset.size() && !std::isnan(seaOffset[mesh]))
+      return h.point.y + seaOffset[mesh];
+    return shoreHeight(h.point);
+    };
   // the nearest surface above (under water), else the nearest one below
   if(auto h = raycast(at,Vec3{0,1,0},range,Layer::Water))
-    return shoreHeight(h->point);
+    return level(*h);
   if(auto h = raycast(at,Vec3{0,-1,0},range,Layer::Water))
-    return shoreHeight(h->point);
+    return level(*h);
   return std::nullopt;
   }

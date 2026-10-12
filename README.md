@@ -46,6 +46,12 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   z gry (`Language/Polish` albo `Language/English`: odliczanie, „okrążenie”, komunikaty, czcionka `Smash26`)
   w miejscach z `Settings/cockpit.ini`; strzałka (szewron `coc_str_2`) pokazuje następny punkt kontrolny
   i miga na czerwono, gdy jedziesz w złą stronę. Prędkość i turbo na dole ekranu na razie tekstem
+- **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
+  baloniki, łuski, toczące się kłębki) stoją tam, gdzie kładzie je trasa (od 8 do 17 na trasie), i są bryłami
+  sztywnymi: auto je potrąca, przewraca i pcha, a koła po nich przejeżdżają. Masa, sprężystość, tarcie, kształt
+  (kula, walec albo otoczka wypukła modelu) i środek masy pochodzą ze skryptu `SCRI` każdego modelu. Postacie,
+  zwierzęta i ruch uliczny (`people.sb`, `AIChars.sb`, `Roadcar.sb`) jeszcze się nie pojawiają: w oryginale chodzą
+  i jeżdżą po ścieżkach z animacjami, a ich siatki stoją w pozie spoczynkowej (część w pozie „T”), kilka na jednym punkcie startowym
 - **narzędzia**: `rcinfo` (inspekcja/eksport danych i jazda testowa, bez GPU) i `rcshot` (render offscreen do PNG)
 
 ![Auto na starcie (beach_1)](docs/car_beach_1.jpg)
@@ -57,6 +63,9 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 ![Auto wjeżdża do morza: na plaży, przy brzegu, w wodzie (beach_1)](docs/water_beach_1.jpg)
 
 ![Wyścig: odliczanie, jazda, zły kierunek, meta (beach_1)](docs/race_beach_1.jpg)
+![Rekwizyty: pachołek (beach_2), butelki (urban_1), kłębek przy werandzie (country_3), czajnik (country_1)](docs/objects.jpg)
+
+![Auto pcha piłkę plażową (beach_1)](docs/props_beach_1.jpg)
 
 ![Urban 1](docs/urban_1.jpg)
 
@@ -147,7 +156,8 @@ rcinfo <folder_gry> check                         # dekoduje wszystkie tekstury 
 rcinfo <folder_gry> sb RCCarsDB/beach_1.sb        # statystyki sceny, tekstury, markery
 rcinfo <folder_gry> obj RCCarsDB/Car.sb car.obj   # eksport geometrii do OBJ
 rcinfo <folder_gry> coll RCCarsDB/beach_1.sb [coll.obj]  # siatka kolizji: statystyki, test raycastu, eksport OBJ
-rcinfo <folder_gry> drive RCCarsDB/beach_1.sb [auto 1-3] [ulepszenie 0-3]  # jazda testowa bez GPU (autopilot po checkpointach)
+rcinfo <folder_gry> drive RCCarsDB/beach_1.sb [auto 1-3] [ulepszenie 0-3]  # jazda testowa bez GPU (autopilot po checkpointach, z rekwizytami)
+rcinfo <folder_gry> objects RCCarsDB/beach_1.sb   # obiekty na trasie (INST): model, rodzaj, fizyka; test opadania rekwizytów
 rcinfo <folder_gry> race RCCarsDB/beach_1.sb [okrążenia]  # bramki punktów kontrolnych i test logiki wyścigu (bez fizyki)
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
 rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
@@ -159,6 +169,7 @@ RCSHOT_DRIVE=2 RCSHOT_JUMP=1.6 rcshot ...                       # skok w 1,6 s, 
 RCSHOT_DRIVE=3 RCSHOT_BOOST=1 rcshot ...                        # z dopalaczem
 RCSHOT_START="-8 -41 90" RCSHOT_DRIVE=1.6 rcshot ...            # auto najpierw w punkcie x z, obrócone o yaw (tu: do morza)
 RCSHOT_TIME=2.5 rcshot ...                                       # chwila animacji wody (fale, piana)
+RCSHOT_OBJECTS=0 rcshot ...                                      # bez rekwizytów
 ```
 
 ## Struktura
@@ -171,18 +182,20 @@ formats/        formaty danych, czyste C++ bez zależności
   scene.*       sceny .sb
   collision.*   siatka kolizji z węzła COLL, raycast, nawierzchnie
   settings.*    pliki suwaków Settings/*.ini, Scripts/upgrades.ini, krzywe .bspl
+  objects.*     modele obiektów z INST: w którym pliku leżą (stone.sb, people.sb, AIChars.sb, Roadcar.sb)
 physics/        fizyka jazdy (Bullet, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
   vehicle.*     świat Bulleta trasy, btRaycastVehicle z promieniami przez siatkę COLL, nawierzchnie i woda
   checkpoints.* bramki punktów kontrolnych w kolejności, postęp auta, powrót do ostatniego punktu
   race.*        wyścig: odliczanie, okrążenia, czasy, zły kierunek, meta
+  props.*       rekwizyty: parametry ze skryptu SCRI, kształt, bryła sztywna
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
   camera.*      kamera swobodna
   hud.*         kokpit wyścigu (obrazki i czcionka z Language/<język>)
-  world/        Level (trasa), LevelMesh (geometria na GPU, batche po teksturach), CarMesh (auto),
-                CollisionView (nakładka kolizji)
+  world/        Level (trasa), LevelMesh (geometria na GPU, batche po teksturach), ModelMesh (auto, obiekt),
+                Objects (rekwizyty trasy), CollisionView (nakładka kolizji)
   mainwindow.*  okno, pętla, wejście
 shader/         GLSL kompilowany do SPIR-V i wbudowywany w plik wykonywalny
 tools/          rcinfo, rcshot
@@ -228,23 +241,33 @@ lib/Tempest     silnik (submoduł git)
   (`pool1..3`), na country_3 strumień (kilka cm) i wodospady. `Settings/Water.ini` (`speedDropCenter` 125/500,
   `speedDropOther` 76/500, `DampingVelocity2` 950/1000) czytamy jako utratę prędkości przy wpadnięciu do wody
   nadwozia i kół oraz tłumienie pod wodą; to nasze odczytanie nazw.
-- Wygląd wody: tekstura `sea` nie ma kanału alfa, ale oryginał rysuje wodę półprzezroczystą (`Settings/WLOD_*.ini`:
-  `alphaMin` 26 … `alphaMax` 255, `distAlphaClampMax` 8, fale, env mapa). U nas płytka woda jest przezroczysta wg
-  głębokości nad dnem z kolizji (pełne krycie od 0,8 m; jednostka `distAlphaClampMax` to nasze zgadywanie), bez fal.
-  Piana przy brzegu to ściany `coast*` z teksturą `coast_base` i maską `ALP1` `coast` bez `BAS2`: maska to
-  przezroczystość piany (falista krawędź). W oryginale piana przesuwa się po plaży (`waterLOD_coast.ini`:
-  `HeightOn/HeightOff`, `ScrollVel`, `AlphaMin` 36); u nas co 4 s podchodzi na plażę i cofa się (maska przesuwa się
-  o 32% paska, przezroczystość 36…255), przesunięta w fazie wzdłuż brzegu.
-- Fale: dwie fale kierunkowe wg `WLOD_beach_1_more1.ini` (`angle` 6 i `angle2` 4 w krokach 10°, `amp` 16 i `amp2` 25
-  czytane jako pół centymetra, `length2` 161 cm), liczone na piksel (wierzchołki morza są co kilka metrów), z białymi
-  grzbietami i odblaskiem słońca; tekstura morza płynie (`texSpeedMin/Max`). Długości i prędkości fal dobrane na oko.
-- Brzeg: tafla morza jest płaska (beach_1: 0 m) i kończy się w powietrzu tam, gdzie plaża leży niżej (piasek przy
-  brzegu na -0,31 m, tam leży też piana), a na zrzutach z oryginału woda schodzi do poziomu plaży. Oryginał ma do tego
-  suwaki `magnetOffset`/`magnetRadius`/`clampY*` w `WLOD_*.ini`, ale ich kod w `RCCars.exe` jest zaszyfrowany
-  (zabezpieczenie Steam). U nas na ostatnim metrze przed brzegiem tafla wygina się w dół do wysokości gruntu za
-  brzegiem (`CollisionMesh::shoreHeight`); dalej jest płaska. Brzeg to miejsca, gdzie woda (wszystkie grupy i LOD-y
-  razem, siatka 0,25 m) graniczy z co najmniej 0,75 m bez wody, a grunt tam leży niżej niż woda — szwy między
-  grupami morza i skały wystające z wody się nie liczą. Tak samo dla rysowania i fizyki. Piana leży na wodzie.
+- Woda wg kodu oryginału (`RCCars.exe`; kod jest zaszyfrowany zabezpieczeniem Steam, odszyfrowaliśmy go tylko do
+  analizy). Morze to ściany `sea` pod węzłem, który ma plik `Settings/WLOD_<trasa>_<węzeł>.ini` (np.
+  `WLOD_beach_1_more1.ini`; `formats/water.*`). Suwaki są przycinane do zakresu i skalowane: `amp`, `amp2`, `speed`,
+  `length2` /100, `period`, `period2` /10, `angle` ×10°, `posX/posZ` −500, `offset` i `magnetOffset` /100 − 0,5 m,
+  `magnetRadius` /20 m, `alphaRadius` /10 m. Wierzchołek morza ma wysokość
+  `y0 + offset + (1−s)·magnetOffset + s·(fala1 + fala2)`, gdzie
+  `fala1 = amp·(0,75·sin(period·(x·cos angle + z·sin angle + speed·t)) + 0,25)`,
+  `fala2 = amp2·sin(|xz − środek|/length2 + period2·t)`, a `s = clamp(d/magnetRadius)` przy odległości `d` od brzegu
+  morza (krawędzi siatki wody). Fala 1 przychodzi z kierunku `angle`, fala 2 to kręgi zbiegające się do `posX/posZ`.
+  Na beach_1 `offset` to −0,37 m, więc morze leży poniżej piasku przy brzegu (−0,31 m) i styka się z plażą.
+  Odległość od brzegu liczy się tylko wewnątrz bryły `water_box` (`EVOL`, beach_1, beach_3, country_3); poza nią
+  `s = 1`. Krycie rośnie od 35/255 na brzegu do pełnego w odległości `alphaRadius`, ale tylko przy aucie: zwykła
+  odległość `sqrt(dxz² + 187·dy²)` od auta między `distAlphaClampMin` a `Max` (0 i 8) przechodzi w pełne krycie.
+  Szarość wierzchołka idzie od `colorMin` do `colorMax` z wysokością fali. Nie robimy `clampY*` (w znalezionym kodzie
+  nieużywane), `alphaPow` ani env mapy. U nas teselacja (`shader/water.tesc`, `water.tese`) dzieli morze przy kamerze
+  co 15 cm (dalej co 2% odległości) i podnosi wierzchołki w GPU; bez teselacji robi to shader wierzchołków na
+  oryginalnej siatce. Fizyka liczy wodę na tej samej wysokości co obraz (`y0 + offset`, bez fal).
+- Piana przy brzegu to ściany `coast*` z teksturą `coast_base` i maską `ALP1` `coast` bez `BAS2`: maska to
+  przezroczystość piany. Wg `RCCars.exe` piana idzie za falą 2 morza (`more1`): z `h = sin(faza fali 2)` w miejscu
+  piany, gdy woda opada, krycie spada od `AlphaMax` (h = −1) do `AlphaMin` (h = 1), a gdy woda rośnie, do `AlphaMin`
+  już przy `HeightOn` (`waterLOD_coast.ini`: `(v−100)/100`, czyli 0). Tekstura przesuwa się o `ScrollVel` (0,11) na
+  sekundę. `HeightOff` jest wczytywane, ale nieużywane.
+- Pozostała woda (kałuże na country_1, strumień i wodospady na country_3 bez fal w `WLOD`) jest płaska i
+  przezroczysta wg głębokości nad dnem z kolizji (pełne krycie od 0,8 m). Przy brzegu tafla wygina się w dół do
+  gruntu za brzegiem (`CollisionMesh::shoreHeight`), tak samo dla rysowania i fizyki.
+- `EVOL` to bryły w scenie: dziecko `0x03` nazwa, `0xd0` kształt (u32), `0xd4` liczby; kształt 2 to graniastosłup
+  `[ymin, ymax, x0, z0, x1, z1, …]` (wielokąt w XZ).
 - Markery (`MARK`) mają w elemencie `0x04` właściwości wpisane w edytorze poziomów jako pary tekstów (lista
   `0x05 { 0x06 klucz, 0x07 wartość }`). Punkty kontrolne mają `width`, `height` i `expand` (np. beach_1 `cp_1`:
   szerokość 8, wysokość 1, expand 3); tam, gdzie ich brak (cały country_1, prawie cały country_2), przyjmujemy
@@ -262,6 +285,21 @@ lib/Tempest     silnik (submoduł git)
   wyników są na razie wpisane w kod. Liczbę okrążeń (3, 5 lub 7) wybiera się w oryginale w menu.
 - Start auta gracza to `INST 'Player'` w folderze `Players`; jego oś +Z wskazuje kierunek jazdy. Auta są w skali
   modeli RC (ok. 0,4–0,6 m długości), przód modelu to +Z.
+- `INST` (obiekt na trasie): `0x03` nazwa, `0x0a` rodzaj (3, a 2 przy rekwizytach położonych na boku; znaczenie
+  nieznane, obrót i tak jest w transformacji), `0x0b` transformacja, `0x72` nazwa modelu (`MODL` w innej scenie),
+  `0x74` scena (`RoadCar` = `Roadcar.sb`; puste: gra szuka sama w `Car.sb`, `stone.sb`, `people.sb`, `AIChars.sb`).
+  Rekwizyty leżą w folderach `Stones`/`stones`, postacie w `AI Characters`, `Peoples`, `Animals` … Ciężarówki
+  i sępy jednej trasy stoją wszystkie w jednym punkcie (pojawiają się tam i ruszają po ścieżkach).
+- Instancja ustawia **węzeł główny** modelu, a nie początek układu sceny: w `stone.sb` modele stoją obok siebie
+  (pachołek ma węzeł główny w (3,88; 0,10; −3,84), piłka 0,12 m nad ziemią w swoim środku). Liczone od węzła
+  głównego środki mas ze skryptów wypadają tam, gdzie powinny: 0 dla piłek i puszek to ich środek, 0,03 dla
+  pachołka to tuż nad ciężką podstawą. Bez tego pachołki stały kilka metrów od swojego miejsca, czasem za krawędzią trasy.
+- `SCRI` modelu w `stone.sb` (tekst `u32 długość` + treść w formacie `Section Keys`): `Geom` `type` (1 kula,
+  2 walec, 3 stożek, 4 butelka, 5 wiadro, 6 łuska, 7 czajnik, 8 balonik), `shiftCenterMassOY` (środek masy nad
+  węzłem głównym, m); `Params` `mass` (kg), `coeffHookNorm` (odbicie: 0,7 piłki, 0,3 reszta), `coeffFrict`;
+  kłębek (`Klubok`) ma jeszcze `ExtForces` `fWindBlow` (toczy go wiatr, u nas jeszcze nie). Rekwizyty stoją w
+  edytorze zwykle 0,1–0,5 m nad ziemią (kilka do 1,4 m): po wczytaniu trasy opadają na nią przez 2 s, zanim
+  ruszy wyścig.
 
 ## Dalsze kroki
 
@@ -271,7 +309,9 @@ lib/Tempest     silnik (submoduł git)
    względem oryginału; kolizje kul z `cdt*.ini` nieużyte)
    - ~~nawierzchnie i woda~~ (zrobione: głęboki piasek i woda spowalniają, w głębokiej wodzie auto tonie i wraca do
      ostatniego punktu kontrolnego); brakuje kurzu i plusków spod kół oraz stref `car_reset_volume_*` („dziury”)
-4. Węzły `INST` (instancje obiektów), `HHID` (widoczność/sektory), animacje (`SPLN`/`ANIM`/`ASEQ`)
+4. Węzły `INST` (instancje obiektów): ~~rekwizyty~~ (zrobione: bryły sztywne z parametrami ze skryptów; brakuje
+   wiatru dla kłębków i dźwięków uderzeń `SNCH`); postacie, zwierzęta i ruch uliczny czekają na animacje
+   (`SPLN`/`ANIM`/`ASEQ`) i AI. Do tego `HHID` (widoczność/sektory)
 5. Dźwięk: odszyfrowane WAV z `Sound/`, muzyka MP3 z `Tracks/`
 6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
    prędkościomierza i wskaźnika turbo z `cockpit_sp*`, świateł startowych z `cockpit.sb`, migających strzałek nad

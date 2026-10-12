@@ -10,7 +10,7 @@
 namespace rc {
 
 // .sb - "CREAT Studio Scene Project 6.0".
-// Module table followed by a node tree: DESC -> FOLD/MODL -> MESH (nested), GLTX, MARK, COLL, HHID, INST, SPLN, ANIM ...
+// Module table followed by a node tree: DESC -> FOLD/MODL -> MESH (nested), GLTX, MARK, COLL, HHID, INST, SCRI, SPLN, ANIM ...
 //
 // MESH children:
 //   0x03 name, 0x0b transform (u32 9, pos xyz, scale xyz, rotation xyz in degrees),
@@ -80,11 +80,40 @@ struct SbMarker {
   float       number(std::string_view key, float def) const;
   };
 
-// INST: placed object or actor (children are ignored for now). 'Player' in FOLD 'Players' is the start position
-// of the player's car, with the car's forward (+Z) rotated to face along the track.
+// INST: placed object or actor (children - markers, volumes, scripts of AI characters - are ignored for now).
+//   0x03 name, 0x0a kind (3, or 2 for props laid on their side: purpose unknown, the transform has the rotation),
+//   0x0b transform, 0x72 model (MODL name in another scene), 0x74 that scene ("RoadCar" = Roadcar.sb, empty:
+//   the game knows where the model lives: Car.sb, stone.sb, people.sb, AIChars.sb).
+// 'Player' in FOLD 'Players' is the start position of the player's car (model "Car1"), with the car's
+// forward (+Z) rotated to face along the track.
 struct SbInstance {
   std::string name;
+  std::string model;
+  std::string source;
+  uint32_t    kind = 0;
   Mat4        world;
+  };
+
+// SCRI: text in the "Section Keys" format (see KeySections), e.g. the physics of a prop in stone.sb:
+//   Section Keys "Geom"   type(int) = 2 // cylinder   shiftCenterMassOY(float) = 0   End
+//   Section Keys "Params" mass(float) = 0.1  coeffHookNorm(float) = 0.3  coeffFrict(float) = 1.0  End
+// Scripts of instances (people, the track's DemoEntry) are game logic in another language and kept as text too.
+struct SbScript {
+  std::string name;
+  int32_t     model = -1; // SbScene::models, -1 outside a MODL
+  std::string text;
+  };
+
+// EVOL: named volume (trigger), e.g. "water_box", "car_shortcut", "car_reset_volume_*".
+//   0x03 name, 0xd0 u32 shape, 0xd4 shape data (floats, world space). All volumes in the tracks are shape 2, a
+//   vertical prism: y min, y max, then the corners of its outline (x, z).
+struct SbVolume {
+  std::string        name;
+  uint32_t           shape = 0;
+  std::vector<float> data;
+
+  // inside the prism (shape 2); false for other shapes
+  bool contains(const Vec3& p) const;
   };
 
 // COLL - top level node of track scenes (MOD_COLLISION). The game collides with the render geometry itself:
@@ -118,11 +147,15 @@ struct SbScene {
   std::vector<SbMesh>      meshes;
   std::vector<SbMarker>    markers;
   std::vector<SbInstance>  instances;
+  std::vector<SbScript>    scripts;   // SCRI directly under MODL/FOLD/DESC
+  std::vector<SbVolume>    volumes;
   SbCollisionGrid          collision; // empty for scenes without COLL (cars, props)
 
   const SbTexture*  texture(int32_t index, int32_t model) const;
   const SbMarker*   marker(std::string_view name) const;
   const SbInstance* instance(std::string_view name) const;
+  const SbScript*   script(int32_t model, std::string_view name = {}) const; // first script of the model if no name
+  const SbVolume*   volume(std::string_view name) const;
   int32_t           findModel(std::string_view name) const; // -1 if not found
 
   static SbScene load(const std::vector<uint8_t>& file); // throws FormatError

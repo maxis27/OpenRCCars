@@ -5,12 +5,14 @@
 #include <cmath>
 
 #include "game/resources.h"
+#include "formats/water.h"
 
 Level::Level(Tempest::Device& device, Resources& res, const std::string& name)
   :levelName(name) {
   sb  = rc::SbScene::load(res.readFile(std::filesystem::path("RCCarsDB")/(name+".sb")));
   coll    = rc::CollisionMesh(sb);
-  gpu     = std::make_unique<LevelMesh>(device,res,sb,&coll);
+  coll.setSeas(rc::Seas::load(sb,res.pack(),name));
+  gpu     = std::make_unique<LevelMesh>(device,res,sb,&coll,name);
   collGpu = std::make_unique<CollisionView>(device,coll,sb);
   Tempest::Log::i("level \"",name,"\": ",sb.meshes.size()," meshes, ",sb.textures.size()," textures, ",
                   sb.markers.size()," markers, ",coll.triangles().size()," collision triangles");

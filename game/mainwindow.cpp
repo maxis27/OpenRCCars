@@ -20,7 +20,8 @@ static const char* const Tracks[] = {
   };
 
 MainWindow::MainWindow(Device& device, Resources& res, const std::string& name)
-  : Window(Maximized), device(device), resources(res), swapchain(device,hwnd()) {
+  : Window(Maximized), device(device), resources(res), swapchain(device,hwnd()),
+    library([&res](const std::string& path){ return res.readFile(path); }) {
   resetSwapchain();
   carScene = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
   hud      = std::make_unique<Hud>(device,res);
@@ -38,6 +39,7 @@ void MainWindow::loadLevel(const std::string& name) {
   try {
     auto next = std::make_unique<Level>(device,resources,name);
     vehicle.reset();
+    objects.reset();
     physics.reset();
     race.reset();
     checkpoints.reset();
@@ -58,7 +60,7 @@ void MainWindow::loadLevel(const std::string& name) {
 void MainWindow::loadCar(size_t id) {
   device.waitIdle();
   carId = id;
-  car   = std::make_unique<CarMesh>(device,resources,carScene,Cars[id]);
+  car   = std::make_unique<ModelMesh>(device,resources,carScene,Cars[id]);
   setupPhysics();
   }
 
@@ -67,8 +69,10 @@ void MainWindow::setupPhysics(bool restartRace) {
     return;
   carPose = level->carStart(car->bboxMin().y);
   vehicle.reset();
-  if(physics==nullptr)
+  if(physics==nullptr) {
     physics = std::make_unique<rc::PhysicsWorld>(level->collision());
+    objects = std::make_unique<Objects>(device,resources,library,level->scene(),*physics);
+    }
   const auto geom = rc::carGeometry(carScene,Cars[carId]);
   const auto prm  = rc::CarParams::load(resources.pack(),int32_t(carId+1),upgrade);
   vehicle  = std::make_unique<rc::Vehicle>(*physics,geom,prm,carPose);
@@ -310,6 +314,10 @@ void MainWindow::render() {
     push.sunDir[0] = 0.4f; push.sunDir[1] = 0.8f; push.sunDir[2] = 0.3f;
     push.sunDir[3] = 1.0f;                     // lightmap scale
     push.time      = time;
+    if(car) {
+      const rc::Vec3 at = carPose.translation();
+      push.carPos[0] = at.x; push.carPos[1] = at.y; push.carPos[2] = at.z;
+      }
 
     {
       auto enc = cmd.startEncoding(device);
@@ -317,6 +325,8 @@ void MainWindow::render() {
                          {zbuffer,1.f,Tempest::Preserve});
       if(level)
         level->mesh().draw(enc,push,LevelMesh::Pass::Opaque);
+      if(objects)
+        objects->draw(enc,viewProj,push);
       if(car) {
         const auto parts = carPartPoses();
         car->draw(enc,viewProj,push,carPose,&parts);

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "scene.h"
+#include "water.h"
 
 namespace rc {
 
@@ -79,6 +80,9 @@ class CollisionMesh {
     float                        shoreHeight(const Vec3& p) const;
     static constexpr float       shoreBand = 1.f;
 
+    // seas with WLOD settings are lowered by their "offset" instead (formats/water.h) and need no shore band
+    void                         setSeas(const Seas& seas);
+
     // triangles listed in a cell; the same triangle shows up in every cell it touches
     template<class F>
     void forEachInCell(uint32_t x, uint32_t y, uint32_t z, F&& fn) const {
@@ -96,6 +100,7 @@ class CollisionMesh {
     Vec3                  origin, cell;
     std::vector<uint32_t> cellStart; // cells+1 offsets into cellTris
     std::vector<uint32_t> cellTris;
+    std::vector<float>    seaOffset; // per mesh, NaN: no WLOD settings
 
     // the shore of the sea (points, as zero-length edges), bucketed in shoreCell x shoreCell squares
     struct ShorePoint { float x, z, gap; }; // gap: how far the water is above the ground just past the shore

@@ -5,16 +5,31 @@
 #include <Tempest/Encoder>
 #include <Tempest/RenderPipeline>
 #include <Tempest/Texture2d>
+#include <Tempest/UniformBuffer>
 #include <Tempest/VertexBuffer>
 
 #include <deque>
+#include <string_view>
 #include <vector>
 
 #include "formats/collision.h"
 #include "formats/scene.h"
 #include "formats/csi.h"
+#include "formats/water.h"
 
 class Resources;
+
+// shader/common.glsl "Water" block (binding 4): the waves of one sea (formats/water.h) and the shore foam
+struct WaterBlock {
+  float wave[4]  = {};  // amp, period, speed, amp2
+  float wave2[4] = {};  // period2, 1/length2, center x, center z
+  float dir[4]   = {};  // cos(angle), sin(angle), offset, magnetOffset
+  float edge[4]  = {};  // 1/magnetRadius, alphaRadius, distAlphaClampMin, distAlphaClampMax
+  float color[4] = {};  // colorMin/255, colorMax/255, 1 = waves set, foam heightOn
+  float foam[4]  = {};  // foam alphaMin, alphaMax, scrollVel
+
+  static WaterBlock from(const rc::WaterWaves& w, const rc::CoastFoam& foam);
+  };
 
 // Pipelines of shader/level.*, shared by the track and the cars.
 struct ScenePipelines {
@@ -24,6 +39,10 @@ struct ScenePipelines {
   Tempest::RenderPipeline opaque;
   Tempest::RenderPipeline cutout;
   Tempest::RenderPipeline blend;
+  // the sea, split up by tessellation to move it with the waves; empty when the GPU can't tessellate
+  Tempest::RenderPipeline water;
+  // binding 4 of everything but the sea
+  Tempest::UniformBuffer<WaterBlock> noWater;
   };
 
 // Static, pre-transformed geometry of a .sb scene, grouped into batches by texture layers.
@@ -44,6 +63,8 @@ class LevelMesh {
       F_Cutout   = 4,
       F_Mask     = 8,
       F_Water    = 16,
+      F_Waves    = 32, // water with WLOD waves (formats/water.h), uvMask.x = distance to the edge of the sea
+      F_Tess     = 64, // drawn with ScenePipelines::water: the tessellation moves the vertices
       };
 
     struct Push {
@@ -53,6 +74,7 @@ class LevelMesh {
       uint32_t flags = 0;
       float    time = 0;       // seconds, animates the water and the foam
       uint32_t padding[2] = {};
+      float    carPos[4] = {0,1e6f,0,0}; // the player's car: the sea is see-through near it (WaterWaves)
       };
 
     struct Stats {
@@ -62,8 +84,11 @@ class LevelMesh {
       size_t untextured    = 0;
       };
 
-    // `ground` (the track collision) gives the water its depth, so that the sea fades out towards the shore
-    LevelMesh(Tempest::Device& device, Resources& res, const rc::SbScene& scene, const rc::CollisionMesh* ground = nullptr);
+    // `ground` (the track collision) gives water without WLOD settings its depth, so that it fades out towards
+    // the shore; `track` names the WLOD_<track>_<object>.ini files of the sea
+    LevelMesh(Tempest::Device& device, Resources& res, const rc::SbScene& scene, const rc::CollisionMesh* ground = nullptr,
+              std::string_view track = {});
+
 
     // opaque and alpha-tested batches first, then (after the cars) the see-through ones: water, shore foam ...
     enum class Pass { Opaque, Translucent };
@@ -84,12 +109,14 @@ class LevelMesh {
       uint32_t                  flags  = 0;
       rc::AlphaMode             mode   = rc::AlphaMode::Opaque;
       bool                      sky    = false; // sky dome (sky_* textures)
+      int32_t                   water  = -1;    // waterUbo, -1: ScenePipelines::noWater
       };
 
     const Tempest::Texture2d*     sceneTexture(Resources& res, const rc::SbScene& scene, int32_t index, int32_t model, rc::AlphaMode* mode);
 
     Tempest::VertexBuffer<Vertex> vbo;
     std::vector<Batch>            batches;
+    std::vector<Tempest::UniformBuffer<WaterBlock>> waterUbo; // one per sea with waves
     std::deque<Tempest::Texture2d> embedded;  // lightmaps stored inside the scene; deque keeps addresses stable
     std::vector<std::pair<int32_t,size_t>> embeddedIndex;
     ScenePipelines                pso;

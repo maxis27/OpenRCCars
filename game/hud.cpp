@@ -4,6 +4,7 @@
 #include <Tempest/Pixmap>
 
 #include <algorithm>
+#include <numbers>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -545,7 +546,7 @@ void Hud::trackMap(const rc::Race& race, const Info& info) {
     const std::array<std::array<float,3>,4> corners = {{{c1,c0,-0.5f},{c1,c1,0.f},{c0,c1,0.5f},{c0,c0,1.f}}};
     for(auto& k:corners)
       for(int i=0; i<=8; ++i) {
-        const float a = (k[2]+float(i)/16.f)*float(M_PI);
+        const float a = (k[2]+float(i)/16.f)*std::numbers::pi_v<float>;
         outline.push_back({x+k[0]+std::cos(a)*round, y+k[1]+std::sin(a)*round});
         }
     auto vert = [&](float sx, float sy) {

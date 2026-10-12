@@ -333,12 +333,12 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   for(auto& w:geom.wheels)
     std::printf("  %-18s hub (%.3f %.3f %.3f) radius %.3f width %.3f\n",w.name.c_str(),
                 w.center.x,w.center.y,w.center.z,w.radius,w.width);
-  std::printf("boost: top %.1f km/h, accel %.1f m/s^2 at 0, %.1f s per tank\n",
-              prm.boostAccel.points().back().x*prm.speedScale,prm.acceleration(0,true),prm.boostTime);
-  std::printf("params: top %.1f km/h, accel %.1f m/s^2 at 0, steer %.0f deg, spring %.0f/s^2 damp %.1f/%.1f rest %.3f m,"
-              " grip %.2f/%.2f, drag %.4f, rolling %.2f\n",prm.topSpeed*3.6f,prm.acceleration(0),prm.steerAngle,
-              prm.suspStiffness,prm.suspDamping,prm.suspCompression,prm.suspRest,prm.gripFront,prm.gripRear,
-              prm.airDrag,prm.rolling);
+  std::printf("boost: top %.1f km/h, accel %.1f m/s^2 at 0, tank %.0f units (+%.2f/s, -%.2f/s while boosting)\n",
+              prm.boostTopSpeed*3.6f,prm.acceleration(0,1,true),prm.boostTank,prm.boostCharge,prm.boostDrain);
+  std::printf("params: top %.1f km/h, accel %.1f m/s^2 at 0, steer %.1f deg, spring %.0f/s^2 damp %.1f/%.1f rest %.3f m,"
+              " grip %.2f/%.2f, drag %.4f, rolling %.2f, deep sand %.3f, water %.3f\n",prm.topSpeed*3.6f,
+              prm.acceleration(0),prm.steerAngle,prm.suspStiffness,prm.suspDamping,prm.suspCompression,prm.suspRest,
+              prm.gripFront,prm.gripRear,prm.airDrag,prm.rolling,prm.deepSandDrag,prm.waterDrag);
 
   // checkpoints in driving order: cp_1, cp_1_1, cp_1_2 .., cp_2, .. and back to cp_1
   rc::Checkpoints cps(scene,coll);

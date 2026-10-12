@@ -29,9 +29,6 @@ Checkpoints::Checkpoints(const SbScene& scene, const CollisionMesh& track) : col
     p.height   = m.number("height",DefaultHeight);
     p.expand   = m.number("expand",DefaultExpand);
     p.main     = main;
-    p.bottom   = p.position.y-1.f;
-    if(auto g = coll.groundHeight(p.position+Vec3{0,0.5f,0}); g && *g>p.position.y-5.f)
-      p.bottom = std::min(p.bottom,*g-0.5f);
     points.push_back(p);
     };
   for(int cp=1; ; ++cp) {
@@ -61,6 +58,23 @@ Checkpoints::Checkpoints(const SbScene& scene, const CollisionMesh& track) : col
     const Vec3 next = points[(i+1<n) ? i+1 : (n>1 ? 1 : 0)].position;
     Vec3 d = flat(next-prev);
     points[i].dir = (d.length()>1e-3f) ? d*(1.f/d.length()) : Vec3{0,0,1};
+    }
+  // the lower edge: the lowest ground across the gate, under whatever stands on it. The markers are often placed
+  // on top of a prop (beach_3: cp_1_2 and cp_3_1 on a rock a metre high, the road beside it lower) or on a pier
+  // with sand under it (beach_1: cp_2_2), and a car on the road beside the prop or on the sand passes the gate too
+  for(auto& p:points) {
+    const Vec3 side = {-p.dir.z,0,p.dir.x};
+    p.bottom = p.position.y-1.f;
+    for(float s:{-0.5f,-0.25f,0.f,0.25f,0.5f}) {
+      Vec3 from = p.position+side*(s*p.width)+Vec3{0,0.5f,0};
+      for(int layer=0; layer<8; ++layer) {
+        auto g = coll.groundHeight(from,from.y-(p.position.y-MaxDepth));
+        if(!g)
+          break;
+        p.bottom = std::min(p.bottom,*g-0.5f);
+        from.y   = *g-0.05f;
+        }
+      }
     }
   }
 

@@ -13,7 +13,7 @@ namespace rc {
 // player presses R, drowns in the sea or falls into a hole (manual: "Wróć na tor").
 //
 // Every checkpoint is a gate: a vertical rectangle across the route, `width` wide, from the ground up to `height`
-// above the marker (markers float up to 2.7 m above the ground, beach_4), facing along the route (the markers
+// above the marker (markers float up to 2.7 m above the ground, beach_4, or stand on a rock or a pier), facing along the route (the markers
 // carry no rotation). The level designers set the sizes per marker (MARK properties `width`, `height`, `expand`);
 // `expand` is read as how far in front of and behind the gate the car still counts as having passed it. A lap
 // means passing all gates in order, as in the manual ("zaliczenie wszystkich punktów kontrolnych we właściwej
@@ -27,7 +27,7 @@ class Checkpoints {
       float       width  = DefaultWidth;
       float       height = DefaultHeight;
       float       expand = DefaultExpand;
-      float       bottom = 0;       // world height of the gate's lower edge: the ground under the marker
+      float       bottom = 0;       // world height of the gate's lower edge: the lowest ground across it
       bool        main   = false;   // cp_<n>, not a sub-checkpoint cp_<n>_<m>
       };
 
@@ -35,6 +35,8 @@ class Checkpoints {
     static constexpr float DefaultWidth  = 6.f;
     static constexpr float DefaultHeight = 2.f;
     static constexpr float DefaultExpand = 1.f;
+    // how far below the marker the gate may reach down to the ground
+    static constexpr float MaxDepth      = 4.f;
 
     Checkpoints(const SbScene& scene, const CollisionMesh& track);
 

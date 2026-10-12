@@ -159,6 +159,7 @@ rcinfo <folder_gry> coll RCCarsDB/beach_1.sb [coll.obj]  # siatka kolizji: staty
 rcinfo <folder_gry> drive RCCarsDB/beach_1.sb [auto 1-3] [ulepszenie 0-3]  # jazda testowa bez GPU (autopilot po checkpointach, z rekwizytami)
 rcinfo <folder_gry> objects RCCarsDB/beach_1.sb   # obiekty na trasie (INST): model, rodzaj, fizyka; test opadania rekwizytów
 rcinfo <folder_gry> race RCCarsDB/beach_1.sb [okrążenia]  # bramki punktów kontrolnych i test logiki wyścigu (bez fizyki)
+rcinfo <folder_gry> gates RCCarsDB/beach_1.sb [auto 1-3]  # każda bramka przejechana autem z fizyką
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
 rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
 rcshot <folder_gry> beach_1 shot.png [w h] [x y z yaw pitch]   # render offscreen, z autem i kamerą za nim
@@ -272,10 +273,13 @@ lib/Tempest     silnik (submoduł git)
   `0x05 { 0x06 klucz, 0x07 wartość }`). Punkty kontrolne mają `width`, `height` i `expand` (np. beach_1 `cp_1`:
   szerokość 8, wysokość 1, expand 3); tam, gdzie ich brak (cały country_1, prawie cały country_2), przyjmujemy
   6 / 2 / 1. Czytamy je jako bramkę w poprzek trasy (markery nie mają obrotu, więc bramka stoi prostopadle do linii
-  od poprzedniego do następnego punktu) od gruntu do `height` nad markerem (markery wiszą do 2,7 m nad ziemią),
-  a `expand` jako odległość przed i za bramką, w której punkt też się zalicza. Numeracja podpunktów ma dziury
+  od poprzedniego do następnego punktu) od gruntu do `height` nad markerem, a `expand` jako odległość przed i za
+  bramką, w której punkt też się zalicza. Markery wiszą do 2,7 m nad ziemią, a bywają postawione na kamieniu
+  (beach_3: `cp_1_2`, `cp_3_1` na skale ponad metr nad drogą obok) albo na pomoście (beach_1: `cp_2_2`), więc dół
+  bramki to najniższy grunt w poprzek niej, do 4 m pod markerem. Numeracja podpunktów ma dziury
   (country_1: `cp_4_3`, `cp_4_5`) i nie zawsze idzie po kolei w pliku, więc sortujemy po numerze.
-  `rcinfo race` przejeżdża wszystkie 10 tras po linii markerów i zalicza każdą bramkę.
+  `rcinfo race` przejeżdża wszystkie 10 tras po linii markerów i zalicza każdą bramkę, a `rcinfo gates` przejeżdża
+  każdą z 235 bramek autem z fizyką (rusza kilka metrów przed nią) i wszystkie się zaliczają.
 - Kokpit: `Settings/cockpit.ini` i `cockpit_time.ini` podają pozycje na ekranie 800x600 (np. `lapPosX` 713 → x 613,
   `timeTotalPosY` → y 6, `msgOffsetY` → komunikaty 142 px nad środkiem, `timeLapBlinkInSec` 4,2 s), `arrow.ini`
   strzałkę (`CX` 50 %, `CY` 87 %, pochylona o `AngleVert` 45°). Obrazki z napisami są w `Language/<język>/*.csi`

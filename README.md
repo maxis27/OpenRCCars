@@ -42,12 +42,12 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 - **wyścig**: odliczanie 3, 2, 1, „Jazda!” z dźwiękami startu `cp_start` i `prestart` (auto stoi do startu), 3, 5
   albo 7 okrążeń, czas całkowity i czas okrążenia, najlepsze okrążenie, „zły kierunek”, meta z tabelą czasów i
   „jeszcze raz”.
-  Punkty kontrolne to bramki o szerokości i wysokości zapisanej w danych trasy (właściwości markerów `cp_*`).
-  Liczą się główne `cp_N` (na beach_1 cztery, każdy z kolorowym graffiti na ziemi): okrążenie to przejechanie
-  ich wszystkich po kolei, jak w instrukcji, a R wraca na ostatni zaliczony. Pośrednie `cp_N_M` prowadzą strzałkę
-  i „zły kierunek”; główny punkt zalicza się dopiero, gdy auto przejechało obok pośrednich przed nim (przez bramkę,
-  przez jej linię do 15 m obok albo bliżej niż 4 m od jej boku), bo trasa potrafi wcześniej minąć dalszy punkt
-  główny (country_3 objeżdża tę samą pętlę dwa razy, a `cp_3` stoi przy jej wjeździe). Kokpit rysujemy obrazkami
+  Liczą się główne punkty kontrolne `cp_N` (na beach_1 cztery, każdy z kolorowym graffiti na ziemi): okrążenie to
+  przejechanie ich wszystkich po kolei, jak w instrukcji, a R wraca na ostatni zaliczony. Jak w RCCars.exe punkt
+  zalicza się, gdy auto minie jego marker bliżej niż 1,6 m (liczone w 3D), i sprawdzany jest tylko następny w
+  kolejności. Pośrednie `cp_N_M` prowadzą strzałkę i „zły kierunek” (strzałka idzie dalej, gdy auto przetnie linię
+  punktu do 15 m od niego albo podjedzie bliżej niż 4 m od boku jego korytarza). Tak jak w oryginale na country_3
+  da się zaliczyć `cp_3` wcześnie: stoi 2,2 m od drogi przy wjeździe w pętlę, którą trasa objeżdża dwa razy. Kokpit rysujemy obrazkami
   z gry (`Language/Polish` albo `Language/English`: odliczanie, „okrążenie”, komunikaty, czcionka `Smash26`)
   w miejscach z `Settings/cockpit.ini`; strzałka (szewron `coc_str_2`) pokazuje następny punkt kontrolny
   i miga na czerwono, gdy jedziesz w złą stronę. Nad następnym głównym punktem wisi animowana strzałka z gry
@@ -57,7 +57,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   `messagebox`, z punktami głównymi (`map_cp`, następny świeci) i autami (`map_arrow`: gracz i przeciwnicy); strzałka kierunku zielona
   w nawiasach z `overtaking.csi`; w lewym górnym rogu miejsce (`place1..6`) w wyścigu z przeciwnikami. Czas i numer
   okrążenia metaliczne jak w oryginale, czas okrążenia miga pod czasem tylko po jego ukończeniu. Spoza
-  oryginału są tylko bramki obrysowane na trasie do debugowania (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
+  oryginału są tylko kule zaliczania punktów (1,6 m) obrysowane na trasie do debugowania (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
   zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono, pośrednia, na którą wskazuje strzałka,
   niebieska. Każde zaliczenie trafia też do logu
 - **przeciwnicy**: jak w oryginale, nie jeżdżą z fizyką, tylko odtwarzają przejazdy nagrane na każdej trasie
@@ -166,7 +166,7 @@ Pozostałe:
 |---|---|
 | V | kamera za autem ↔ kamera swobodna (auto wtedy stoi) |
 | K | nakładka kolizji (debug; turkusowa woda, fioletowy głęboki piasek) |
-| G | obrysy bramek punktów kontrolnych (debug, domyślnie wyłączone) |
+| G | kule zaliczania punktów kontrolnych, 1,6 m (debug, domyślnie wyłączone) |
 | N | przeskok do następnego głównego punktu kontrolnego (debug, do sprawdzania okrążeń i mety) |
 | W / S / A / D | ruch kamery swobodnej |
 | E, Spacja / Q, C | w górę / w dół |
@@ -186,8 +186,8 @@ rcinfo <folder_gry> obj RCCarsDB/Car.sb car.obj   # eksport geometrii do OBJ
 rcinfo <folder_gry> coll RCCarsDB/beach_1.sb [coll.obj]  # siatka kolizji: statystyki, test raycastu, eksport OBJ
 rcinfo <folder_gry> drive RCCarsDB/beach_1.sb [auto 1-3] [ulepszenie 0-3]  # jazda testowa bez GPU (autopilot po checkpointach, z rekwizytami)
 rcinfo <folder_gry> objects RCCarsDB/beach_1.sb   # obiekty na trasie (INST): model, rodzaj, fizyka; test opadania rekwizytów
-rcinfo <folder_gry> race RCCarsDB/beach_1.sb [okrążenia]  # bramki punktów kontrolnych i test logiki wyścigu (bez fizyki)
-rcinfo <folder_gry> gates RCCarsDB/beach_1.sb [auto 1-3]  # każda bramka przejechana autem z fizyką
+rcinfo <folder_gry> race RCCarsDB/beach_1.sb [okrążenia]  # punkty kontrolne i test logiki wyścigu (bez fizyki)
+rcinfo <folder_gry> gates RCCarsDB/beach_1.sb [auto 1-3]  # każdy główny punkt kontrolny zaliczony autem z fizyką
 rcinfo <folder_gry> ai RCCarsDB/beach_1.sb [poziom 1-3] [okrążenia]  # przeciwnicy: nagrania, ich pętle i wyścig bez gracza
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
 rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
@@ -218,7 +218,7 @@ physics/        fizyka jazdy (Bullet, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
   vehicle.*     świat Bulleta trasy, btRaycastVehicle z promieniami przez siatkę COLL, nawierzchnie i woda
-  checkpoints.* bramki punktów kontrolnych w kolejności, postęp auta, powrót do ostatniego punktu
+  checkpoints.* punkty kontrolne w kolejności, zaliczanie (1,6 m), postęp auta, powrót do ostatniego punktu
   race.*        wyścig: odliczanie, okrążenia, czasy, zły kierunek, meta
   props.*       rekwizyty: parametry ze skryptu SCRI, kształt, bryła sztywna
   opponents.*   przeciwnicy: odtwarzanie nagrań w tempie z gumką, okrążenia, kolejność w wyścigu
@@ -332,15 +332,13 @@ lib/Tempest     silnik (submoduł git)
 - Markery (`MARK`) mają w elemencie `0x04` właściwości wpisane w edytorze poziomów jako pary tekstów (lista
   `0x05 { 0x06 klucz, 0x07 wartość }`). Punkty kontrolne mają `width`, `height` i `expand` (np. beach_1 `cp_1`:
   szerokość 8, wysokość 1, expand 3); tam, gdzie ich brak (cały country_1, prawie cały country_2), przyjmujemy
-  6 / 2 / 1. Czytamy je jako bramkę w poprzek trasy (markery nie mają obrotu, więc bramka stoi prostopadle do linii
-  od poprzedniego do następnego punktu) od gruntu do `height` nad markerem, a `expand` jako odległość przed i za
-  bramką, w której punkt też się zalicza. Markery wiszą do 2,7 m nad ziemią, a bywają postawione na kamieniu
-  (beach_3: `cp_1_2`, `cp_3_1` na skale ponad metr nad drogą obok) albo na pomoście (beach_1: `cp_2_2`), więc dół
-  bramki to najniższy grunt w poprzek niej, do 4 m pod markerem. Numeracja podpunktów ma dziury
+  szerokość 6. W oryginale opisują korytarz trasy do następnego markera (z niego liczy się postęp i miejsca), a nie
+  zaliczanie punktu; u nas szerokość pomaga tylko strzałce. Główne markery `cp_N` wiszą najwyżej 0,5 m nad ziemią,
+  pośrednie do 2,7 m. Numeracja podpunktów ma dziury
   (country_1: `cp_4_3`, `cp_4_5`) i nie zawsze idzie po kolei w pliku, więc sortujemy po numerze.
-  `rcinfo race` przejeżdża wszystkie 10 tras po linii markerów (i drugi raz obok bramek pośrednich) i zalicza
-  każde okrążenie, a `rcinfo gates` przejeżdża
-  każdą z 235 bramek autem z fizyką (rusza kilka metrów przed nią) i wszystkie się zaliczają.
+  `rcinfo race` przejeżdża wszystkie 10 tras po linii markerów (i drugi raz obok punktów pośrednich) i zalicza
+  każde okrążenie, a `rcinfo gates` dojeżdża autem z fizyką do każdego z 50 głównych punktów (rusza kilka metrów
+  przed nim) i wszystkie się zaliczają.
 - Zegary i mapa: `indicatorAngMin`/`indicatorAngMax` z `cockpit.ini` (−34° i 127° od góry, zgodnie z ruchem
   wskazówek) to dokładnie początek i koniec żółtej skali `cockpit_sp1` i czerwonej `cockpit_sp2` wokół środka tarczy
   (130; 126,6 z 256). Ze zrzutu oryginału: rurka wypełnia się na czerwono od dolnego końca (zero) w górę, nad
@@ -379,7 +377,7 @@ lib/Tempest     silnik (submoduł git)
   numerem w górnych 16 bitach; `RCCars.exe` 0x5029b0). Nagranie to jedno okrążenie od miejsca w szyku: od czasu
   FULL − CYCLE do końca to pętla (koniec 0,01–0,25 m od jej początku). Odmiany `_2`, `_3` zaczynają się tak samo
   i inaczej jadą okrążenie; `_3` bywają skrótami (`surf\over1_3` omija pętlę `cp_4_1` … `cp_4_6`), więc okrążenia
-  przeciwników liczymy po przejechaniu `cp_1` pod koniec nagrania, a nie po bramkach. Trasy w `ailayouts.ini` i
+  przeciwników liczymy po przejechaniu `cp_1` (do 2,88 m, jak auta AI w grze) pod koniec nagrania, a nie po kolejnych punktach. Trasy w `ailayouts.ini` i
   `championship.ini` mają nazwy z gry: 1 Surf (beach_1), 2 Fishers (country_3), 3 Fort (beach_3), 4 AAD (urban_2),
   5 Mines (country_2), 6 Camping (beach_2), 7 Avax (urban_1), 8 Rancho (country_1), 9 Silo (country_4),
   10 War path (beach_4). `Demo*` to długie (ok. 220 s) nagrania do dema. Odtwarzanie w `RCCars.exe`: czas

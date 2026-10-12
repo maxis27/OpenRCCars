@@ -26,8 +26,9 @@ class Resources;
 // At the bottom the original's two gauges (cockpit_sp1, cockpit_sp2): turbo on the left, the speed on the right; at the
 // top right under the lap the track map (trackmap_<n>, map_cp, map_arrow), at the top left the place (place<n>.csi)
 // when the race knows it.
-// Not from the original: only the gates outlined in the 3D view (G): the next main one green, the one after it
-// yellow, the ones passed in this lap grey, and the sub-checkpoint the arrow shows thin blue.
+// Not from the original: only the checkpoints' spheres outlined in the 3D view (G, the radius within which a main one
+// counts): the next main one green, the one after it yellow, the ones passed in this lap grey, and the
+// sub-checkpoint the arrow shows thin blue.
 class Hud {
   public:
     // what the race does not know
@@ -43,8 +44,8 @@ class Hud {
       std::vector<Car> opponents;             // the other cars on the map
       std::vector<rc::Opponents::Standing> standings;  // with opponents: the order, for the table at the finish
       bool  paused    = false;
-      bool  gates     = false; // the checkpoint gates drawn over the 3D view (debug)
-      rc::Mat4 viewProj;       // the camera, for the gates and the checkpoint arrows
+      bool  gates     = false; // the checkpoints drawn over the 3D view (debug)
+      rc::Mat4 viewProj;       // the camera, for the debug spheres and the checkpoint arrows
       };
 
     Hud(Tempest::Device& device, Resources& res);

@@ -39,8 +39,9 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   wodospady) nie jest twarda: auto brodzi w płytkiej wodzie i zwalnia, w głębokiej tonie, a po 1 s całkiem pod wodą (po dach, antena się nie liczy)
   wraca do ostatniego punktu kontrolnego, jak w instrukcji („jeśli utoniesz w morzu”). Tam też wraca po klawiszu R
   i po wypadnięciu poza trasę.
-- **wyścig**: odliczanie 3, 2, 1, „Jazda!” (auto stoi do startu), 3, 5 albo 7 okrążeń, czas całkowity i czas
-  okrążenia, najlepsze okrążenie, „zły kierunek”, meta z tabelą czasów i „jeszcze raz”.
+- **wyścig**: odliczanie 3, 2, 1, „Jazda!” z dźwiękami startu `cp_start` i `prestart` (auto stoi do startu), 3, 5
+  albo 7 okrążeń, czas całkowity i czas okrążenia, najlepsze okrążenie, „zły kierunek”, meta z tabelą czasów i
+  „jeszcze raz”.
   Liczą się główne punkty kontrolne `cp_N` (na beach_1 cztery, każdy z kolorowym graffiti na ziemi): okrążenie to
   przejechanie ich wszystkich po kolei, jak w instrukcji, a R wraca na ostatni zaliczony. Jak w RCCars.exe punkt
   zalicza się, gdy auto minie jego marker bliżej niż 1,6 m (liczone w 3D), i sprawdzany jest tylko następny w
@@ -368,6 +369,12 @@ lib/Tempest     silnik (submoduł git)
   Czcionka `Smash20/26.csi` to siatka 10 kolumn × 9 wierszy (25,6 × 28,4 px) ze znakami w kolejności z `Smash*.dat`;
   szerokość liter mierzymy z kanału alfa. Teksty w `Language/Game/*.tbl` są zaszyfrowane, więc napisy tabeli
   wyników są na razie wpisane w kod. Liczbę okrążeń (3, 5 lub 7) wybiera się w oryginale w menu.
+- Odliczanie to skrypty w `RCCars.sb` (`IRCS`): `RaceEntry` ma `1.0 Show3`, `2.0 Show2`, `3.0 Show1`, `4.0 StartRace`
+  (sekunda bez niczego, potem cyfry), `RaceAgain` („jeszcze raz”) to samo bez tej sekundy, start po 3 s. Polecenie
+  `Show3` w `RCCars.exe` (0x4e2060 → 0x52a6a0) gra dźwięk 2 kanału `Checkpoint` (`cp`, `cp_beside`, `cp_start`,
+  `cp_reset`, `cp_wrongway`), czyli `cp_start.wav`, i kanał `Prestart` (`prestart.wav`, 9 s) naraz. Dźwięki są w
+  archiwum w `Sound\*.wav` jako zwykłe PCM 16 bit. Światła startowe z `cockpit.sb` (`lightsframe`, `light1..12`)
+  oryginał pomija: wczytuje ten plik jako model `Arrow` tylko dla strzałki `extru9`, a tekstur świateł nie ma w archiwum.
 - `CarProfiles/<trasa>/<nazwa>.dat` (nagrania przeciwników) mają ten sam format elementów co sceny: nagłówek
   `0x60` (m.in. `g` = 136, długość klatki, i teksty „Time path FULL: 68.185939”, „CYCLE: 65.022942”), `0x63`
   (liczba klatek, czas), `0x64` klatki, `0x65` lista zdarzeń (nieużywana). Klatka (ok. 100 na sekundę) to pełny
@@ -415,9 +422,10 @@ lib/Tempest     silnik (submoduł git)
 4. Węzły `INST` (instancje obiektów): ~~rekwizyty~~ (zrobione: bryły sztywne z parametrami ze skryptów; brakuje
    wiatru dla kłębków i dźwięków uderzeń `SNCH`); postacie, zwierzęta i ruch uliczny czekają na animacje
    (`SPLN`/`ANIM`/`ASEQ`) i AI. Do tego `HHID` (widoczność/sektory)
-5. Dźwięk: odszyfrowane WAV z `Sound/`, muzyka MP3 z `Tracks/`
+5. Dźwięk: WAV z `Sound\` w archiwum (na razie tylko dźwięki odliczania, przez OpenAL Soft z Tempest), muzyka MP3
+   z `Tracks/`
 6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
-   świateł startowych z `cockpit.sb` (ich tekstur `lights`/`cockpit` nie ma w RCCars.pack), menu i zapisu rekordów)
+   menu i zapisu rekordów)
 7. ~~Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`)~~
    (zrobione dla szybkiego wyścigu; brakuje zderzeń, które wytrącają przeciwnika z nagrania, mistrzostw z
    `championship.ini`, duchów z `GhostRecords`, twarzy kierowców i ich wyboru w menu)

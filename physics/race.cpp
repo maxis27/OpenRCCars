@@ -7,10 +7,11 @@ using namespace rc;
 Race::Race(Checkpoints& route, int laps) : route(route), lapCount(laps) {
   }
 
-void Race::restart(const Mat4& start) {
+void Race::restart(const Mat4& start, bool again) {
   route.reset(start);
   state    = Phase::Countdown;
   clock    = 0;
+  startAt  = (again ? 0.f : EntryDelay)+CountTime;
   lapStart = 0;
   times.clear();
   wrong    = false;
@@ -26,11 +27,15 @@ Race::Event Race::update(float dt, const Vec3& car, const Vec3& velocity) {
   if(state==Phase::Finished)
     return Event::None;
 
+  const float was = clock;
   clock += dt;
   if(state==Phase::Countdown) {
     route.update(car); // follows the car, nothing to pass at the start
-    if(clock<CountdownTime)
-      return Event::None;
+    if(clock<startAt) {
+      // "3" (Show3): the original plays the start sounds with it
+      const float count = startAt-CountTime;
+      return (was<count || (was==0 && count==0)) && clock>=count ? Event::Count : Event::None;
+      }
     state = Phase::Racing;
     return Event::Go;
     }

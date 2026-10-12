@@ -32,9 +32,6 @@ constexpr float TimeY      = -2;                    // digits 7 px from the top 
 constexpr float TimeLapY   = 43;                    // "timeLapPosY"
 constexpr float LapBlink   = 4.2f;                  // "timeLapBlinkInSec": a finished lap's time blinks
 constexpr float MessageY   = 300-142;               // "msgOffsetY" from the middle of the screen
-// Settings/arrow.ini: "CX" 50, "CY" 87 (percent of the screen), "AngleVert" 45 (the arrow lies tilted)
-constexpr float ArrowX     = 400,  ArrowY    = 600*0.87f;
-constexpr float ArrowTilt  = 0.7071f;
 
 constexpr float LapNumY    = 16;                    // the lap number's top ("lapNumPosY" reads 24)
 constexpr float LapNumDX   = 115;                   // from the "okrążenie" picture's left edge
@@ -147,8 +144,6 @@ Hud::Hud(Device& device, Resources& res) : device(device), resources(res) {
   panel       = tex("messagebox");
   mapArrow  = tex("map_arrow");
   mapCp     = tex("map_cp");
-  if(auto t = res.texture("coc_str_2"))
-    arrow = &t->tex;
   for(int c=0; c<2; ++c)
     for(int f=0; f<3; ++f)
       if(auto t = res.texture("cp_ar_"+std::to_string(c+2)+"_f"+std::to_string(f+1)))
@@ -732,20 +727,6 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     quad(*overtaking,128,128,{Bracket[2],Bracket[1],Bracket[0],Bracket[3]},px(BracketX+BracketDX)-bw*0.5f,by,bw,bh,
          white4);
     }
-  // the arrow towards the next checkpoint: green, red and blinking on the wrong way. The original's is a 3D chevron
-  // (extru9 in cockpit.sb, coloured by its materials green/red): here coc_str_2 tinted, with a darker copy under it
-  // as its side.
-  if(arrow!=nullptr && phase!=rc::Race::Phase::Finished) {
-    const bool  wrong = race.wrongWay();
-    const float a     = wrong ? (blink ? 1.f : 0.35f) : 1.f;
-    const Color top   = wrong ? Color{1.f,0.25f,0.2f,a} : Color{0.45f,1.f,0.35f,a};
-    const Color side  = wrong ? Color{0.45f,0.05f,0.05f,a} : Color{0.1f,0.45f,0.1f,a};
-    const float size  = 96.f*scale;
-    const float ax = px(ArrowX)-size*0.5f, ay = py(ArrowY)-size*0.5f;
-    quad(*arrow,128,128,{0,0,128,128},ax,ay+7.f*scale,size,size,side,info.direction,ArrowTilt);
-    quad(*arrow,128,128,{0,0,128,128},ax,ay,size,size,top,info.direction,ArrowTilt);
-    }
-
   // one message in the middle at a time
   const float my = py(MessageY);
   if(info.paused) {

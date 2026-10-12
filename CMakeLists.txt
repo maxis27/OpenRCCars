@@ -92,6 +92,7 @@ add_library(rcengine STATIC
   game/camera.h            game/camera.cpp
   game/resources.h         game/resources.cpp
   game/hud.h               game/hud.cpp
+  game/arrow.h             game/arrow.cpp
   game/sounds.h            game/sounds.cpp
   game/world/levelmesh.h   game/world/levelmesh.cpp
   game/world/modelmesh.h     game/world/modelmesh.cpp

@@ -84,7 +84,5 @@ class MainWindow : public Tempest::Window {
     Tempest::Point          mousePos;
     float                   speed    = 8.f; // m/s
     uint64_t                lastTick = 0;
-    float                   fpsTime  = 0;
     float                   time     = 0; // seconds since start, animates the water
-    uint32_t                fpsCount = 0;
   };

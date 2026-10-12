@@ -22,6 +22,7 @@ static const char* const Tracks[] = {
 MainWindow::MainWindow(Device& device, Resources& res, const std::string& name)
   : Window(Maximized), device(device), resources(res), swapchain(device,hwnd()),
     library([&res](const std::string& path){ return res.readFile(path); }) {
+  setWindowTitle("OpenRCCars");
   resetSwapchain();
   carScene = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
   hud      = std::make_unique<Hud>(device,res);
@@ -48,7 +49,6 @@ void MainWindow::loadLevel(const std::string& name) {
     race        = std::make_unique<rc::Race>(*checkpoints,laps);
     camera  = level->startCamera();
     setupPhysics();
-    setWindowTitle(("OpenRCCars - "+name).c_str());
     }
   catch(const std::exception& e) {
     Log::e("unable to load track \"",name,"\": ",e.what());
@@ -354,21 +354,6 @@ void MainWindow::render() {
 
     sync = device.submit(cmd);
     device.present(swapchain);
-
-    fpsTime += dt;
-    fpsCount++;
-    if(fpsTime>0.25f) {
-      std::string title = "OpenRCCars - "+(level ? level->name() : std::string())+
-                          " - "+std::to_string(int(float(fpsCount)/fpsTime))+" fps";
-      if(vehicle)
-        title += " - "+std::to_string(int(std::round(std::abs(vehicle->speed())*3.6f)))+" km/h"+
-                 " - turbo "+std::to_string(int(std::round(vehicle->boostLevel()*100.f)))+"%"+
-                 " - "+rc::surfaceName(vehicle->surface())+
-                 (upgrade>0 ? " - upgrade "+std::to_string(upgrade) : std::string());
-      setWindowTitle(title.c_str());
-      fpsTime  = 0;
-      fpsCount = 0;
-      }
     }
   catch(const Tempest::SwapchainSuboptimal&) {
     resetSwapchain();

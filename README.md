@@ -38,7 +38,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   nawierzchnie różnią się w oryginale tylko kurzem spod kół. Woda (tekstura `sea`: morze, strumienie, kałuże,
   wodospady) nie jest twarda: auto brodzi w płytkiej wodzie i zwalnia, w głębokiej tonie, a po 1 s całkiem pod wodą (po dach, antena się nie liczy)
   wraca do ostatniego punktu kontrolnego, jak w instrukcji („jeśli utoniesz w morzu”). Tam też wraca po klawiszu R
-  i po wypadnięciu poza trasę. Nazwa nawierzchni pod autem jest w tytule okna
+  i po wypadnięciu poza trasę.
 - **wyścig**: odliczanie 3, 2, 1, „Jazda!” (auto stoi do startu), 3, 5 albo 7 okrążeń, czas całkowity i czas
   okrążenia, najlepsze okrążenie, „zły kierunek”, meta z tabelą czasów i „jeszcze raz”. Na razie bez przeciwników.
   Punkty kontrolne to bramki o szerokości i wysokości zapisanej w danych trasy (właściwości markerów `cp_*`).
@@ -131,7 +131,7 @@ Jazda (kamera za autem):
 | S / ↓ | hamulec, po zatrzymaniu wsteczny |
 | A / ← , D / → | skręt w lewo / w prawo |
 | Spacja | skok (przewrócone auto: na koła) |
-| Shift | dopalacz (zużywa turbo, ok. 10 s z pełnego zbiornika; procent w tytule okna) |
+| Shift | dopalacz (zużywa turbo, ok. 10 s z pełnego zbiornika) |
 | B | zablokuj koła (tylne, do poślizgu) |
 | T | postaw auto na koła w miejscu |
 | R | powrót do ostatniego głównego punktu kontrolnego (przed pierwszym: na start) |
@@ -156,8 +156,6 @@ Pozostałe:
 | kółko myszy | prędkość kamery |
 | F1–F10 | trasy: beach_1–4, country_1–4, urban_1–2 |
 | Esc | wyjście |
-
-Prędkość auta (km/h) jest też w tytule okna.
 
 ## Narzędzia
 

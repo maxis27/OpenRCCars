@@ -295,9 +295,10 @@ lib/Tempest     silnik (submoduł git)
 - Kokpit: `Settings/cockpit.ini` i `cockpit_time.ini` podają pozycje na ekranie 800x600 (np. `lapPosX` 713 → x 613,
   `timeTotalPosY` → y 6, `msgOffsetY` → komunikaty 142 px nad środkiem, `timeLapBlinkInSec` 4,2 s), `arrow.ini`
   strzałkę (`CX` 50 %, `CY` 87 %, pochylona o `AngleVert` 45°). `anim_cp.ini` (`Size` 146, `Shift` 128,
-  `MinDist` 237, `MaxDist` 900, `BlinkDelta` 10) czytamy jako centymetry i setne sekundy: strzałka nad punktem ma
-  1,46 m, wisi 1,28 m nad markerem, znika bliżej niż 2,37 m od kamery, dalej niż 9 m trzyma rozmiar na ekranie,
-  klatka co 0,1 s (zgadnięte; kod gry, który to czyta, nie jest rozpracowany). Obrazki z napisami są w `Language/<język>/*.csi`
+  `MinDist` 237, `MaxDist` 900, `BlinkDelta` 10): `Shift` to texele obrazka wysokiego na 256, więc jest podniesiony
+  o połowę wysokości i cień narysowany u jego dołu leży na ziemi pod markerem; resztę czytamy jako centymetry
+  i setne sekundy: strzałka ma 1,46 m, znika bliżej niż 2,37 m od kamery, dalej niż 9 m trzyma rozmiar na ekranie
+  (rośnie w górę od ziemi), klatka co 0,1 s (zgadnięte; kod gry, który to czyta, nie jest rozpracowany). Obrazki z napisami są w `Language/<język>/*.csi`
   (poza archiwum), `msg_321_s_f.csi` to „3”, „Jazda!”/„GO!”, „2”, „1”, „meta”/„Finish” w jednej teksturze.
   Czcionka `Smash20/26.csi` to siatka 10 kolumn × 9 wierszy (25,6 × 28,4 px) ze znakami w kolejności z `Smash*.dat`;
   szerokość liter mierzymy z kanału alfa. Teksty w `Language/Game/*.tbl` są zaszyfrowane, więc napisy tabeli

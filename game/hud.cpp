@@ -39,12 +39,14 @@ const char* const Texts[2][5] = {
   {"Okr.", "Razem", "Najlepsze", "Enter - jeszcze raz", "Punkt"},
   {"Lap",  "Total", "Best",      "Enter - race again",  "Checkpoint"},
   };
-// Settings/anim_cp.ini, read as centimetres (Size 146, Shift 128, MinDist 237, MaxDist 900) and BlinkDelta 10 as
-// hundredths of a second per frame: a guess, the game's code that uses them is not decoded. The arrow is 1.46 m
-// big, 1.28 m above the marker, hidden when the camera is closer than 2.37 m, and farther than 9 m it keeps the
-// size it has on the screen at 9 m, so that it shows the way from afar.
+// Settings/anim_cp.ini: Size 146, Shift 128, MinDist 237, MaxDist 900, BlinkDelta 10. Shift reads as texels of
+// the 256 high picture: it is raised by half its height, so the shadow drawn at its bottom lies on the ground under
+// the marker. The rest is read as centimetres and hundredths of a second per frame (a guess, the game's code that
+// uses them is not decoded): the arrow is 1.46 m big, hidden when the camera is closer than 2.37 m, and farther
+// than 9 m it keeps the size it has on the screen at 9 m (growing upwards from the ground), so that it shows the
+// way from afar.
 constexpr float CpArrowSize    = 1.46f;
-constexpr float CpArrowShift   = 1.28f;
+constexpr float CpArrowShift   = 128.f/256.f;
 constexpr float CpArrowMinDist = 2.37f;
 constexpr float CpArrowMaxDist = 9.f;
 constexpr float CpArrowFrame   = 0.1f;
@@ -318,7 +320,7 @@ void Hud::checkpointArrow(const rc::Race& race, const rc::Mat4& vp) {
   if(tex==nullptr)
     return;
   const auto&    p  = route[next];
-  const rc::Vec3 at = {p.position.x,std::max(p.position.y,p.bottom+0.5f)+CpArrowShift,p.position.z};
+  const rc::Vec3 foot = {p.position.x,p.ground,p.position.z};
   float depth = 0;
   auto project = [&](const rc::Vec3& v, float& sx, float& sy) {
     const float w = vp.m[3][0]*v.x+vp.m[3][1]*v.y+vp.m[3][2]*v.z+vp.m[3][3];
@@ -328,10 +330,13 @@ void Hud::checkpointArrow(const rc::Race& race, const rc::Mat4& vp) {
     depth = c.z/w;
     return w;
     };
-  float x, y, x0, y0, x1, y1;
-  const float dist = project(at,x,y);
+  float x0, y0, x1, y1;
+  const float dist = project(foot,x1,y1);
   if(dist<CpArrowMinDist)
     return;
+  // the size: kept from growing smaller on the screen beyond MaxDist
+  const float    size = CpArrowSize*std::max(1.f,dist/CpArrowMaxDist);
+  const rc::Vec3 at   = foot+rc::Vec3{0,size*CpArrowShift,0};
   // a flat picture facing the camera at the arrow's distance, brought half a metre nearer so that the ground right
   // under it does not cut off its shadow: terrain and objects in front of it hide it. The 4th row of the matrix is
   // the camera's forward direction.
@@ -339,13 +344,12 @@ void Hud::checkpointArrow(const rc::Race& race, const rc::Mat4& vp) {
   float sx, sy;
   project(at-fwd*0.5f,sx,sy);
   const float z = depth;
-  // the size on the screen: the arrow's height projected, kept from growing smaller beyond MaxDist
-  const float size = CpArrowSize*std::max(1.f,dist/CpArrowMaxDist);
-  project(at+rc::Vec3{0,size*0.5f,0},x0,y0);
-  project(at-rc::Vec3{0,size*0.5f,0},x1,y1);
+  // its height on the screen from the foot to the top, the width the same
+  project(foot+rc::Vec3{0,size,0},x0,y0);
   const float h     = std::abs(y1-y0);
+  const float x     = x1;
   const float alpha = std::min(1.f,dist-CpArrowMinDist);   // fades in over the first metre
-  quadAt(*tex,x-h*0.5f,y-h*0.5f,h,h,z,Color{1,1,1,alpha});
+  quadAt(*tex,x-h*0.5f,std::min(y0,y1),h,h,z,Color{1,1,1,alpha});
   }
 
 void Hud::quadAt(const Texture2d& tex, float x, float y, float w, float h, float depth, const Color& c) {

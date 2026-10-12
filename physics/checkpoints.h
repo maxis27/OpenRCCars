@@ -31,6 +31,7 @@ class Checkpoints {
       float       height = DefaultHeight;
       float       expand = DefaultExpand;
       float       bottom = 0;       // world height of the gate's lower edge: the lowest ground across it
+      float       ground = 0;       // world height of the ground right under the marker
       bool        main   = false;   // cp_<n>, not a sub-checkpoint cp_<n>_<m>
       };
 

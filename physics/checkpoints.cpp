@@ -67,6 +67,9 @@ Checkpoints::Checkpoints(const SbScene& scene, const CollisionMesh& track) : col
   // with sand under it (beach_1: cp_2_2), and a car on the road beside the prop or on the sand passes the gate too
   for(auto& p:points) {
     const Vec3 side = {-p.dir.z,0,p.dir.x};
+    p.ground = p.position.y;
+    if(auto g = coll.groundHeight(p.position+Vec3{0,0.5f,0},0.5f+MaxDepth))
+      p.ground = *g;
     p.bottom = p.position.y-1.f;
     for(float s:{-0.5f,-0.25f,0.f,0.25f,0.5f}) {
       Vec3 from = p.position+side*(s*p.width)+Vec3{0,0.5f,0};

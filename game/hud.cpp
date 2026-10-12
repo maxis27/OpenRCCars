@@ -27,8 +27,7 @@ const float CountFinish[4]={210,CellsY, 512,  2*CellsY};
 
 // Settings/cockpit.ini, cockpit_time.ini (slider positions mapped to their FValues ranges), 800x600 units
 constexpr float LapX       = 613,  LapY      = -20; // "lapPosX/Y": the "okrążenie" picture, top left
-constexpr float TimeSize   = 50;                    // the time and the lap number: digits 31 px high in the original
-constexpr float TimeY      = -2;                    // digits 7 px from the top as in the original ("timeTotalPosY" 6)
+constexpr float TimeY      = -11;                    // cock_num cells: the digits begin 7 px from the top as in the original
 constexpr float TimeLapY   = 43;                    // "timeLapPosY"
 constexpr float LapBlink   = 4.2f;                  // "timeLapBlinkInSec": a finished lap's time blinks
 constexpr float MessageY   = 300-142;               // "msgOffsetY" from the middle of the screen
@@ -36,7 +35,7 @@ constexpr float MessageY   = 300-142;               // "msgOffsetY" from the mid
 constexpr float ArrowX     = 400,  ArrowY    = 600*0.87f;
 constexpr float ArrowTilt  = 0.7071f;
 
-constexpr float LapNumY    = 16;                    // the lap number's top ("lapNumPosY" reads 24)
+constexpr float LapNumY    = 11;                    // the lap number's cells (fitted to the original; "lapNumPosY" reads 24)
 constexpr float LapNumDX   = 115;                   // from the "okrążenie" picture's left edge
 constexpr float PlaceX     = 25,   PlaceY    = -20; // "placePosX/Y": place<n>.csi, 128x128
 // the gauges: "indicatorAngMin" -34 and "indicatorAngMax" 127 degrees clockwise from the top are where the tube of
@@ -55,6 +54,7 @@ constexpr float GreyCX      = 127.5f, GreyCY = 127.5f, GaugeGreyAt = 184;
 // the dial's picture is drawn 1:1 (256 units), its middle 89.5 from the left (right) and 511 from the top: fitted to
 // the original's screenshot (the picture runs off the bottom of the screen)
 constexpr float GaugeSize   = 256;
+constexpr float GaugeNumY   = -54;   // the number's cells, from the dial's middle
 constexpr float GaugeMidX   = 89.5f, GaugeMidY = 511;
 constexpr float GaugeX      = GaugeMidX-GaugeCX*GaugeSize/256.f, GaugeY = GaugeMidY-GaugeCY*GaugeSize/256.f;
 // a full speed gauge, km/h: in the screenshot the fully upgraded Overkill (turbo tank 82, 42.7 km/h with turbo)
@@ -133,6 +133,7 @@ Hud::Hud(Device& device, Resources& res) : device(device), resources(res) {
   msgPause = loadImage(res,"msg_pause.csi");
   lapLabel = loadImage(res,"lap.csi");
   loadFont(res,"Smash26",font);
+  loadNumbers(res);
   for(int i=0; i<6; ++i)
     place[i] = loadImage(res,"place"+std::to_string(i+1)+".csi");
   auto tex = [&](const char* name) -> const Texture2d* {
@@ -241,6 +242,71 @@ void Hud::loadFont(Resources& res, std::string_view name, Font& f) {
   // a space as wide as a third of a cell, drawn as nothing
   f.glyphs[' '] = Glyph{0,cw*0.35f,0,0};
   f.has[' ']    = true;
+  }
+
+// The cockpit's numbers are not in the Smash font: RCCars.exe draws them with "cock_num", a texture kept in
+// RCCars.sb itself (XTLG, not in the pack): 256x128, cells of 32x64 in rows of 8 holding "0123456789:'/.,", metal
+// grey digits with a soft edge and their shadow drawn in. In each cell two pairs of clear marker texels (row 47..48)
+// bound the character's box: the text advances by its width, so the digits stand 18 texels apart.
+void Hud::loadNumbers(Resources& res) {
+  constexpr std::string_view Chars = "0123456789:'/.,";
+  std::vector<uint8_t> sb;
+  try {
+    sb = res.readFile("RCCars.sb");
+    }
+  catch(const std::exception& e) {
+    Log::e(e.what(),": the cockpit's numbers fall back to the Smash font");
+    return;
+    }
+  static const char name[] = "cock_num";
+  auto at = std::search(sb.begin(),sb.end(),name,name+sizeof(name)-1);
+  if(at!=sb.end())
+    at = std::search(at,sb.end(),"MISC","MISC"+4);
+  if(at==sb.end()) {
+    Log::e("RCCars.sb: no cock_num texture, the cockpit's numbers fall back to the Smash font");
+    return;
+    }
+  rc::Image img;
+  try {
+    img = rc::decodeCsi(&*at,size_t(sb.end()-at));
+    }
+  catch(const std::exception& e) {
+    Log::e("RCCars.sb cock_num: ",e.what());
+    return;
+    }
+  Pixmap pm(img.w,img.h,TextureFormat::RGBA8);
+  std::memcpy(pm.data(),img.rgba.data(),img.rgba.size());
+  Font& f = numbers;
+  f.img.tex    = device.texture(pm,true);
+  f.img.w      = int(img.w);
+  f.img.h      = int(img.h);
+  f.img.loaded = true;
+  f.cell       = 64;
+  f.hard       = false;
+  auto px = [&](int x, int y) { return &img.rgba[(size_t(y)*img.w+size_t(x))*4]; };
+  for(size_t i=0; i<Chars.size(); ++i) {
+    const int cx = int(i%8)*32, cy = int(i/8)*64;
+    // the markers: clear but coloured texels in row 47
+    int first = -1, last = -1;
+    for(int x=0; x<32; ++x) {
+      const uint8_t* p = px(cx+x,cy+47);
+      if(p[3]<10 && (p[0]>200 || p[1]>200 || p[2]>200)) {
+        if(first<0)
+          first = x;
+        last = x;
+        }
+      }
+    if(first<0 || last-first<4)
+      continue;
+    // the box lies between the pairs: from after the left pair (2 texels) up to before the right one
+    Glyph g;
+    g.u0 = float(cx+first+2);
+    g.u1 = float(cx+last-1);
+    g.v0 = float(cy);
+    g.v1 = float(cy+64);
+    f.glyphs[uint8_t(Chars[i])] = g;
+    f.has[uint8_t(Chars[i])]    = true;
+    }
   }
 
 void Hud::setTrack(const std::string& name) {
@@ -509,7 +575,7 @@ void Hud::gauge(bool right, float value, float reach, const std::string& number,
 
   // the number over a line, the unit under it, in the dial's middle
   const auto c = at(GaugeCX,GaugeCY);
-  metalText(font,number,c[0],c[1]-47.f*scale,53,0);
+  numberText(number,c[0],c[1]+GaugeNumY*scale,0);
   quad(*white,1,1,{0,0,1,1},c[0]-46.f*scale,c[1]+2.5f*scale,92.f*scale,1.5f*scale,Color{1,1,1,0.9f});
   text(font,label,c[0],c[1]+12.f*scale,28,white4,0);
   }
@@ -614,10 +680,11 @@ void Hud::trackMap(const rc::Race& race, const Info& info) {
     }
   }
 
-void Hud::metalText(const Font& f, std::string_view s, float x, float y, float size, int align, float gap) {
-  // the original's numbers: white fading to grey downwards (the font's own 1 px shadow is all the outline they have)
-  const Color top = {1,1,1,1}, bottom = {0.55f,0.55f,0.58f,1};
-  text(f,s,x,y,size,top,align,&bottom,gap);
+void Hud::numberText(std::string_view s, float x, float y, int align) {
+  if(numbers.img.loaded)
+    text(numbers,s,x,y,numbers.cell,Color{1,1,1,1},align);
+  else
+    text(font,s,x,y+12.f*scale,50,Color{1,1,1,1},align,nullptr,2);
   }
 
 void Hud::quadAt(const Texture2d& tex, float x, float y, float w, float h, float depth, const Color& c) {
@@ -660,7 +727,7 @@ float Hud::text(const Font& f, std::string_view s, float x, float y, float size,
   const float w = textWidth(f,s,size,gap);
   // the font's opacity is all or nothing: enlarged, its edges follow the bilinear filter's smooth outline, about a
   // pixel soft (as the original draws them), instead of a ramp as wide as a texel that shows the texel grid
-  sharpen = std::max(1.f,k);
+  sharpen = f.hard ? std::max(1.f,k) : 0.f;
   if(align==0) x -= w*0.5f;
   if(align>0)  x -= w;
   for(char ch:s) {
@@ -702,7 +769,7 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     // right after the picture's lettering (x 6..120, y 39..84 of 128), as in the original's screenshot: the Polish
     // one is wider than the English one, which "lapNumPosX" 725 is set for
     const std::string lap = std::to_string(race.lap())+"/"+std::to_string(race.laps());
-    metalText(font,lap,x+LapNumDX*scale,py(LapNumY),TimeSize,-1);
+    numberText(lap,x+LapNumDX*scale,py(LapNumY),-1);
     }
   // top left: the place, when there are opponents
   if(info.place>=1 && info.place<=6 && place[info.place-1].loaded) {
@@ -715,7 +782,7 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
 
   // top middle: the total time; under it a finished lap's time blinks for a while (the original shows no running
   // lap time)
-  metalText(font,formatTime(race.time()),px(400),py(TimeY),TimeSize,0,1);
+  numberText(formatTime(race.time()),px(400),py(TimeY),0);
   if(clock-lapAt<LapBlink && !race.lapTimes().empty() && blink) {
     const bool best = race.lapTimes().back()<=race.bestLap();
     text(font,formatTime(race.lapTimes().back()),px(400),py(TimeLapY),26,best ? yellow : white4,0);

@@ -47,7 +47,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   kolejności. Pośrednie `cp_N_M` prowadzą strzałkę i „zły kierunek” (strzałka idzie dalej, gdy auto przetnie linię
   punktu do 15 m od niego albo podjedzie bliżej niż 4 m od boku jego korytarza). Tak jak w oryginale na country_3
   da się zaliczyć `cp_3` wcześnie: stoi 2,2 m od drogi przy wjeździe w pętlę, którą trasa objeżdża dwa razy. Kokpit rysujemy obrazkami
-  z gry (`Language/Polish` albo `Language/English`: odliczanie, „okrążenie”, komunikaty, czcionka `Smash26`)
+  z gry (`Language/Polish` albo `Language/English`: odliczanie, „okrążenie”, komunikaty, czcionka `Smash26`; czas, numer okrążenia i liczby na zegarach metalicznymi cyframi `cock_num`, które oryginał trzyma w samym `RCCars.sb`)
   w miejscach z `Settings/cockpit.ini`; strzałka (szewron `coc_str_2`) pokazuje następny punkt kontrolny
   i miga na czerwono, gdy jedziesz w złą stronę. Nad następnym głównym punktem wisi animowana strzałka z gry
   (`cp_ar_2_f1..3` zielona, a nad `cp_1`, gdzie kończy się okrążenie, czerwona `cp_ar_3_*`), z rozmiarem i odległościami

@@ -727,7 +727,7 @@ float Hud::text(const Font& f, std::string_view s, float x, float y, float size,
   const float w = textWidth(f,s,size,gap);
   // the font's opacity is all or nothing: enlarged, its edges follow the bilinear filter's smooth outline, about a
   // pixel soft (as the original draws them), instead of a ramp as wide as a texel that shows the texel grid
-  sharpen = f.hard ? std::max(1.f,k) : 0.f;
+  sharpen = f.hard ? std::max(2.f,k) : 0.f;   // at least 2: a clear texel (0) stays clear around the 0.4 edge
   if(align==0) x -= w*0.5f;
   if(align>0)  x -= w;
   for(char ch:s) {

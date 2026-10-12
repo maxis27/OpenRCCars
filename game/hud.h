@@ -21,6 +21,9 @@ class Resources;
 // "meta", "pauza", and the times in the game's Smash font. Positions follow Settings/cockpit.ini and
 // cockpit_time.ini (a 800x600 screen; elements on the right keep their distance from the right edge on wider
 // screens). The direction arrow is the cockpit's chevron (coc_str_2) turned towards the next checkpoint.
+// Not from the original: the count of checkpoints passed in this lap under the lap number, a green "Punkt n/m"
+// each time one is passed, and the gates themselves outlined in the 3D view (G): the next one green, the one
+// after it yellow, the ones passed in this lap grey.
 class Hud {
   public:
     // what the race does not know
@@ -29,6 +32,8 @@ class Hud {
       float turbo     = 0;     // 0..1
       float direction = 0;     // the next checkpoint relative to the car's heading, radians, positive = left
       bool  paused    = false;
+      bool  gates     = true;  // the checkpoint gates drawn over the 3D view
+      rc::Mat4 viewProj;       // the camera, for the gates
       };
 
     Hud(Tempest::Device& device, Resources& res);
@@ -82,6 +87,11 @@ class Hud {
     float  px(float x, bool right = false) const { return right ? float(scrW)-(800.f-x)*scale : offsetX+x*scale; }
     float  py(float y) const { return y*scale; }
 
+    // a quadrilateral given by its four corners on the screen, in order
+    void   poly(const Tempest::Texture2d& tex, const std::array<std::array<float,2>,4>& p, const Color& c);
+    // a world-space line of the given thickness in pixels, cut at the camera's near plane
+    void   line3d(const rc::Mat4& viewProj, const rc::Vec3& a, const rc::Vec3& b, float width, const Color& c);
+    void   gates(const rc::Race& race, const rc::Mat4& viewProj);
     void   quad(const Tempest::Texture2d& tex, int tw, int th, const Rect& src, float x, float y, float w, float h,
                 const Color& c, float angle = 0, float squash = 1);
     void   sprite(const Image& img, const Rect& src, float cx, float cy, float size, const Color& c);
@@ -104,6 +114,9 @@ class Hud {
     Message                          message    = Message::None;
     float                            messageAt  = 0;
     float                            lapAt      = -100; // when the last lap was finished: its time blinks
+    size_t                           lastNext   = 0;    // the checkpoint the car headed for at the last draw()
+    size_t                           flashGate  = 0;    // the gate just passed, and when
+    float                            flashAt    = -100;
     int                              scrW = 0, scrH = 0;
     float                            scale = 1, offsetX = 0;
   };

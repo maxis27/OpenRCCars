@@ -74,6 +74,7 @@ class MainWindow : public Tempest::Window {
     float                   chaseYaw = 0;   // smoothed heading for the chase camera, degrees
     bool                    freeCamera = false;
     bool                    showCollision = false; // K: collision debug overlay
+    bool                    showGates     = true;  // G: checkpoint gates outlined
 
     Tempest::CommandBuffer  commands[MaxFramesInFlight];
     Tempest::Fence          fence[MaxFramesInFlight];

@@ -45,7 +45,10 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   okrążenie liczy się po przejechaniu wszystkich bramek po kolei, jak w instrukcji. Kokpit rysujemy obrazkami
   z gry (`Language/Polish` albo `Language/English`: odliczanie, „okrążenie”, komunikaty, czcionka `Smash26`)
   w miejscach z `Settings/cockpit.ini`; strzałka (szewron `coc_str_2`) pokazuje następny punkt kontrolny
-  i miga na czerwono, gdy jedziesz w złą stronę. Prędkość i turbo na dole ekranu na razie tekstem
+  i miga na czerwono, gdy jedziesz w złą stronę. Prędkość i turbo na dole ekranu na razie tekstem. Spoza
+  oryginału: pod numerem okrążenia „Punkt n/m” (bramki zaliczone w tym okrążeniu), zielony „Punkt n/m” na środku
+  przy każdym zaliczeniu, a same bramki obrysowane na trasie (klawisz G): następna zielona, kolejna żółta,
+  zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono. Każde zaliczenie trafia też do logu
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
   baloniki, łuski, toczące się kłębki) stoją tam, gdzie kładzie je trasa (od 8 do 17 na trasie), i są bryłami
   sztywnymi: auto je potrąca, przewraca i pcha, a koła po nich przejeżdżają. Masa, sprężystość, tarcie, kształt
@@ -137,6 +140,7 @@ Pozostałe:
 |---|---|
 | V | kamera za autem ↔ kamera swobodna (auto wtedy stoi) |
 | K | nakładka kolizji (debug; turkusowa woda, fioletowy głęboki piasek) |
+| G | obrysy bramek punktów kontrolnych (domyślnie włączone) |
 | N | przeskok do następnego punktu kontrolnego (debug, do sprawdzania okrążeń i mety) |
 | W / S / A / D | ruch kamery swobodnej |
 | E, Spacja / Q, C | w górę / w dół |

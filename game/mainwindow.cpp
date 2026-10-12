@@ -172,6 +172,8 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     }
   if(e.key==Event::K_K)
     showCollision = !showCollision;
+  if(e.key==Event::K_G)
+    showGates = !showGates;
   // R: back to the last checkpoint, as in the original
   if(e.key==Event::K_R && level && !paused)
     respawnCar();
@@ -242,7 +244,11 @@ void MainWindow::tick(float dt) {
     physics->step(dt);
     carPose = vehicle->pose();
     const rc::Vec3 at = carPose.translation();
+    const size_t   was = checkpoints->next();
     hud->event(race->update(dt,at,(at-lastCarPos)*(1.f/std::max(dt,1e-4f))));
+    if(checkpoints->next()!=was)
+      Log::i("checkpoint ",checkpoints->route()[was].name," passed at ",Hud::formatTime(race->time()),
+             " (",at.x," ",at.y," ",at.z,")");
     lastCarPos = at;
 
     // on its roof or side for a while: back on the wheels
@@ -335,8 +341,12 @@ void MainWindow::render() {
         level->mesh().draw(enc,push,LevelMesh::Pass::Translucent);
       if(level && showCollision)
         level->collisionView().draw(enc,push);
-      if(race && vehicle)
-        hud->draw(enc,frameId,int(w()),int(h()),*race,hudInfo());
+      if(race && vehicle) {
+        Hud::Info info = hudInfo();
+        info.gates    = showGates;
+        info.viewProj = viewProj;
+        hud->draw(enc,frameId,int(w()),int(h()),*race,info);
+        }
     }
 
     sync = device.submit(cmd);

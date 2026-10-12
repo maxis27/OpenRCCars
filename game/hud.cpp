@@ -34,11 +34,13 @@ constexpr float MessageY   = 300-142;               // "msgOffsetY" from the mid
 constexpr float ArrowX     = 400,  ArrowY    = 600*0.87f;
 constexpr float ArrowTilt  = 0.7071f;
 
-const char* const Texts[2][4] = {
+const char* const Texts[2][5] = {
   // Smash fonts have no Polish letters
-  {"Okr.", "Razem", "Najlepsze", "Enter - jeszcze raz"},
-  {"Lap",  "Total", "Best",      "Enter - race again"},
+  {"Okr.", "Razem", "Najlepsze", "Enter - jeszcze raz", "Punkt"},
+  {"Lap",  "Total", "Best",      "Enter - race again",  "Checkpoint"},
   };
+constexpr float GateFlash  = 1.2f;                  // the gate just passed flashes green, and "Punkt n/m" with it
+constexpr float GateRange  = 150.f;                 // gates farther away are not outlined
 
 }
 
@@ -200,6 +202,88 @@ void Hud::quad(const Texture2d& tex, int tw, int th, const Rect& src, float x, f
   draws.back().count += 6;
   }
 
+void Hud::poly(const Texture2d& tex, const std::array<std::array<float,2>,4>& p, const Color& c) {
+  if(draws.empty() || draws.back().tex!=&tex)
+    draws.push_back({&tex,verts.size(),0});
+  for(int i:{0,1,2,0,2,3})
+    verts.push_back(Vertex{{p[i][0],p[i][1]},{0.5f,0.5f},{c[0],c[1],c[2],c[3]}});
+  draws.back().count += 6;
+  }
+
+void Hud::line3d(const rc::Mat4& vp, const rc::Vec3& a, const rc::Vec3& b, float width, const Color& c) {
+  // clip space: x y z from Mat4::point, w is the 4th row (the distance along the view direction)
+  auto clip = [&](const rc::Vec3& p, float& w) {
+    w = vp.m[3][0]*p.x+vp.m[3][1]*p.y+vp.m[3][2]*p.z+vp.m[3][3];
+    return vp.point(p);
+    };
+  float          wa, wb;
+  rc::Vec3       ca = clip(a,wa), cb = clip(b,wb);
+  constexpr float Near = 0.1f;
+  if(wa<Near && wb<Near)
+    return;
+  // cut the part behind the camera
+  if(wa<Near || wb<Near) {
+    const float t = (Near-wa)/(wb-wa);
+    const rc::Vec3 cm = ca+(cb-ca)*t;
+    if(wa<Near) { ca = cm; wa = Near; } else { cb = cm; wb = Near; }
+    }
+  const float x0 = (ca.x/wa*0.5f+0.5f)*float(scrW), y0 = (ca.y/wa*0.5f+0.5f)*float(scrH);
+  const float x1 = (cb.x/wb*0.5f+0.5f)*float(scrW), y1 = (cb.y/wb*0.5f+0.5f)*float(scrH);
+  float nx = y0-y1, ny = x1-x0;
+  const float len = std::sqrt(nx*nx+ny*ny);
+  if(len<1e-3f)
+    return;
+  nx *= width*0.5f/len;
+  ny *= width*0.5f/len;
+  poly(*white,{{{x0+nx,y0+ny},{x1+nx,y1+ny},{x1-nx,y1-ny},{x0-nx,y0-ny}}},c);
+  }
+
+void Hud::gates(const rc::Race& race, const rc::Mat4& vp) {
+  const auto& cps   = race.checkpoints();
+  const auto& route = cps.route();
+  if(route.size()<2)
+    return;
+  const size_t n    = route.size()-1;     // the last point is cp_1 again
+  const size_t next = cps.next();         // 1 .. n
+  for(size_t k=0; k<n; ++k) {
+    const size_t i     = k==0 ? n : k;     // route index; cp_1 is reached as route[n]
+    const auto&  p     = route[i];
+    const bool   flash = i==flashGate && clock-flashAt<GateFlash;
+    // order from the car's point of view: 0 = the next gate, 1 = the one after it ..
+    const size_t ahead = (i+n-next)%n;
+    Color c;
+    float wdt = 2.f*scale;
+    if(flash) {
+      const float f = 1.f-(clock-flashAt)/GateFlash;
+      c   = {0.3f,1.f,0.3f,0.4f+0.6f*f};
+      wdt = (3.f+6.f*f)*scale;
+      }
+    else if(ahead==0) {
+      c   = {0.2f,1.f,0.3f,0.95f};
+      wdt = 4.f*scale;
+      }
+    else if(ahead==1)
+      c = {1.f,0.85f,0.2f,0.8f};
+    else if(i<next && race.phase()!=rc::Race::Phase::Countdown)
+      c = {0.6f,0.6f,0.6f,0.35f};          // passed in this lap
+    else
+      c = {1.f,1.f,1.f,0.45f};
+    const rc::Vec3 side = rc::Vec3{-p.dir.z,0,p.dir.x}*(p.width*0.5f);
+    const float    top  = p.position.y+p.height+0.5f;
+    const rc::Vec3 l0 = {p.position.x-side.x,p.bottom,p.position.z-side.z};
+    const rc::Vec3 r0 = {p.position.x+side.x,p.bottom,p.position.z+side.z};
+    const rc::Vec3 l1 = {l0.x,top,l0.z}, r1 = {r0.x,top,r0.z};
+    // skip the far ones (clip w is the distance along the view direction)
+    const float w = vp.m[3][0]*p.position.x+vp.m[3][1]*p.position.y+vp.m[3][2]*p.position.z+vp.m[3][3];
+    if(w>GateRange || w<-p.width)
+      continue;
+    line3d(vp,l0,l1,wdt,c);
+    line3d(vp,r0,r1,wdt,c);
+    line3d(vp,l1,r1,wdt,c);
+    line3d(vp,l0,r0,wdt,c);
+    }
+  }
+
 void Hud::sprite(const Image& img, const Rect& src, float cx, float cy, float size, const Color& c) {
   if(!img.loaded)
     return;
@@ -253,6 +337,19 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
   const auto  phase  = race.phase();
   const int   li     = (lang=="Polish") ? 0 : 1;
 
+  // a gate passed since the last frame flashes (not on a restart or a jump back)
+  const auto&  cps  = race.checkpoints();
+  const size_t n    = cps.route().size()>1 ? cps.route().size()-1 : 0;
+  if(n>0 && cps.next()!=lastNext) {
+    if(lastNext!=0 && cps.next()==lastNext%n+1) {
+      flashGate = lastNext;
+      flashAt   = clock;
+      }
+    lastNext = cps.next();
+    }
+  if(info.gates)
+    gates(race,info.viewProj);
+
   // top right: "okrążenie" and the lap number
   if(lapLabel.loaded) {
     const float x = px(LapX,true), y = py(LapY);
@@ -261,6 +358,20 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     // after the picture's lettering (x 6..120, y 39..84 of 128)
     const std::string lap = std::to_string(race.lap())+"/"+std::to_string(race.laps());
     text(font,lap,x+130.f*scale,py(LapY+61-17),34,white4);
+    }
+  // under it: the checkpoints passed in this lap, green for a moment after each one
+  if(n>0) {
+    const bool        lit    = clock-flashAt<GateFlash;
+    const Color       green  = {0.3f,1.f,0.35f,1};
+    const size_t      passed = phase==rc::Race::Phase::Finished ? n : cps.next()-1;
+    const std::string s      = std::string(Texts[li][4])+" "+std::to_string(passed)+"/"+std::to_string(n);
+    text(font,s,float(w)-15.f*scale,py(LapY+100),26,lit ? green : white4,1);
+    if(lit && phase==rc::Race::Phase::Racing) {
+      const float f = 1.f-(clock-flashAt)/GateFlash;
+      const std::string got = std::string(Texts[li][4])+" "+std::to_string(flashGate==n ? n : flashGate)+"/"+
+                              std::to_string(n);
+      text(font,got,px(400),py(MessageY+70),30+10*f,Color{green[0],green[1],green[2],std::min(1.f,2.f*f)},0);
+      }
     }
 
   // top middle: the total time, below it the lap time (a finished lap's time blinks for a while)

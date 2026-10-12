@@ -34,10 +34,46 @@ constexpr float MessageY   = 300-142;               // "msgOffsetY" from the mid
 constexpr float ArrowX     = 400,  ArrowY    = 600*0.87f;
 constexpr float ArrowTilt  = 0.7071f;
 
-const char* const Texts[2][5] = {
+constexpr float LapNumY    = 24;                    // "lapNumPosY": the lap number
+constexpr float PlaceX     = 25,   PlaceY    = -20; // "placePosX/Y": place<n>.csi, 128x128
+// the gauges: "indicatorAngMin" -34 and "indicatorAngMax" 127 degrees clockwise from the top are where the yellow
+// scale of cockpit_sp1 and the red one of cockpit_sp2 begin and end around the dial's middle (130, 126.6 of 256).
+// How the original fills it is not decoded: here the red scale covers the yellow one up to the value. The size and
+// the place in the corner are measured from the original's picture of its cockpit (opt_cock_all): 256 texels are 200
+// units, the dial's edge 10 units from the side and the bottom of the screen.
+constexpr float GaugeAngMin = -34, GaugeAngMax = 127;
+constexpr float GaugeCX     = 130, GaugeCY     = 126.6f;
+constexpr float GaugeSize   = 200;
+constexpr float GaugeX      = 10.f-36.f*GaugeSize/256.f, GaugeY = 590.f-219.f*GaugeSize/256.f;
+constexpr float GaugeKmh    = 40;                   // the speed of a full gauge, above the fastest car's turbo
+// the map: "mapPosX_0" 620, "mapPosY_0" 79 (map.ini), the size is ours
+constexpr float MapX       = 620,  MapY      = 79,  MapSize = 160;
+
+// which trackmap_<n> belongs to which track and how the world lies on it: fitted to the main checkpoints, which the
+// maps mark with orange dots, and to the route drawn on them (a few texels off at most; the maps are turned freely)
+struct TrackMap {
+  const char* track;
+  int         map;
+  float       k[2];       // u+iv = (k0+i*k1)*(x+iz) + offset, texels of 512x512
+  float       offset[2];
+  };
+const TrackMap TrackMaps[] = {
+  {"beach_1",    1, {  1.5077f,  2.0881f}, {  216.138f,  307.066f}},
+  {"beach_2",    6, {  1.8248f, -1.4697f}, {  250.019f,  226.633f}},
+  {"beach_3",    3, { -1.9047f, -1.4350f}, {  283.909f,  179.057f}},
+  {"beach_4",   10, { -1.8743f,  1.3614f}, {  234.348f,  224.769f}},
+  {"country_1",  8, {  3.1648f, -0.0455f}, {  241.448f,  259.678f}},
+  {"country_2",  5, {  1.0742f,  2.7172f}, {  224.194f,  248.974f}},
+  {"country_3",  2, {  1.4848f, -1.8953f}, {  285.126f,  213.656f}},
+  {"country_4",  9, {  0.7445f, -2.6495f}, {  265.358f,  234.597f}},
+  {"urban_1",    7, {  1.5950f, -1.8126f}, {  250.418f,  196.683f}},
+  {"urban_2",    4, {  0.5583f, -2.3726f}, {  261.783f,  283.176f}},
+  };
+
+const char* const Texts[2][7] = {
   // Smash fonts have no Polish letters
-  {"Okr.", "Razem", "Najlepsze", "Enter - jeszcze raz", "Punkt"},
-  {"Lap",  "Total", "Best",      "Enter - race again",  "Checkpoint"},
+  {"Okr.", "Razem", "Najlepsze", "Enter - jeszcze raz", "Punkt",      "turbo", "km/h"},
+  {"Lap",  "Total", "Best",      "Enter - race again",  "Checkpoint", "boost", "km/h"},
   };
 // Settings/anim_cp.ini: Size 146, Shift 128, MinDist 237, MaxDist 900, BlinkDelta 10. Shift reads as texels of
 // the 256 high picture: it is raised by half its height, so the shadow drawn at its bottom lies on the ground under
@@ -55,7 +91,7 @@ constexpr float GateRange  = 150.f;                 // gates farther away are no
 
 }
 
-Hud::Hud(Device& device, Resources& res) : device(device) {
+Hud::Hud(Device& device, Resources& res) : device(device), resources(res) {
   // Polish if installed, as the game itself ships it here; English otherwise
   for(const char* l:{"Polish","English"})
     if(std::filesystem::exists(res.gameDir()/"Language"/l/"msg_go.csi")) {
@@ -71,6 +107,19 @@ Hud::Hud(Device& device, Resources& res) : device(device) {
   msgPause = loadImage(res,"msg_pause.csi");
   lapLabel = loadImage(res,"lap.csi");
   loadFont(res,"Smash26",font);
+  loadFont(res,"Smash20",fontSmall);
+  for(int i=0; i<6; ++i)
+    place[i] = loadImage(res,"place"+std::to_string(i+1)+".csi");
+  auto tex = [&](const char* name) -> const Texture2d* {
+    auto t = res.texture(name);
+    if(t==nullptr)
+      Log::e("no texture ",name,": a part of the cockpit will be missing");
+    return t!=nullptr ? &t->tex : nullptr;
+    };
+  gaugeBase = tex("cockpit_sp1");
+  gaugeFill = tex("cockpit_sp2");
+  mapArrow  = tex("map_arrow");
+  mapCp     = tex("map_cp");
   if(auto t = res.texture("coc_str_2"))
     arrow = &t->tex;
   for(int c=0; c<2; ++c)
@@ -163,6 +212,17 @@ void Hud::loadFont(Resources& res, std::string_view name, Font& f) {
   // a space as wide as a third of a cell, drawn as nothing
   f.glyphs[' '] = Glyph{0,cw*0.35f,0,0};
   f.has[' ']    = true;
+  }
+
+void Hud::setTrack(const std::string& name) {
+  map = nullptr;
+  for(auto& t:TrackMaps)
+    if(name==t.track) {
+      if(auto tx = resources.texture("trackmap_"+std::to_string(t.map)))
+        map = &tx->tex;
+      mapK      = {t.k[0],t.k[1]};
+      mapOffset = {t.offset[0],t.offset[1]};
+      }
   }
 
 void Hud::event(rc::Race::Event e) {
@@ -352,6 +412,109 @@ void Hud::checkpointArrow(const rc::Race& race, const rc::Mat4& vp) {
   quadAt(*tex,x-h*0.5f,std::min(y0,y1),h,h,z,Color{1,1,1,alpha});
   }
 
+void Hud::gauge(bool right, float value, const std::string& number, std::string_view label) {
+  if(gaugeBase==nullptr || gaugeFill==nullptr)
+    return;
+  const float k  = GaugeSize/256.f*scale;
+  const float x0 = right ? float(scrW)-(GaugeX+GaugeSize)*scale : px(GaugeX);
+  const float y0 = py(GaugeY);
+  // texels -> the screen, mirrored on the right
+  auto at = [&](float u, float v) {
+    return std::array<float,2>{x0+(right ? 256.f-u : u)*k, y0+v*k};
+    };
+  const Color white4 = {1,1,1,1};
+  auto tri = [&](const Texture2d& tex, const std::array<std::array<float,2>,3>& t) {
+    if(draws.empty() || draws.back().tex!=&tex || draws.back().depth)
+      draws.push_back({&tex,verts.size(),0,false});
+    for(auto& c:t) {
+      const auto p = at(c[0],c[1]);
+      verts.push_back(Vertex{{p[0],p[1]},{c[0]/256.f,c[1]/256.f},{1,1,1,1}});
+      }
+    draws.back().count += 3;
+    };
+  const Rect src = right ? Rect{256,0,0,256} : Rect{0,0,256,256};
+  quad(*gaugeBase,256,256,src,x0,y0,256.f*k,256.f*k,white4);
+  // the red scale up to the value: a fan of thin slices around the dial's middle, wide enough for the whole scale
+  // (it starts a little before the scale's beginning, to take its rounded end)
+  const float end = GaugeAngMin+(GaugeAngMax-GaugeAngMin)*std::clamp(value,0.f,1.f);
+  constexpr float R = 110, Deg = 3.14159265f/180.f;
+  for(float a0=GaugeAngMin-6.f; value>0.005f && a0<end; a0+=4.f) {
+    const float a1 = std::min(a0+4.f,end);
+    tri(*gaugeFill,{{{GaugeCX,GaugeCY},
+                     {GaugeCX+R*std::sin(a0*Deg),GaugeCY-R*std::cos(a0*Deg)},
+                     {GaugeCX+R*std::sin(a1*Deg),GaugeCY-R*std::cos(a1*Deg)}}});
+    }
+  // the number over a line, the unit under it, in the dial's middle
+  const auto c = at(GaugeCX,GaugeCY);
+  text(font,number,c[0],c[1]-34.f*scale,32,white4,0);
+  quad(*white,1,1,{0,0,1,1},c[0]-30.f*scale,c[1]+1.f*scale,60.f*scale,2.f*scale,Color{1,1,1,0.85f});
+  text(fontSmall,label,c[0],c[1]+7.f*scale,20,white4,0);
+  }
+
+void Hud::trackMap(const rc::Race& race, const Info& info) {
+  const auto& route = race.checkpoints().route();
+  if(map==nullptr || route.empty())
+    return;
+  auto toMap = [&](const rc::Vec3& p) {
+    return std::array<float,2>{mapK[0]*p.x-mapK[1]*p.z+mapOffset[0], mapK[1]*p.x+mapK[0]*p.z+mapOffset[1]};
+    };
+  // the square of the map around the route, with a margin
+  float u0 = 512, v0 = 512, u1 = 0, v1 = 0;
+  for(auto& p:route) {
+    const auto m = toMap(p.position);
+    u0 = std::min(u0,m[0]); u1 = std::max(u1,m[0]);
+    v0 = std::min(v0,m[1]); v1 = std::max(v1,m[1]);
+    }
+  const float side = std::min(512.f,std::max(u1-u0,v1-v0)+48.f);
+  const float cu   = std::clamp((u0+u1)*0.5f,side*0.5f,512.f-side*0.5f);
+  const float cv   = std::clamp((v0+v1)*0.5f,side*0.5f,512.f-side*0.5f);
+  const Rect  crop = {cu-side*0.5f,cv-side*0.5f,cu+side*0.5f,cv+side*0.5f};
+
+  const float x = px(MapX,true), y = py(MapY), size = MapSize*scale;
+  auto toScreen = [&](const rc::Vec3& p) {
+    const auto m = toMap(p);
+    return std::array<float,2>{x+(m[0]-crop.x0)/side*size, y+(m[1]-crop.y0)/side*size};
+    };
+  const float b = 2.f*scale;
+  // a light frame, the sea of the map is see-through: a dark backing
+  quad(*white,1,1,{0,0,1,1},x-b,y-b,size+2*b,size+2*b,Color{0.85f,0.85f,0.85f,0.9f});
+  quad(*white,1,1,{0,0,1,1},x,y,size,size,Color{0.05f,0.06f,0.12f,0.85f});
+  quad(*map,512,512,crop,x,y,size,size,Color{1,1,1,1});
+
+  // the main checkpoints, the next one glowing
+  const float dot = 11.f*scale;
+  if(mapCp!=nullptr) {
+    const size_t next = race.checkpoints().next();
+    for(size_t i=0; i+1<route.size(); ++i) {
+      if(!route[i].main)
+        continue;
+      const auto s     = toScreen(route[i].position);
+      const bool isNext = (i==0 ? route.size()-1 : i)==next && race.phase()!=rc::Race::Phase::Finished;
+      if(isNext) {
+        const float g = dot*(2.2f+0.4f*std::sin(clock*6.f));
+        quad(*mapCp,64,32,{32,0,64,32},s[0]-g*0.5f,s[1]-g*0.5f,g,g,Color{1,1,1,0.9f});
+        }
+      quad(*mapCp,64,32,{0,0,32,32},s[0]-dot*0.5f,s[1]-dot*0.5f,dot,dot,Color{1,1,1,1});
+      }
+    }
+  // the cars: arrows pointing where each one heads
+  if(mapArrow!=nullptr) {
+    const float sz = 20.f*scale;
+    auto car = [&](const rc::Vec3& pos, const rc::Vec3& fwd, float u) {
+      const auto s = toScreen(pos);
+      const auto f = toScreen(pos+fwd);
+      const float dx = f[0]-s[0], dy = f[1]-s[1];
+      if(std::abs(dx)+std::abs(dy)<1e-4f)
+        return;
+      // quad() turns counter-clockwise: its "up" (0,-1) goes to (dx,dy)
+      quad(*mapArrow,64,32,{u,0,u+32,32},s[0]-sz*0.5f,s[1]-sz*0.5f,sz,sz,Color{1,1,1,1},std::atan2(-dx,-dy));
+      };
+    for(auto& o:info.opponents)
+      car(o.pos,o.forward,32);
+    car(info.carPos,info.carForward,0);
+    }
+  }
+
 void Hud::quadAt(const Texture2d& tex, float x, float y, float w, float h, float depth, const Color& c) {
   if(draws.empty() || draws.back().tex!=&tex || !draws.back().depth)
     draws.push_back({&tex,verts.size(),0,true});
@@ -428,17 +591,26 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     const float x = px(LapX,true), y = py(LapY);
     quad(lapLabel.tex,lapLabel.w,lapLabel.h,{0,0,float(lapLabel.w),float(lapLabel.h)},x,y,
          float(lapLabel.w)*scale,float(lapLabel.h)*scale,white4);
-    // after the picture's lettering (x 6..120, y 39..84 of 128)
+    // after the picture's lettering (x 6..120, y 39..84 of 128): the Polish one is wider than the English one, which
+    // "lapNumPosX" 725 is set for
     const std::string lap = std::to_string(race.lap())+"/"+std::to_string(race.laps());
-    text(font,lap,x+130.f*scale,py(LapY+61-17),34,white4);
+    text(font,lap,x+130.f*scale,py(LapNumY),34,white4);
     }
-  // under it: the checkpoints passed in this lap, green for a moment after each one
+  // top left: the place, when there are opponents
+  if(info.place>=1 && info.place<=6 && place[info.place-1].loaded) {
+    const Image& im = place[info.place-1];
+    quad(im.tex,im.w,im.h,{0,0,float(im.w),float(im.h)},px(PlaceX),py(PlaceY),float(im.w)*scale,float(im.h)*scale,
+         white4);
+    }
+  // under it the map
+  trackMap(race,info);
+  // under the map: the checkpoints passed in this lap, green for a moment after each one
   if(n>0) {
     const bool        lit    = clock-flashAt<GateFlash;
     const Color       green  = {0.3f,1.f,0.35f,1};
     const size_t      passed = phase==rc::Race::Phase::Finished ? n : cps.mainPassed();
     const std::string s      = std::string(Texts[li][4])+" "+std::to_string(passed)+"/"+std::to_string(n);
-    text(font,s,float(w)-15.f*scale,py(LapY+100),26,lit ? green : white4,1);
+    text(font,s,float(w)-15.f*scale,py(MapY+MapSize+8),26,lit ? green : white4,1);
     if(lit && phase==rc::Race::Phase::Racing) {
       const float f = 1.f-(clock-flashAt)/GateFlash;
       const size_t      k   = passed==0 ? n : passed;  // cp_1 again: the lap's last
@@ -459,9 +631,9 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     text(font,formatTime(race.lapTime()),px(400),py(TimeLapY),26,white4,0);
     }
 
-  // bottom: speed on the right, turbo on the left
-  text(font,std::to_string(int(std::lround(info.speed)))+" km/h",float(w)-15.f*scale,py(552),34,white4,1);
-  text(font,"turbo "+std::to_string(int(std::lround(info.turbo*100.f)))+"%",15.f*scale,py(552),34,white4,-1);
+  // bottom: turbo on the left, the speed on the right
+  gauge(false,info.turbo,std::to_string(int(std::lround(info.turbo*100.f))),Texts[li][5]);
+  gauge(true,info.speed/GaugeKmh,std::to_string(int(std::lround(info.speed))),Texts[li][6]);
 
   // the arrow towards the next checkpoint: red and blinking on the wrong way
   if(arrow!=nullptr && phase!=rc::Race::Phase::Finished) {

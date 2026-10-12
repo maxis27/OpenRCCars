@@ -22,7 +22,10 @@ class Resources;
 // cockpit_time.ini (a 800x600 screen; elements on the right keep their distance from the right edge on wider
 // screens). The direction arrow is the cockpit's chevron (coc_str_2) turned towards the next checkpoint. Over the
 // next main checkpoint hangs the animated arrow cp_ar_* (Settings/anim_cp.ini).
-// Not from the original: the count of main checkpoints passed in this lap under the lap number, a green
+// At the bottom the original's two gauges (cockpit_sp1, cockpit_sp2): turbo on the left, the speed on the right; at the
+// top right under the lap the track map (trackmap_<n>, map_cp, map_arrow), at the top left the place (place<n>.csi)
+// when the race knows it.
+// Not from the original: the count of main checkpoints passed in this lap under the map, a green
 // "Punkt n/m" each time one is passed, and the gates outlined in the 3D view (G): the next main one green, the
 // one after it yellow, the ones passed in this lap grey, and the sub-checkpoint the arrow shows thin blue.
 class Hud {
@@ -32,6 +35,10 @@ class Hud {
       float speed     = 0;     // km/h
       float turbo     = 0;     // 0..1
       float direction = 0;     // the next checkpoint relative to the car's heading, radians, positive = left
+      int   place     = 0;     // 1.. the place in the race, 0: not shown (no opponents)
+      rc::Vec3 carPos, carForward;            // the player's car, for the map
+      struct Car { rc::Vec3 pos, forward; };
+      std::vector<Car> opponents;             // the other cars on the map
       bool  paused    = false;
       bool  gates     = false; // the checkpoint gates drawn over the 3D view (debug)
       rc::Mat4 viewProj;       // the camera, for the gates and the checkpoint arrows
@@ -39,6 +46,8 @@ class Hud {
 
     Hud(Tempest::Device& device, Resources& res);
 
+    // the track: picks its map
+    void setTrack(const std::string& name);
     // a race event: starts its message
     void event(rc::Race::Event e);
     // `dt` seconds of real time (messages and blinking)
@@ -95,6 +104,9 @@ class Hud {
     // a world-space line of the given thickness in pixels, cut at the camera's near plane
     void   line3d(const rc::Mat4& viewProj, const rc::Vec3& a, const rc::Vec3& b, float width, const Color& c);
     void   gates(const rc::Race& race, const rc::Mat4& viewProj);
+    // a gauge in the bottom corner (mirrored on the right) filled up to `value` (0..1) with the number in it
+    void   gauge(bool right, float value, const std::string& number, std::string_view label);
+    void   trackMap(const rc::Race& race, const Info& info);
     void   checkpointArrow(const rc::Race& race, const rc::Mat4& viewProj);
     void   quad(const Tempest::Texture2d& tex, int tw, int th, const Rect& src, float x, float y, float w, float h,
                 const Color& c, float angle = 0, float squash = 1);
@@ -105,6 +117,7 @@ class Hud {
     float  textWidth(const Font& f, std::string_view s, float size) const;
 
     Tempest::Device&                 device;
+    Resources&                       resources;
     Tempest::RenderPipeline          pso;
     Tempest::RenderPipeline          psoDepth;  // the same, tested against the scene's depth
     std::string                      lang;
@@ -113,6 +126,15 @@ class Hud {
     // cp_ar_<2 green, 3 red: the lap's end>_f<1..3>, 256x256: arrows pointing down at the next checkpoint
     const Tempest::Texture2d*        cpArrow[2][3] = {};
     Font                             font;
+    Font                             fontSmall;  // Smash20
+    Image                            place[6];
+    const Tempest::Texture2d*        gaugeBase = nullptr; // cockpit_sp1: the dial with its yellow scale
+    const Tempest::Texture2d*        gaugeFill = nullptr; // cockpit_sp2: the same scale in red
+    const Tempest::Texture2d*        mapArrow  = nullptr; // 64x32: green (the player), violet (the others)
+    const Tempest::Texture2d*        mapCp     = nullptr; // 64x32: an orange dot, a glow
+    // the track's map: world (x,z) -> map texels u+iv = k*(x+iz)+offset
+    const Tempest::Texture2d*        map       = nullptr;
+    std::array<float,2>              mapK      = {}, mapOffset = {};
     const Tempest::Texture2d*        white = nullptr;
 
     std::vector<Vertex>              verts;

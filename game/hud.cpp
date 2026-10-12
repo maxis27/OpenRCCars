@@ -52,8 +52,10 @@ constexpr float GaugeCX     = 130, GaugeCY     = 126.6f, GaugeR = 86;
 // which is turned onto the scale
 constexpr float TubeCX      = 128.5f, TubeCY = 128.5f;
 constexpr float GreyCX      = 127.5f, GreyCY = 127.5f, GaugeGreyAt = 184;
-constexpr float GaugeSize   = 245;
-constexpr float GaugeMidX   = 94,  GaugeMidY = 497;  // the dial's middle, from the left (right) and the top
+// the dial's picture is drawn 1:1 (256 units), its middle 89.5 from the left (right) and 511 from the top: fitted to
+// the original's screenshot (the picture runs off the bottom of the screen)
+constexpr float GaugeSize   = 256;
+constexpr float GaugeMidX   = 89.5f, GaugeMidY = 511;
 constexpr float GaugeX      = GaugeMidX-GaugeCX*GaugeSize/256.f, GaugeY = GaugeMidY-GaugeCY*GaugeSize/256.f;
 // a full speed gauge, km/h: in the screenshot the fully upgraded Overkill (turbo tank 82, 42.7 km/h with turbo)
 // reaches 0.85 of it
@@ -507,9 +509,9 @@ void Hud::gauge(bool right, float value, float reach, const std::string& number,
 
   // the number over a line, the unit under it, in the dial's middle
   const auto c = at(GaugeCX,GaugeCY);
-  metalText(font,number,c[0],c[1]-44.f*scale,53,0);
-  quad(*white,1,1,{0,0,1,1},c[0]-46.f*scale,c[1]+1.f*scale,92.f*scale,2.5f*scale,Color{1,1,1,0.9f});
-  text(font,label,c[0],c[1]+8.f*scale,28,white4,0);
+  metalText(font,number,c[0],c[1]-47.f*scale,53,0);
+  quad(*white,1,1,{0,0,1,1},c[0]-46.f*scale,c[1]+2.5f*scale,92.f*scale,1.5f*scale,Color{1,1,1,0.9f});
+  text(font,label,c[0],c[1]+12.f*scale,28,white4,0);
   }
 
 void Hud::trackMap(const rc::Race& race, const Info& info) {

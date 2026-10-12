@@ -28,6 +28,7 @@ add_library(rcformats STATIC
   formats/settings.h  formats/settings.cpp
   formats/objects.h   formats/objects.cpp
   formats/water.h     formats/water.cpp
+  formats/carprofile.h formats/carprofile.cpp
   )
 target_include_directories(rcformats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -63,6 +64,7 @@ add_library(rcphysics STATIC
   physics/checkpoints.h physics/checkpoints.cpp
   physics/race.h        physics/race.cpp
   physics/props.h       physics/props.cpp
+  physics/opponents.h   physics/opponents.cpp
   physics/btconvert.h
   )
 target_link_libraries(rcphysics PUBLIC rcformats PRIVATE bullet)

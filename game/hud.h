@@ -12,6 +12,7 @@
 #include <string_view>
 #include <vector>
 
+#include "physics/opponents.h"
 #include "physics/race.h"
 
 class Resources;
@@ -34,6 +35,8 @@ class Hud {
       float direction = 0;     // the next checkpoint relative to the car's heading, radians, positive = left
       bool  paused    = false;
       bool  gates     = false; // the checkpoint gates drawn over the 3D view (debug)
+      int   place     = 0;     // against the opponents, 1 ..; 0 without any
+      std::vector<rc::Opponents::Standing> standings;  // with opponents: the order, for the table at the finish
       rc::Mat4 viewProj;       // the camera, for the gates and the checkpoint arrows
       };
 
@@ -109,6 +112,7 @@ class Hud {
     Tempest::RenderPipeline          psoDepth;  // the same, tested against the scene's depth
     std::string                      lang;
     Image                            msg321, msgGo, msgBest, msgWrong, msgPause, lapLabel;
+    Image                            places[6];  // place1..6.csi: "1szy" .. "6ty"
     const Tempest::Texture2d*        arrow = nullptr; // coc_str_2, 128x128
     // cp_ar_<2 green, 3 red: the lap's end>_f<1..3>, 256x256: arrows pointing down at the next checkpoint
     const Tempest::Texture2d*        cpArrow[2][3] = {};

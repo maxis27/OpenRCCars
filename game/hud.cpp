@@ -26,6 +26,7 @@ const float CountFinish[4]={210,CellsY, 512,  2*CellsY};
 
 // Settings/cockpit.ini, cockpit_time.ini (slider positions mapped to their FValues ranges), 800x600 units
 constexpr float LapX       = 613,  LapY      = -20; // "lapPosX/Y": the "okrążenie" picture, top left
+constexpr float PlaceX     = 25,   PlaceY    = -20; // "placePosX/Y": the place picture ("1szy"), top left
 constexpr float TimeTotalY = 6;                     // "timeTotalPosY" (cockpit_time.ini)
 constexpr float TimeLapY   = 43;                    // "timeLapPosY"
 constexpr float LapBlink   = 4.2f;                  // "timeLapBlinkInSec": a finished lap's time blinks
@@ -34,10 +35,10 @@ constexpr float MessageY   = 300-142;               // "msgOffsetY" from the mid
 constexpr float ArrowX     = 400,  ArrowY    = 600*0.87f;
 constexpr float ArrowTilt  = 0.7071f;
 
-const char* const Texts[2][5] = {
+const char* const Texts[2][6] = {
   // Smash fonts have no Polish letters
-  {"Okr.", "Razem", "Najlepsze", "Enter - jeszcze raz", "Punkt"},
-  {"Lap",  "Total", "Best",      "Enter - race again",  "Checkpoint"},
+  {"Okr.", "Razem", "Najlepsze", "Enter - jeszcze raz", "Punkt", "Ty"},
+  {"Lap",  "Total", "Best",      "Enter - race again",  "Checkpoint", "You"},
   };
 // Settings/anim_cp.ini: Size 146, Shift 128, MinDist 237, MaxDist 900, BlinkDelta 10. Shift reads as texels of
 // the 256 high picture: it is raised by half its height, so the shadow drawn at its bottom lies on the ground under
@@ -70,6 +71,8 @@ Hud::Hud(Device& device, Resources& res) : device(device) {
   msgWrong = loadImage(res,"msg_wrong_way.csi");
   msgPause = loadImage(res,"msg_pause.csi");
   lapLabel = loadImage(res,"lap.csi");
+  for(int i=0; i<6; ++i)
+    places[i] = loadImage(res,"place"+std::to_string(i+1)+".csi");
   loadFont(res,"Smash26",font);
   if(auto t = res.texture("coc_str_2"))
     arrow = &t->tex;
@@ -432,6 +435,12 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     const std::string lap = std::to_string(race.lap())+"/"+std::to_string(race.laps());
     text(font,lap,x+130.f*scale,py(LapY+61-17),34,white4);
     }
+  // top left: the place against the opponents
+  if(info.place>=1 && info.place<=6 && places[info.place-1].loaded) {
+    const Image& img = places[info.place-1];
+    quad(img.tex,img.w,img.h,{0,0,float(img.w),float(img.h)},px(PlaceX),py(PlaceY),float(img.w)*scale,
+         float(img.h)*scale,white4);
+    }
   // under it: the checkpoints passed in this lap, green for a moment after each one
   if(n>0) {
     const bool        lit    = clock-flashAt<GateFlash;
@@ -497,8 +506,24 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     sprite(msgBest,{0,0,float(msgBest.w),float(msgBest.h)},px(400),my,1,white4);
     }
 
-  // after the finish: the lap times
-  if(phase==rc::Race::Phase::Finished) {
+  // after the finish: the lap times, or against opponents the standings (filled in as they finish)
+  if(phase==rc::Race::Phase::Finished && !info.standings.empty()) {
+    const auto& st   = info.standings;
+    const float line = 34, x0 = px(230), x1 = px(570);
+    float       y    = 200;
+    const float rows = float(st.size()+2);
+    quad(*white,1,1,{0,0,1,1},px(210),py(y-12),px(590)-px(210),py(rows*line+24),Color{0,0,0,0.45f});
+    for(size_t i=0; i<st.size(); ++i, y+=line) {
+      const Color c = st[i].player ? yellow : white4;
+      text(font,std::to_string(i+1)+". "+(st[i].player ? std::string(Texts[li][5]) : st[i].name),x0,py(y),28,c,-1);
+      text(font,st[i].time>=0 ? formatTime(st[i].time) : std::string("-"),x1,py(y),28,c,1);
+      }
+    text(font,Texts[li][2],x0,py(y),28,yellow,-1);
+    text(font,formatTime(race.bestLap()),x1,py(y),28,yellow,1);
+    y += line*1.3f;
+    text(font,Texts[li][3],px(400),py(y),24,white4,0);
+    }
+  else if(phase==rc::Race::Phase::Finished) {
     const auto& times = race.lapTimes();
     const float line  = 34, x0 = px(250), x1 = px(550);
     float       y     = 230;

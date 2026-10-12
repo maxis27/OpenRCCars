@@ -10,6 +10,7 @@
 //   rcinfo <game_dir> race <RCCarsDB/x.sb> [laps]  checkpoint gates + a race driven along the route (no physics)
 //   rcinfo <game_dir> gates <RCCarsDB/x.sb> [car]  every checkpoint gate driven through under physics
 //   rcinfo <game_dir> objects <RCCarsDB/x.sb>    objects placed on a track (INST): model, kind, physics, settling test
+//   rcinfo <game_dir> ai <RCCarsDB/x.sb> [level 1-3] [laps]  the opponents: recordings, their loops, a race without the player
 //   rcinfo <game_dir> check                      decode every texture in the pack and every RCCarsDB/*.sb
 
 #include "formats/pack.h"
@@ -19,6 +20,7 @@
 #include "formats/objects.h"
 #include "formats/water.h"
 #include "physics/checkpoints.h"
+#include "physics/opponents.h"
 #include "physics/race.h"
 #include "physics/props.h"
 #include "physics/vehicle.h"
@@ -742,9 +744,75 @@ static int cmdObjects(const fs::path& game, const fs::path& track) {
   return (missing==0 && lost==0) ? 0 : 3;
   }
 
+// the opponents of a track: their recordings replayed as in a race (without the player, so no rubber band)
+static int cmdAi(const fs::path& game, const fs::path& track, rc::PackFile& pack, int level, int laps) {
+  auto scene    = rc::SbScene::load(readFile(game/track));
+  auto carScene = rc::SbScene::load(readFile(game/"RCCarsDB/Car.sb"));
+  rc::CollisionMesh  coll(scene);
+  rc::Checkpoints    cps(scene,coll);
+  rc::PhysicsWorld   world(coll);
+  const std::string  name = track.stem().string();
+  rc::Opponents ai(world,[&pack](const std::string& f){ return pack.read(f); },carScene,name,cps,
+                   rc::Opponents::Level(level));
+  std::printf("%s: AIRace%d, %zu opponents (%s), %.0f m a lap\n",name.c_str(),rc::aiRaceNumber(name),ai.size(),
+              rc::Opponents::levelName(rc::Opponents::Level(level)),cps.lapLength());
+  rc::Mat4 grid;
+  if(ai.playerStart(grid)) {
+    const auto p = grid.translation();
+    std::printf("  player's grid slot (%.2f %.2f %.2f)\n",p.x,p.y,p.z);
+    }
+  int bad = 0;
+  for(size_t i=0; i<ai.size(); ++i) {
+    auto&      o = ai[i];
+    const auto p = o.pose().translation();
+    const auto g = coll.groundHeight(p+rc::Vec3{0,1.f,0});
+    std::printf("  %-10s %-8s start (%6.2f %5.2f %6.2f) %.2f m above the ground, origin to wheels' bottom %.2f;"
+                " laps",o.name.c_str(),o.car==0 ? "Overkill" : o.car==1 ? "Buggy" : "Hummer",
+                p.x,p.y,p.z,g ? p.y-*g : 99.f,-o.geometry().min.y);
+    for(size_t k=0; k<o.recordings().size(); ++k) {
+      auto&       r   = o.recordings()[k];
+      const float gap = (r.pose(r.duration()).translation()-r.pose(r.cycleStart()).translation()).length();
+      std::printf(" %.1f s (%.1f .. %.1f, joins %.2f m apart, line at %.1f)",r.duration()-r.cycleStart(),
+                  r.cycleStart(),r.duration(),gap,o.lineTime(k));
+      if(r.cycleStart()<=0 || gap>0.5f || o.lineTime(k)>=r.duration())
+        ++bad;
+      }
+    std::printf("\n");
+    }
+  // the race: everyone from the grid at once
+  ai.restart();
+  const float dt = 1.f/60.f;
+  float t = 0;
+  size_t done = 0;
+  std::vector<size_t> lapsSeen(ai.size(),0);
+  while(done<ai.size() && t<150.f*float(laps)) {
+    t += dt;
+    ai.update(dt,true,grid.translation(),0,true,t,laps);
+    done = 0;
+    for(size_t i=0; i<ai.size(); ++i) {
+      if(ai[i].finishTime>=0)
+        ++done;
+      if(ai[i].laps()!=lapsSeen[i]) {
+        lapsSeen[i] = ai[i].laps();
+        std::printf("  %7.2f %-10s lap %zu, %.0f m along the route\n",t,ai[i].name.c_str(),lapsSeen[i],ai[i].progress());
+        }
+      }
+    }
+  const auto st = ai.standings(-1.f);
+  std::printf("result:\n");
+  for(size_t i=0; i<st.size(); ++i)
+    std::printf("  %zu. %-10s %s\n",i+1,st[i].player ? "(player)" : st[i].name.c_str(),
+                st[i].time>=0 ? std::to_string(st[i].time).c_str() : "-");
+  if(done<ai.size()) {
+    std::printf("NOT all finished\n");
+    return 4;
+    }
+  return bad>0 ? 4 : 0;
+  }
+
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates|ai ...\n");
     return 1;
     }
   try {
@@ -776,6 +844,8 @@ int main(int argc, char** argv) {
       }
     if(cmd=="sb" && argc>3)
       return cmdSb(game/argv[3],pack);
+    if(cmd=="ai" && argc>3)
+      return cmdAi(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 2,argc>5 ? std::atoi(argv[5]) : 3);
     if(cmd=="gates" && argc>3)
       return cmdGates(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1);
     if(cmd=="drive" && argc>3)

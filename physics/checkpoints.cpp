@@ -62,6 +62,9 @@ Checkpoints::Checkpoints(const SbScene& scene, const CollisionMesh& track) : col
   for(size_t i=0; i<n; ++i)
     if(points[i].main)
       mains.push_back(i);
+  distances.resize(n,0.f);
+  for(size_t i=1; i<n; ++i)
+    distances[i] = distances[i-1]+flat(points[i].position-points[i-1].position).length();
   // the lower edge: the lowest ground across the gate, under whatever stands on it. The markers are often placed
   // on top of a prop (beach_3: cp_1_2 and cp_3_1 on a rock a metre high, the road beside it lower) or on a pier
   // with sand under it (beach_1: cp_2_2), and a car on the road beside the prop or on the sand passes the gate too

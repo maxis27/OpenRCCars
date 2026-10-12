@@ -184,6 +184,11 @@ void Vehicle::reset(const Mat4& start) {
   btTransform t = toBt(start*Mat4::translate(com+Vec3{0,0.02f,0}));
   body->setWorldTransform(t);
   motion->setWorldTransform(t);
+  // Bullet writes the interpolated transform back to the motion state on a frame shorter than its fixed step:
+  // without this the car was at the world's origin for one frame after a reset
+  body->setInterpolationWorldTransform(t);
+  body->setInterpolationLinearVelocity(btVector3(0,0,0));
+  body->setInterpolationAngularVelocity(btVector3(0,0,0));
   body->setLinearVelocity(btVector3(0,0,0));
   body->setAngularVelocity(btVector3(0,0,0));
   body->clearForces();

@@ -39,6 +39,7 @@ void MainWindow::loadLevel(const std::string& name) {
   try {
     auto next = std::make_unique<Level>(device,resources,name);
     vehicle.reset();
+    opponents.reset();
     objects.reset();
     physics.reset();
     race.reset();
@@ -64,6 +65,27 @@ void MainWindow::loadCar(size_t id) {
   setupPhysics();
   }
 
+void MainWindow::setupOpponents() {
+  opponents.reset();
+  if(physics==nullptr || checkpoints==nullptr)
+    return;
+  try {
+    opponents = std::make_unique<rc::Opponents>(*physics,[this](const std::string& f){ return resources.pack().read(f); },
+                                                carScene,level->name(),*checkpoints,aiLevel);
+    }
+  catch(const std::exception& e) {
+    Log::e("opponents: ",e.what());
+    return;
+    }
+  for(size_t i=0; i<opponents->size(); ++i) {
+    auto& o   = (*opponents)[i];
+    auto& m   = aiMeshes[{o.car,o.skin}];
+    if(m==nullptr)
+      m = std::make_unique<ModelMesh>(device,resources,carScene,Cars[o.car],rc::Vec3{},o.skin);
+    }
+  Log::i("opponents (",rc::Opponents::levelName(aiLevel),"): ",opponents->size());
+  }
+
 void MainWindow::setupPhysics(bool restartRace) {
   if(level==nullptr || car==nullptr)
     return;
@@ -73,12 +95,21 @@ void MainWindow::setupPhysics(bool restartRace) {
     physics = std::make_unique<rc::PhysicsWorld>(level->collision());
     objects = std::make_unique<Objects>(device,resources,library,level->scene(),*physics);
     }
+  if(opponents==nullptr)
+    setupOpponents();
+  // with opponents the player starts on their grid slot (PlayerPath), next to them
+  rc::Mat4 grid;
+  if(opponents!=nullptr && opponents->playerStart(grid))
+    carPose = grid;
   const auto geom = rc::carGeometry(carScene,Cars[carId]);
   const auto prm  = rc::CarParams::load(resources.pack(),int32_t(carId+1),upgrade);
   vehicle  = std::make_unique<rc::Vehicle>(*physics,geom,prm,carPose);
   if(restartRace) {
     race->restart(carPose);
-    paused = false;
+    if(opponents)
+      opponents->restart();
+    playerFinish = -1;
+    paused       = false;
     }
   lastCarPos = carPose.translation();
   chaseYaw = level->startCamera().yaw;
@@ -90,6 +121,8 @@ void MainWindow::respawnCar() {
     return;
   carPose = checkpoints->respawn(car->bboxMin().y);
   vehicle->reset(carPose);
+  if(opponents)
+    opponents->playerMoved();
   lastCarPos = carPose.translation();
   upsideDown = 0;
   const rc::Vec3 f = carPose.vector({0,0,1});
@@ -101,6 +134,10 @@ Hud::Info MainWindow::hudInfo() const {
   info.speed  = std::abs(vehicle->speed())*3.6f;
   info.turbo  = vehicle->boostLevel();
   info.paused = paused;
+  if(opponents && opponents->size()>0) {
+    info.place     = opponents->place(playerFinish);
+    info.standings = opponents->standings(playerFinish);
+    }
   // the next checkpoint seen from the car, positive = on the left (+X)
   const auto&    route = checkpoints->route();
   const rc::Vec3 f     = carPose.vector({0,0,1});
@@ -124,6 +161,19 @@ std::vector<rc::Mat4> MainWindow::carPartPoses() const {
         if(wheels[i].name==p.name)
           m = vehicle->wheelPose(i);
       }
+    ret.push_back(m);
+    }
+  return ret;
+  }
+
+std::vector<rc::Mat4> MainWindow::opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const {
+  std::vector<rc::Mat4> ret;
+  auto& wheels = o.geometry().wheels;
+  for(auto& p:mesh.parts()) {
+    rc::Mat4 m = rc::Mat4::translate(p.pivot);
+    for(size_t i=0; i<wheels.size() && !p.name.empty(); ++i)
+      if(wheels[i].name==p.name)
+        m = o.wheelPose(i);
     ret.push_back(m);
     }
   return ret;
@@ -196,6 +246,14 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     carPose = at;
     vehicle->reset(carPose);
     lastCarPos = carPose.translation();
+    if(opponents)
+      opponents->playerMoved();
+    }
+  // O: the opponents off, easy, normal, hard (and the race again)
+  if(e.key==Event::K_O && level) {
+    aiLevel = rc::Opponents::Level((int(aiLevel)+1)%4);
+    setupOpponents();
+    setupPhysics();
     }
   // P, Pause: everything stops
   if((e.key==Event::K_P || e.key==Event::K_Pause) && level)
@@ -242,11 +300,20 @@ void MainWindow::tick(float dt) {
       }
     jumpPressed = false;
     vehicle->update(in,dt);
+    if(opponents)
+      opponents->update(dt,!race->holdCar(),carPose.translation(),checkpoints->laps(),playerFinish>=0,race->time(),
+                        race->laps());
     physics->step(dt);
     carPose = vehicle->pose();
     const rc::Vec3 at = carPose.translation();
     const size_t   was = checkpoints->next();
-    hud->event(race->update(dt,at,(at-lastCarPos)*(1.f/std::max(dt,1e-4f))));
+    const auto     ev  = race->update(dt,at,(at-lastCarPos)*(1.f/std::max(dt,1e-4f)));
+    if(ev==rc::Race::Event::Finish) {
+      playerFinish = race->time();
+      if(opponents && opponents->size()>0)
+        Log::i("finished ",opponents->place(playerFinish),". of ",opponents->size()+1," in ",Hud::formatTime(playerFinish));
+      }
+    hud->event(ev);
     if(checkpoints->next()!=was)
       Log::i("checkpoint ",checkpoints->route()[was].name," passed at ",Hud::formatTime(race->time()),
              " (",at.x," ",at.y," ",at.z,")");
@@ -338,6 +405,16 @@ void MainWindow::render() {
         const auto parts = carPartPoses();
         car->draw(enc,viewProj,push,carPose,&parts);
         }
+      if(opponents) {
+        for(size_t i=0; i<opponents->size(); ++i) {
+          const auto& o = (*opponents)[i];
+          auto        m = aiMeshes.find({o.car,o.skin});
+          if(m==aiMeshes.end())
+            continue;
+          const auto parts = opponentPartPoses(*m->second,o);
+          m->second->draw(enc,viewProj,push,o.pose(),&parts);
+          }
+        }
       if(level)
         level->mesh().draw(enc,push,LevelMesh::Pass::Translucent);
       if(level && showCollision)
@@ -362,7 +439,8 @@ void MainWindow::render() {
         title += " - "+std::to_string(int(std::round(std::abs(vehicle->speed())*3.6f)))+" km/h"+
                  " - turbo "+std::to_string(int(std::round(vehicle->boostLevel()*100.f)))+"%"+
                  " - "+rc::surfaceName(vehicle->surface())+
-                 (upgrade>0 ? " - upgrade "+std::to_string(upgrade) : std::string());
+                 (upgrade>0 ? " - upgrade "+std::to_string(upgrade) : std::string())+
+                 " - opponents "+rc::Opponents::levelName(aiLevel);
       setWindowTitle(title.c_str());
       fpsTime  = 0;
       fpsCount = 0;

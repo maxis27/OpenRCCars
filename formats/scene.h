@@ -68,10 +68,16 @@ struct SbMesh {
   std::vector<SbFace> faces;
   };
 
+// MARK: named point. 0x04 holds properties set in the level editor as text pairs (list of 0x05 { 0x06 key,
+// 0x07 value }); checkpoints have `width`, `height` and `expand` (see rc::Checkpoints).
 struct SbMarker {
   std::string name;
   Mat4        world;
+  std::vector<std::pair<std::string,std::string>> props;
+
   Vec3        position() const { return world.translation(); }
+  // property as a number, `def` if missing or not a number
+  float       number(std::string_view key, float def) const;
   };
 
 // INST: placed object or actor (children are ignored for now). 'Player' in FOLD 'Players' is the start position

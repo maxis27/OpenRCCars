@@ -1,0 +1,109 @@
+#pragma once
+
+#include <Tempest/CommandBuffer>
+#include <Tempest/Device>
+#include <Tempest/Encoder>
+#include <Tempest/RenderPipeline>
+#include <Tempest/Texture2d>
+#include <Tempest/VertexBuffer>
+
+#include <array>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "physics/race.h"
+
+class Resources;
+
+// The race cockpit over the 3D view, drawn with the original's own pictures from Language/<language>/: the
+// countdown ("3", "2", "1", "Jazda!"), "okrążenie" with the lap number, "zły kierunek", "najlepsze okrążenie",
+// "meta", "pauza", and the times in the game's Smash font. Positions follow Settings/cockpit.ini and
+// cockpit_time.ini (a 800x600 screen; elements on the right keep their distance from the right edge on wider
+// screens). The direction arrow is the cockpit's chevron (coc_str_2) turned towards the next checkpoint.
+class Hud {
+  public:
+    // what the race does not know
+    struct Info {
+      float speed     = 0;     // km/h
+      float turbo     = 0;     // 0..1
+      float direction = 0;     // the next checkpoint relative to the car's heading, radians, positive = left
+      bool  paused    = false;
+      };
+
+    Hud(Tempest::Device& device, Resources& res);
+
+    // a race event: starts its message
+    void event(rc::Race::Event e);
+    // `dt` seconds of real time (messages and blinking)
+    void tick(float dt) { clock += dt; }
+    // `frame` is the frame in flight (its vertex buffer is rewritten)
+    void draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frame, int w, int h, const rc::Race& race,
+              const Info& info);
+
+    // "3:07.25"
+    static std::string formatTime(float seconds);
+
+  private:
+    struct Vertex {
+      float pos[2];
+      float uv[2];
+      float color[4];
+      };
+    struct Image {
+      Tempest::Texture2d tex;
+      int                w = 0, h = 0;
+      bool               loaded = false;
+      };
+    struct Rect {
+      float x0, y0, x1, y1;   // texture pixels
+      };
+    struct Glyph {
+      float u0 = 0, u1 = 0;   // texture pixels
+      float v0 = 0, v1 = 0;
+      };
+    struct Font {
+      Image                  img;
+      std::array<Glyph,256>  glyphs = {};
+      std::array<bool,256>   has    = {};
+      float                  cell   = 0;
+      };
+    struct Draw {
+      const Tempest::Texture2d* tex = nullptr;
+      size_t                    first = 0, count = 0;
+      };
+    enum class Message { None, Go, BestLap, Finish };
+    using Color = std::array<float,4>;
+
+    Image  loadImage(Resources& res, std::string_view file, std::vector<uint8_t>* rgba = nullptr);
+    void   loadFont(Resources& res, std::string_view name, Font& f);
+
+    // layout: 800x600 units -> pixels; `right` keeps the distance from the right edge
+    float  px(float x, bool right = false) const { return right ? float(scrW)-(800.f-x)*scale : offsetX+x*scale; }
+    float  py(float y) const { return y*scale; }
+
+    void   quad(const Tempest::Texture2d& tex, int tw, int th, const Rect& src, float x, float y, float w, float h,
+                const Color& c, float angle = 0, float squash = 1);
+    void   sprite(const Image& img, const Rect& src, float cx, float cy, float size, const Color& c);
+    float  text(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align = -1);
+    float  textWidth(const Font& f, std::string_view s, float size) const;
+
+    Tempest::Device&                 device;
+    Tempest::RenderPipeline          pso;
+    std::string                      lang;
+    Image                            msg321, msgGo, msgBest, msgWrong, msgPause, lapLabel;
+    const Tempest::Texture2d*        arrow = nullptr; // coc_str_2, 128x128
+    Font                             font;
+    const Tempest::Texture2d*        white = nullptr;
+
+    std::vector<Vertex>              verts;
+    std::vector<Draw>                draws;
+    Tempest::VertexBuffer<Vertex>    vbo[2];
+
+    float                            clock      = 0;
+    Message                          message    = Message::None;
+    float                            messageAt  = 0;
+    float                            lapAt      = -100; // when the last lap was finished: its time blinks
+    int                              scrW = 0, scrH = 0;
+    float                            scale = 1, offsetX = 0;
+  };

@@ -1,25 +1,67 @@
 #include "checkpoints.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 using namespace rc;
 
+static Vec3 flat(Vec3 v) {
+  v.y = 0;
+  return v;
+  }
+
+// sub-checkpoint number of `name` = "<prefix><number>", 0 if it is not one
+static int subNumber(const std::string& name, const std::string& prefix) {
+  if(name.size()<=prefix.size() || name.compare(0,prefix.size(),prefix)!=0)
+    return 0;
+  char* end = nullptr;
+  const long n = std::strtol(name.c_str()+prefix.size(),&end,10);
+  return (*end=='\0' && n>0) ? int(n) : 0;
+  }
+
 Checkpoints::Checkpoints(const SbScene& scene, const CollisionMesh& track) : coll(track) {
+  auto add = [this](const SbMarker& m, bool main) {
+    Point p;
+    p.name     = m.name;
+    p.position = m.position();
+    p.width    = m.number("width", DefaultWidth);
+    p.height   = m.number("height",DefaultHeight);
+    p.expand   = m.number("expand",DefaultExpand);
+    p.main     = main;
+    p.bottom   = p.position.y-1.f;
+    if(auto g = coll.groundHeight(p.position+Vec3{0,0.5f,0}); g && *g>p.position.y-5.f)
+      p.bottom = std::min(p.bottom,*g-0.5f);
+    points.push_back(p);
+    };
   for(int cp=1; ; ++cp) {
     const std::string name = "cp_"+std::to_string(cp);
     auto m = scene.marker(name);
     if(m==nullptr)
       break;
-    points.push_back({name,m->position()});
-    for(int sub=1; ; ++sub) {
-      auto s = scene.marker(name+"_"+std::to_string(sub));
-      if(s==nullptr)
-        break;
-      points.push_back({s->name,s->position()});
-      }
+    add(*m,true);
+    // cp_<n>_1, cp_<n>_2 .. by number: the numbering has gaps (country_1: cp_4_3, cp_4_5) and the file order
+    // does not always follow it (country_1: cp_5_4 before cp_5_2)
+    std::vector<std::pair<int,const SbMarker*>> sub;
+    for(auto& s:scene.markers)
+      if(int n = subNumber(s.name,name+"_"))
+        sub.emplace_back(n,&s);
+    std::sort(sub.begin(),sub.end(),[](auto& a, auto& b){ return a.first<b.first; });
+    for(auto& [n,s]:sub)
+      add(*s,false);
     }
-  if(!points.empty())
-    points.push_back(points.front());
+  if(points.empty())
+    return;
+  points.push_back(points.front());
+
+  // the gates face along the route: from the previous checkpoint towards the next one
+  const size_t n = points.size();
+  for(size_t i=0; i<n; ++i) {
+    const Vec3 prev = points[(i>0) ? i-1 : (n>2 ? n-2 : 0)].position;
+    const Vec3 next = points[(i+1<n) ? i+1 : (n>1 ? 1 : 0)].position;
+    Vec3 d = flat(next-prev);
+    points[i].dir = (d.length()>1e-3f) ? d*(1.f/d.length()) : Vec3{0,0,1};
+    }
   }
 
 void Checkpoints::reset(const Mat4& start) {
@@ -27,14 +69,34 @@ void Checkpoints::reset(const Mat4& start) {
   target    = 1;
   lapCount  = 0;
   passed    = false;
+  hasLast   = false;
+  }
+
+bool Checkpoints::passes(size_t i, const Vec3& from, const Vec3& to) const {
+  const Point& p    = points[i];
+  const Vec3   side = {-p.dir.z,0,p.dir.x};
+  auto inGate = [&](const Vec3& at) {
+    const Vec3 d = at-p.position;
+    return std::abs(Vec3::dot(d,side))<=p.width*0.5f && at.y>=p.bottom && d.y<=p.height+0.5f;
+    };
+  // close enough in front of or behind the gate
+  const float f1 = Vec3::dot(flat(to-p.position),p.dir);
+  if(std::abs(f1)<=p.expand && inGate(to))
+    return true;
+  // drove through it between two frames; not across a jump back to a checkpoint (R, drowning)
+  const float f0 = Vec3::dot(flat(from-p.position),p.dir);
+  if(f0<0 && f1>=0 && (to-from).length()<5.f) {
+    const float t = f0/(f0-f1);
+    return inGate(from+(to-from)*t);
+    }
+  return false;
   }
 
 bool Checkpoints::update(const Vec3& car) {
-  if(target>=points.size())
-    return false;
-  Vec3 d = points[target].position-car;
-  d.y = 0;
-  if(d.length()>=Radius)
+  const Vec3 from = hasLast ? last : car;
+  last    = car;
+  hasLast = true;
+  if(target>=points.size() || !passes(target,from,car))
     return false;
   passed = true;
   if(++target==points.size()) {

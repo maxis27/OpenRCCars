@@ -23,6 +23,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name)
   : Window(Maximized), device(device), resources(res), swapchain(device,hwnd()) {
   resetSwapchain();
   carScene = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
+  hud      = std::make_unique<Hud>(device,res);
   loadCar(0);
   loadLevel(name);
   lastTick = Application::tickCount();
@@ -38,9 +39,11 @@ void MainWindow::loadLevel(const std::string& name) {
     auto next = std::make_unique<Level>(device,resources,name);
     vehicle.reset();
     physics.reset();
+    race.reset();
     checkpoints.reset();
     level   = std::move(next);
     checkpoints = std::make_unique<rc::Checkpoints>(level->scene(),level->collision());
+    race        = std::make_unique<rc::Race>(*checkpoints,laps);
     camera  = level->startCamera();
     setupPhysics();
     setWindowTitle(("OpenRCCars - "+name).c_str());
@@ -59,7 +62,7 @@ void MainWindow::loadCar(size_t id) {
   setupPhysics();
   }
 
-void MainWindow::setupPhysics() {
+void MainWindow::setupPhysics(bool restartRace) {
   if(level==nullptr || car==nullptr)
     return;
   carPose = level->carStart(car->bboxMin().y);
@@ -69,7 +72,11 @@ void MainWindow::setupPhysics() {
   const auto geom = rc::carGeometry(carScene,Cars[carId]);
   const auto prm  = rc::CarParams::load(resources.pack(),int32_t(carId+1),upgrade);
   vehicle  = std::make_unique<rc::Vehicle>(*physics,geom,prm,carPose);
-  checkpoints->reset(carPose);
+  if(restartRace) {
+    race->restart(carPose);
+    paused = false;
+    }
+  lastCarPos = carPose.translation();
   chaseYaw = level->startCamera().yaw;
   Log::i("car ",Cars[carId],", upgrade ",upgrade,": top speed ",prm.topSpeed*3.6f," km/h, grip ",prm.gripFront);
   }
@@ -79,9 +86,28 @@ void MainWindow::respawnCar() {
     return;
   carPose = checkpoints->respawn(car->bboxMin().y);
   vehicle->reset(carPose);
+  lastCarPos = carPose.translation();
   upsideDown = 0;
   const rc::Vec3 f = carPose.vector({0,0,1});
   chaseYaw = std::atan2(f.x,f.z)*180.f/3.14159265f;
+  }
+
+Hud::Info MainWindow::hudInfo() const {
+  Hud::Info info;
+  info.speed  = std::abs(vehicle->speed())*3.6f;
+  info.turbo  = vehicle->boostLevel();
+  info.paused = paused;
+  // the next checkpoint seen from the car, positive = on the left (+X)
+  const auto&    route = checkpoints->route();
+  const rc::Vec3 f     = carPose.vector({0,0,1});
+  if(!route.empty() && std::abs(f.x)+std::abs(f.z)>1e-3f) {
+    const rc::Vec3 to = route[checkpoints->next()].position-carPose.translation();
+    float a = std::atan2(to.x,to.z)-std::atan2(f.x,f.z);
+    while(a> 3.14159265f) a -= 6.2831853f;
+    while(a<-3.14159265f) a += 6.2831853f;
+    info.direction = a;
+    }
+  return info;
   }
 
 std::vector<rc::Mat4> MainWindow::carPartPoses() const {
@@ -127,7 +153,7 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
   if(e.key==Event::K_U) {
     upgrade = (upgrade+1)%4;
     const rc::Mat4 at = carPose;
-    setupPhysics();
+    setupPhysics(false);
     if(vehicle)
       vehicle->reset(at);   // same place, standing still
     }
@@ -143,8 +169,30 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
   if(e.key==Event::K_K)
     showCollision = !showCollision;
   // R: back to the last checkpoint, as in the original
-  if(e.key==Event::K_R && level)
+  if(e.key==Event::K_R && level && !paused)
     respawnCar();
+  // Enter: the race again from the countdown ("Jeszcze raz"), L: 3, 5 or 7 laps (and the race again)
+  if(e.key==Event::K_Return && level)
+    setupPhysics();
+  if(e.key==Event::K_L && level) {
+    laps = (laps>=7) ? 3 : laps+2;
+    race->setLaps(laps);
+    setupPhysics();
+    }
+  // N (debug): straight to the next checkpoint, to try out laps and the finish
+  if(e.key==Event::K_N && level && vehicle && !checkpoints->empty() && !race->holdCar()) {
+    const auto&    p   = checkpoints->route()[checkpoints->next()];
+    const float    yaw = std::atan2(p.dir.x,p.dir.z)*180.f/3.14159265f;
+    rc::Mat4       at  = rc::Mat4::translate(p.position)*rc::Mat4::rotate(1,yaw);
+    if(auto g = level->collision().groundHeight(p.position+rc::Vec3{0,1.f,0}))
+      at.m[1][3] = *g-car->bboxMin().y;
+    carPose = at;
+    vehicle->reset(carPose);
+    lastCarPos = carPose.translation();
+    }
+  // P, Pause: everything stops
+  if((e.key==Event::K_P || e.key==Event::K_Pause) && level)
+    paused = !paused;
   }
 
 void MainWindow::keyUpEvent(KeyEvent& e) {
@@ -167,9 +215,14 @@ void MainWindow::mouseWheelEvent(MouseEvent& e) {
   }
 
 void MainWindow::tick(float dt) {
+  if(paused)
+    return;
   if(vehicle!=nullptr) {
     rc::Vehicle::Input in;
-    if(!freeCamera) {
+    if(race->holdCar()) {
+      in.handbrake = true;  // waiting for the start
+      }
+    else if(!freeCamera) {
       const bool up    = keys[Event::K_W] || keys[Event::K_Up];
       const bool down  = keys[Event::K_S] || keys[Event::K_Down];
       const bool left  = keys[Event::K_A] || keys[Event::K_Left];
@@ -184,7 +237,9 @@ void MainWindow::tick(float dt) {
     vehicle->update(in,dt);
     physics->step(dt);
     carPose = vehicle->pose();
-    checkpoints->update(carPose.translation());
+    const rc::Vec3 at = carPose.translation();
+    hud->event(race->update(dt,at,(at-lastCarPos)*(1.f/std::max(dt,1e-4f))));
+    lastCarPos = at;
 
     // on its roof or side for a while: back on the wheels
     upsideDown = carPose.vector({0,1,0}).y<0.3f ? upsideDown+dt : 0;
@@ -194,8 +249,9 @@ void MainWindow::tick(float dt) {
       }
     // drowned or fell off the world: back to the last checkpoint
     auto& grid = level->scene().collision;
-    if(vehicle->drowned() || (!grid.empty() && carPose.translation().y<grid.min.y-20.f))
+    if(vehicle->drowned() || (!grid.empty() && carPose.translation().y<grid.min.y-20.f)) {
       respawnCar();
+      }
     }
 
   if(!freeCamera) {
@@ -234,8 +290,10 @@ void MainWindow::render() {
     const uint64_t now = Application::tickCount();
     const float    dt  = float(now-lastTick)/1000.f;
     lastTick = now;
-    time    += std::min(dt,0.1f);
+    if(!paused)
+      time  += std::min(dt,0.1f);
     tick(std::min(dt,0.1f));
+    hud->tick(std::min(dt,0.1f));
 
     frameId = uint8_t((frameId+1)%MaxFramesInFlight);
     auto& sync = fence[frameId];
@@ -267,6 +325,8 @@ void MainWindow::render() {
         level->mesh().draw(enc,push,LevelMesh::Pass::Translucent);
       if(level && showCollision)
         level->collisionView().draw(enc,push);
+      if(race && vehicle)
+        hud->draw(enc,frameId,int(w()),int(h()),*race,hudInfo());
     }
 
     sync = device.submit(cmd);

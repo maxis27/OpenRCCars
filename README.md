@@ -39,6 +39,13 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   wodospady) nie jest twarda: auto brodzi w płytkiej wodzie i zwalnia, w głębokiej tonie, a po 1 s całkiem pod wodą (po dach, antena się nie liczy)
   wraca do ostatniego punktu kontrolnego, jak w instrukcji („jeśli utoniesz w morzu”). Tam też wraca po klawiszu R
   i po wypadnięciu poza trasę. Nazwa nawierzchni pod autem jest w tytule okna
+- **wyścig**: odliczanie 3, 2, 1, „Jazda!” (auto stoi do startu), 3, 5 albo 7 okrążeń, czas całkowity i czas
+  okrążenia, najlepsze okrążenie, „zły kierunek”, meta z tabelą czasów i „jeszcze raz”. Na razie bez przeciwników.
+  Punkty kontrolne to bramki o szerokości i wysokości zapisanej w danych trasy (właściwości markerów `cp_*`);
+  okrążenie liczy się po przejechaniu wszystkich bramek po kolei, jak w instrukcji. Kokpit rysujemy obrazkami
+  z gry (`Language/Polish` albo `Language/English`: odliczanie, „okrążenie”, komunikaty, czcionka `Smash26`)
+  w miejscach z `Settings/cockpit.ini`; strzałka (szewron `coc_str_2`) pokazuje następny punkt kontrolny
+  i miga na czerwono, gdy jedziesz w złą stronę. Prędkość i turbo na dole ekranu na razie tekstem
 - **narzędzia**: `rcinfo` (inspekcja/eksport danych i jazda testowa, bez GPU) i `rcshot` (render offscreen do PNG)
 
 ![Auto na starcie (beach_1)](docs/car_beach_1.jpg)
@@ -48,6 +55,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 ![Jazda: skręt w lewo (beach_1)](docs/driving_beach_1.jpg)
 
 ![Auto wjeżdża do morza: na plaży, przy brzegu, w wodzie (beach_1)](docs/water_beach_1.jpg)
+
+![Wyścig: odliczanie, jazda, zły kierunek, meta (beach_1)](docs/race_beach_1.jpg)
 
 ![Urban 1](docs/urban_1.jpg)
 
@@ -107,6 +116,9 @@ Jazda (kamera za autem):
 | B | zablokuj koła (tylne, do poślizgu) |
 | T | postaw auto na koła w miejscu |
 | R | powrót do ostatniego punktu kontrolnego (przed pierwszym: na start) |
+| Enter | wyścig od nowa, od odliczania („Jeszcze raz”) |
+| L | liczba okrążeń: 3 / 5 / 7 (i wyścig od nowa) |
+| P, Pause | pauza |
 | U | następny poziom ulepszeń (0–3: dopalacze, rezonatory, opony razem) |
 | 1 / 2 / 3 | auto: Overkill / Buggy / Hummer |
 
@@ -116,6 +128,7 @@ Pozostałe:
 |---|---|
 | V | kamera za autem ↔ kamera swobodna (auto wtedy stoi) |
 | K | nakładka kolizji (debug; turkusowa woda, fioletowy głęboki piasek) |
+| N | przeskok do następnego punktu kontrolnego (debug, do sprawdzania okrążeń i mety) |
 | W / S / A / D | ruch kamery swobodnej |
 | E, Spacja / Q, C | w górę / w dół |
 | Shift | szybciej ×4 |
@@ -124,7 +137,7 @@ Pozostałe:
 | F1–F10 | trasy: beach_1–4, country_1–4, urban_1–2 |
 | Esc | wyjście |
 
-Prędkość auta (km/h) jest w tytule okna.
+Prędkość auta (km/h) jest też w tytule okna.
 
 ## Narzędzia
 
@@ -135,6 +148,7 @@ rcinfo <folder_gry> sb RCCarsDB/beach_1.sb        # statystyki sceny, tekstury, 
 rcinfo <folder_gry> obj RCCarsDB/Car.sb car.obj   # eksport geometrii do OBJ
 rcinfo <folder_gry> coll RCCarsDB/beach_1.sb [coll.obj]  # siatka kolizji: statystyki, test raycastu, eksport OBJ
 rcinfo <folder_gry> drive RCCarsDB/beach_1.sb [auto 1-3] [ulepszenie 0-3]  # jazda testowa bez GPU (autopilot po checkpointach)
+rcinfo <folder_gry> race RCCarsDB/beach_1.sb [okrążenia]  # bramki punktów kontrolnych i test logiki wyścigu (bez fizyki)
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
 rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
 rcshot <folder_gry> beach_1 shot.png [w h] [x y z yaw pitch]   # render offscreen, z autem i kamerą za nim
@@ -161,10 +175,12 @@ physics/        fizyka jazdy (Bullet, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
   vehicle.*     świat Bulleta trasy, btRaycastVehicle z promieniami przez siatkę COLL, nawierzchnie i woda
-  checkpoints.* kolejność punktów kontrolnych, postęp auta, powrót do ostatniego punktu
+  checkpoints.* bramki punktów kontrolnych w kolejności, postęp auta, powrót do ostatniego punktu
+  race.*        wyścig: odliczanie, okrążenia, czasy, zły kierunek, meta
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
   camera.*      kamera swobodna
+  hud.*         kokpit wyścigu (obrazki i czcionka z Language/<język>)
   world/        Level (trasa), LevelMesh (geometria na GPU, batche po teksturach), CarMesh (auto),
                 CollisionView (nakładka kolizji)
   mainwindow.*  okno, pętla, wejście
@@ -229,6 +245,21 @@ lib/Tempest     silnik (submoduł git)
   brzegiem (`CollisionMesh::shoreHeight`); dalej jest płaska. Brzeg to miejsca, gdzie woda (wszystkie grupy i LOD-y
   razem, siatka 0,25 m) graniczy z co najmniej 0,75 m bez wody, a grunt tam leży niżej niż woda — szwy między
   grupami morza i skały wystające z wody się nie liczą. Tak samo dla rysowania i fizyki. Piana leży na wodzie.
+- Markery (`MARK`) mają w elemencie `0x04` właściwości wpisane w edytorze poziomów jako pary tekstów (lista
+  `0x05 { 0x06 klucz, 0x07 wartość }`). Punkty kontrolne mają `width`, `height` i `expand` (np. beach_1 `cp_1`:
+  szerokość 8, wysokość 1, expand 3); tam, gdzie ich brak (cały country_1, prawie cały country_2), przyjmujemy
+  6 / 2 / 1. Czytamy je jako bramkę w poprzek trasy (markery nie mają obrotu, więc bramka stoi prostopadle do linii
+  od poprzedniego do następnego punktu) od gruntu do `height` nad markerem (markery wiszą do 2,7 m nad ziemią),
+  a `expand` jako odległość przed i za bramką, w której punkt też się zalicza. Numeracja podpunktów ma dziury
+  (country_1: `cp_4_3`, `cp_4_5`) i nie zawsze idzie po kolei w pliku, więc sortujemy po numerze.
+  `rcinfo race` przejeżdża wszystkie 10 tras po linii markerów i zalicza każdą bramkę.
+- Kokpit: `Settings/cockpit.ini` i `cockpit_time.ini` podają pozycje na ekranie 800x600 (np. `lapPosX` 713 → x 613,
+  `timeTotalPosY` → y 6, `msgOffsetY` → komunikaty 142 px nad środkiem, `timeLapBlinkInSec` 4,2 s), `arrow.ini`
+  strzałkę (`CX` 50 %, `CY` 87 %, pochylona o `AngleVert` 45°). Obrazki z napisami są w `Language/<język>/*.csi`
+  (poza archiwum), `msg_321_s_f.csi` to „3”, „Jazda!”/„GO!”, „2”, „1”, „meta”/„Finish” w jednej teksturze.
+  Czcionka `Smash20/26.csi` to siatka 10 kolumn × 9 wierszy (25,6 × 28,4 px) ze znakami w kolejności z `Smash*.dat`;
+  szerokość liter mierzymy z kanału alfa. Teksty w `Language/Game/*.tbl` są zaszyfrowane, więc napisy tabeli
+  wyników są na razie wpisane w kod. Liczbę okrążeń (3, 5 lub 7) wybiera się w oryginale w menu.
 - Start auta gracza to `INST 'Player'` w folderze `Players`; jego oś +Z wskazuje kierunek jazdy. Auta są w skali
   modeli RC (ok. 0,4–0,6 m długości), przód modelu to +Z.
 
@@ -242,7 +273,10 @@ lib/Tempest     silnik (submoduł git)
      ostatniego punktu kontrolnego); brakuje kurzu i plusków spod kół oraz stref `car_reset_volume_*` („dziury”)
 4. Węzły `INST` (instancje obiektów), `HHID` (widoczność/sektory), animacje (`SPLN`/`ANIM`/`ASEQ`)
 5. Dźwięk: odszyfrowane WAV z `Sound/`, muzyka MP3 z `Tracks/`
-6. Linie jazdy AI z `CarProfiles/` i logika wyścigu (checkpointy `cp_*`, okrążenia, tryby)
+6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
+   prędkościomierza i wskaźnika turbo z `cockpit_sp*`, świateł startowych z `cockpit.sb`, migających strzałek nad
+   punktami kontrolnymi `cp_ar_*`, menu i zapisu rekordów)
+7. Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`), tryby
 
 ## Licencja
 

@@ -7,6 +7,7 @@
 //   rcinfo <game_dir> obj <RCCarsDB/x.sb> <out.obj>  export scene geometry (world space) to OBJ
 //   rcinfo <game_dir> coll <RCCarsDB/x.sb> [out.obj]  collision grid statistics + self-test, optional OBJ export
 //   rcinfo <game_dir> drive <RCCarsDB/x.sb> [car 1-3] [upgrade 0-3]  headless test drive on a track (physics)
+//   rcinfo <game_dir> race <RCCarsDB/x.sb> [laps]  checkpoint gates + a race driven along the route (no physics)
 //   rcinfo <game_dir> check                      decode every texture in the pack and every RCCarsDB/*.sb
 
 #include "formats/pack.h"
@@ -14,6 +15,7 @@
 #include "formats/scene.h"
 #include "formats/collision.h"
 #include "physics/checkpoints.h"
+#include "physics/race.h"
 #include "physics/vehicle.h"
 
 #include <algorithm>
@@ -401,9 +403,112 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   return (!fell && passed>0) ? 0 : 3;
   }
 
+// The race logic on its own: the car glides along the checkpoint markers (straight lines between them, on the
+// ground below) at a steady speed, so every gate must be passed and every lap counted. Then the same car
+// turns round after the start to check the wrong way warning, and passes one gate outside to check it is missed.
+static int cmdRace(const fs::path& game, const fs::path& track, int laps) {
+  auto scene = rc::SbScene::load(readFile(game/track));
+  rc::CollisionMesh coll(scene);
+  rc::Checkpoints   cps(scene,coll);
+  if(cps.empty()) {
+    std::printf("no checkpoints\n");
+    return 3;
+    }
+  const auto& route = cps.route();
+  float length = 0;
+  std::printf("gates:\n");
+  for(size_t i=0; i+1<route.size(); ++i) {
+    const auto& p = route[i];
+    const float d = (route[i+1].position-p.position).length();
+    length += d;
+    const auto  g = coll.groundHeight(p.position+rc::Vec3{0,1.f,0});
+    std::printf("  %-8s (%7.2f %6.2f %7.2f) width %4.1f height %3.1f expand %3.1f, %5.1f above the ground,"
+                " %5.1f m to the next\n",p.name.c_str(),p.position.x,p.position.y,p.position.z,p.width,p.height,
+                p.expand,g ? p.position.y-*g : 99.f,d);
+    }
+  std::printf("%zu checkpoints, %.0f m a lap along the markers\n",route.size()-1,length);
+
+  rc::Mat4 start;
+  if(auto p = scene.instance("Player"))
+    start = p->world;
+  const rc::Vec3 lift  = {0,0.15f,0}; // body centre above the ground
+  const float    speed = 8.f, dt = 1.f/60.f;
+
+  // 1. a whole race along the route
+  rc::Race race(cps,laps);
+  race.restart(start);
+  rc::Vec3 pos = start.translation()+lift;
+  size_t   at  = 1, events = 0;
+  float    t   = 0;
+  int      wrongFrames = 0;
+  while(race.phase()!=rc::Race::Phase::Finished && t<60.f*float(laps)*4.f) {
+    rc::Vec3 vel;
+    if(!race.holdCar()) {
+      rc::Vec3 to = route[at].position+lift-pos;
+      if(to.length()<speed*dt) {
+        at = (at+1<route.size()) ? at+1 : 1;
+        to = route[at].position+lift-pos;
+        }
+      vel = to*(speed/std::max(to.length(),1e-3f));
+      pos = pos+vel*dt;
+      }
+    // on the ground where there is some under the line between the markers
+    rc::Vec3 car = pos;
+    if(auto g = coll.groundHeight(pos+rc::Vec3{0,1.5f,0}))
+      car.y = *g+lift.y;
+    const auto ev = race.update(dt,car,vel);
+    t += dt;
+    wrongFrames += race.wrongWay() ? 1 : 0;
+    if(ev==rc::Race::Event::None)
+      continue;
+    ++events;
+    if(ev==rc::Race::Event::Go)
+      std::printf("%7.2f go\n",t);
+    if(ev==rc::Race::Event::Lap || ev==rc::Race::Event::BestLap || ev==rc::Race::Event::Finish)
+      std::printf("%7.2f lap %zu: %.2f s%s\n",t,race.lapTimes().size(),race.lapTimes().back(),
+                  ev==rc::Race::Event::BestLap ? " (best)" : ev==rc::Race::Event::Finish ? " - finish" : "");
+    }
+  const bool finished = race.phase()==rc::Race::Phase::Finished;
+  std::printf("race %s: %d laps in %.2f s, best lap %.2f s, %zu events, wrong way for %d frames\n",
+              finished ? "finished" : "NOT finished",race.laps(),race.time(),race.bestLap(),events,wrongFrames);
+
+  // 2. turn round right after the start: the warning must come, and go once heading for the checkpoint again
+  race.restart(start);
+  pos = start.translation()+lift;
+  const rc::Vec3 back = (pos-route[1].position)*(1.f/(pos-route[1].position).length());
+  float wrongAt = -1, rightAt = -1;
+  for(t=0; t<12.f; t+=dt) {
+    rc::Vec3 vel;
+    if(!race.holdCar())
+      vel = (t<7.f) ? back*speed : back*-speed;
+    pos = pos+vel*dt;
+    race.update(dt,pos,vel);
+    if(race.wrongWay() && wrongAt<0)
+      wrongAt = t;
+    if(!race.wrongWay() && wrongAt>=0 && rightAt<0)
+      rightAt = t;
+    }
+  std::printf("driving backwards from %.1f s: wrong way from %.2f s, cleared at %.2f s after turning at 7 s\n",
+              rc::Race::CountdownTime,wrongAt,rightAt);
+
+  // 3. past the first gate outside its width: not counted
+  race.restart(start);
+  const rc::Vec3 side = rc::Vec3{-route[1].dir.z,0,route[1].dir.x}*(route[1].width*0.5f+1.f);
+  bool counted = false;
+  for(int i=-60; i<=60; ++i) {
+    const rc::Vec3 p = route[1].position+lift+side+route[1].dir*(float(i)*0.1f);
+    counted |= cps.update(p);
+    }
+  std::printf("passing %s 1 m outside its width: %s\n",route[1].name.c_str(),counted ? "COUNTED" : "not counted");
+
+  const bool ok = finished && wrongFrames==0 && wrongAt>0 && rightAt>7.f && !counted;
+  std::printf("%s\n",ok ? "ok" : "FAILED");
+  return ok ? 0 : 3;
+  }
+
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|check|drive ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|check|drive|race ...\n");
     return 1;
     }
   try {
@@ -411,6 +516,8 @@ int main(int argc, char** argv) {
     const std::string cmd = argv[2];
     if(cmd=="coll" && argc>3)
       return cmdColl(game/argv[3],argc>4 ? argv[4] : nullptr);
+    if(cmd=="race" && argc>3)
+      return cmdRace(game,argv[3],argc>4 ? std::atoi(argv[4]) : rc::Race::DefaultLaps);
     if(cmd=="obj" && argc>4)
       return cmdObj(game/argv[3],argv[4]);
 

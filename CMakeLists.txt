@@ -59,6 +59,7 @@ add_library(rcphysics STATIC
   physics/carparams.h   physics/carparams.cpp
   physics/vehicle.h     physics/vehicle.cpp
   physics/checkpoints.h physics/checkpoints.cpp
+  physics/race.h        physics/race.cpp
   )
 target_link_libraries(rcphysics PUBLIC rcformats PRIVATE bullet)
 
@@ -84,6 +85,7 @@ add_subdirectory(shader)
 add_library(rcengine STATIC
   game/camera.h            game/camera.cpp
   game/resources.h         game/resources.cpp
+  game/hud.h               game/hud.cpp
   game/world/levelmesh.h   game/world/levelmesh.cpp
   game/world/carmesh.h     game/world/carmesh.cpp
   game/world/level.h       game/world/level.cpp

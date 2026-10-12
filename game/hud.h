@@ -21,9 +21,9 @@ class Resources;
 // "meta", "pauza", and the times in the game's Smash font. Positions follow Settings/cockpit.ini and
 // cockpit_time.ini (a 800x600 screen; elements on the right keep their distance from the right edge on wider
 // screens). The direction arrow is the cockpit's chevron (coc_str_2) turned towards the next checkpoint.
-// Not from the original: the count of checkpoints passed in this lap under the lap number, a green "Punkt n/m"
-// each time one is passed, and the gates themselves outlined in the 3D view (G): the next one green, the one
-// after it yellow, the ones passed in this lap grey.
+// Not from the original: the count of main checkpoints passed in this lap under the lap number, a green
+// "Punkt n/m" each time one is passed, and the gates outlined in the 3D view (G): the next main one green, the
+// one after it yellow, the ones passed in this lap grey, and the sub-checkpoint the arrow shows thin blue.
 class Hud {
   public:
     // what the race does not know
@@ -114,9 +114,7 @@ class Hud {
     Message                          message    = Message::None;
     float                            messageAt  = 0;
     float                            lapAt      = -100; // when the last lap was finished: its time blinks
-    size_t                           lastNext   = 0;    // the checkpoint the car headed for at the last draw()
-    size_t                           flashGate  = 0;    // the gate just passed, and when
-    float                            flashAt    = -100;
+    float                            flashAt    = -100; // when the last main checkpoint was passed
     int                              scrW = 0, scrH = 0;
     float                            scale = 1, offsetX = 0;
   };

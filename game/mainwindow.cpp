@@ -105,7 +105,7 @@ Hud::Info MainWindow::hudInfo() const {
   const auto&    route = checkpoints->route();
   const rc::Vec3 f     = carPose.vector({0,0,1});
   if(!route.empty() && std::abs(f.x)+std::abs(f.z)>1e-3f) {
-    const rc::Vec3 to = route[checkpoints->next()].position-carPose.translation();
+    const rc::Vec3 to = route[checkpoints->guide()].position-carPose.translation();
     float a = std::atan2(to.x,to.z)-std::atan2(f.x,f.z);
     while(a> 3.14159265f) a -= 6.2831853f;
     while(a<-3.14159265f) a += 6.2831853f;
@@ -187,6 +187,7 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     }
   // N (debug): straight to the next checkpoint, to try out laps and the finish
   if(e.key==Event::K_N && level && vehicle && !checkpoints->empty() && !race->holdCar()) {
+    checkpoints->skipWay();
     const auto&    p   = checkpoints->route()[checkpoints->next()];
     const float    yaw = std::atan2(p.dir.x,p.dir.z)*180.f/3.14159265f;
     rc::Mat4       at  = rc::Mat4::translate(p.position)*rc::Mat4::rotate(1,yaw);

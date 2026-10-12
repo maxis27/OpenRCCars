@@ -59,6 +59,9 @@ Checkpoints::Checkpoints(const SbScene& scene, const CollisionMesh& track) : col
     Vec3 d = flat(next-prev);
     points[i].dir = (d.length()>1e-3f) ? d*(1.f/d.length()) : Vec3{0,0,1};
     }
+  for(size_t i=0; i<n; ++i)
+    if(points[i].main)
+      mains.push_back(i);
   // the lower edge: the lowest ground across the gate, under whatever stands on it. The markers are often placed
   // on top of a prop (beach_3: cp_1_2 and cp_3_1 on a rock a metre high, the road beside it lower) or on a pier
   // with sand under it (beach_1: cp_2_2), and a car on the road beside the prop or on the sand passes the gate too
@@ -78,9 +81,25 @@ Checkpoints::Checkpoints(const SbScene& scene, const CollisionMesh& track) : col
     }
   }
 
+size_t Checkpoints::nextMain(size_t i) const {
+  for(size_t m:mains)
+    if(m>i)
+      return m;
+  return points.size()-1;
+  }
+
+size_t Checkpoints::mainPassed() const {
+  for(size_t k=0; k<mains.size(); ++k)
+    if(mains[k]==target)
+      return k-1;
+  return 0;
+  }
+
 void Checkpoints::reset(const Mat4& start) {
   startPose = start;
-  target    = 1;
+  target    = points.empty() ? 1 : nextMain(0);
+  way       = 1;
+  lastMain  = 0;
   lapCount  = 0;
   passed    = false;
   hasLast   = false;
@@ -110,22 +129,43 @@ bool Checkpoints::update(const Vec3& car) {
   const Vec3 from = hasLast ? last : car;
   last    = car;
   hasLast = true;
-  if(target>=points.size() || !passes(target,from,car))
+  if(target>=points.size())
     return false;
-  passed = true;
-  if(++target==points.size()) {
+  // the arrow moves on past the sub-checkpoint it shows once the car drives through its gate, crosses its line
+  // beside the gate close by, or just comes near it (round the outside of a hairpin). One at a time and in order:
+  // a later one passed early is a shortcut (country_1 crosses cp_1_5 right behind the start)
+  if(way<target) {
+    const Point& p  = points[way];
+    const float  f0 = Vec3::dot(flat(from-p.position),p.dir), f1 = Vec3::dot(flat(car-p.position),p.dir);
+    const float  d  = flat(car-p.position).length();
+    if(passes(way,from,car) || (f0<0 && f1>=0 && d<GuideRadius && (car-from).length()<5.f) ||
+       d<p.width*0.5f+NearMargin)
+      ++way;
+    }
+  // a main checkpoint counts only on the way shown: some tracks pass by a later main one early (country_3 runs
+  // the same loop twice, cp_2_2 .. cp_2_6 and again cp_3_1 .. cp_3_5, and cp_3 stands at its entry)
+  if(way<target || !passes(target,from,car))
+    return false;
+  passed   = true;
+  lastMain = target;
+  way      = target+1;
+  if(target+1==points.size()) {
     // back on cp_1: the next lap
     ++lapCount;
-    target = 1;
+    lastMain = 0;
+    way      = 1;
     }
+  target = nextMain(lastMain);
   return true;
   }
 
-Mat4 Checkpoints::respawn(float carBottom) const {
+Mat4 Checkpoints::respawn(float carBottom) {
+  way     = lastMain+1;
+  hasLast = false;
   if(!passed || points.size()<2)
     return startPose;
-  const Vec3 at   = points[target-1].position;
-  Vec3       dir  = points[target].position-at;
+  const Vec3 at   = points[lastMain].position;
+  Vec3       dir  = points[lastMain+1].position-at;
   dir.y = 0;
   const float yaw = (std::abs(dir.x)+std::abs(dir.z)>1e-3f) ? std::atan2(dir.x,dir.z)*180.f/3.14159265f : 0.f;
   Mat4 pose = Mat4::translate(at)*Mat4::rotate(1,yaw);

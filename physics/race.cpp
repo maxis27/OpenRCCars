@@ -35,10 +35,10 @@ Race::Event Race::update(float dt, const Vec3& car, const Vec3& velocity) {
     return Event::Go;
     }
 
-  // wrong way: moving away from the next checkpoint for 1.5 s, cleared once heading for it again
+  // wrong way: moving away from the point the arrow shows for 1.5 s, cleared once heading for it again
   if(!route.empty()) {
     Vec3 v  = velocity;
-    Vec3 to = route.route()[route.next()].position-car;
+    Vec3 to = route.route()[route.guide()].position-car;
     v.y = to.y = 0;
     const float speed = v.length(), dist = to.length();
     if(speed>1.f && dist>1e-3f) {

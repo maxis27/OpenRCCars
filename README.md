@@ -41,14 +41,19 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   i po wypadnięciu poza trasę. Nazwa nawierzchni pod autem jest w tytule okna
 - **wyścig**: odliczanie 3, 2, 1, „Jazda!” (auto stoi do startu), 3, 5 albo 7 okrążeń, czas całkowity i czas
   okrążenia, najlepsze okrążenie, „zły kierunek”, meta z tabelą czasów i „jeszcze raz”. Na razie bez przeciwników.
-  Punkty kontrolne to bramki o szerokości i wysokości zapisanej w danych trasy (właściwości markerów `cp_*`);
-  okrążenie liczy się po przejechaniu wszystkich bramek po kolei, jak w instrukcji. Kokpit rysujemy obrazkami
+  Punkty kontrolne to bramki o szerokości i wysokości zapisanej w danych trasy (właściwości markerów `cp_*`).
+  Liczą się główne `cp_N` (na beach_1 cztery, każdy z kolorowym graffiti na ziemi): okrążenie to przejechanie
+  ich wszystkich po kolei, jak w instrukcji, a R wraca na ostatni zaliczony. Pośrednie `cp_N_M` prowadzą strzałkę
+  i „zły kierunek”; główny punkt zalicza się dopiero, gdy auto przejechało obok pośrednich przed nim (przez bramkę,
+  przez jej linię do 15 m obok albo bliżej niż 4 m od jej boku), bo trasa potrafi wcześniej minąć dalszy punkt
+  główny (country_3 objeżdża tę samą pętlę dwa razy, a `cp_3` stoi przy jej wjeździe). Kokpit rysujemy obrazkami
   z gry (`Language/Polish` albo `Language/English`: odliczanie, „okrążenie”, komunikaty, czcionka `Smash26`)
   w miejscach z `Settings/cockpit.ini`; strzałka (szewron `coc_str_2`) pokazuje następny punkt kontrolny
   i miga na czerwono, gdy jedziesz w złą stronę. Prędkość i turbo na dole ekranu na razie tekstem. Spoza
-  oryginału: pod numerem okrążenia „Punkt n/m” (bramki zaliczone w tym okrążeniu), zielony „Punkt n/m” na środku
-  przy każdym zaliczeniu, a same bramki obrysowane na trasie (klawisz G): następna zielona, kolejna żółta,
-  zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono. Każde zaliczenie trafia też do logu
+  oryginału: pod numerem okrążenia „Punkt n/m” (główne punkty zaliczone w tym okrążeniu), zielony „Punkt n/m” na
+  środku przy każdym zaliczeniu, a bramki obrysowane na trasie (klawisz G): następna główna zielona, kolejna żółta,
+  zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono, pośrednia, na którą wskazuje strzałka,
+  niebieska. Każde zaliczenie trafia też do logu
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
   baloniki, łuski, toczące się kłębki) stoją tam, gdzie kładzie je trasa (od 8 do 17 na trasie), i są bryłami
   sztywnymi: auto je potrąca, przewraca i pcha, a koła po nich przejeżdżają. Masa, sprężystość, tarcie, kształt
@@ -127,7 +132,7 @@ Jazda (kamera za autem):
 | Shift | dopalacz (zużywa turbo, ok. 3 s z pełnego zbiornika; procent w tytule okna) |
 | B | zablokuj koła (tylne, do poślizgu) |
 | T | postaw auto na koła w miejscu |
-| R | powrót do ostatniego punktu kontrolnego (przed pierwszym: na start) |
+| R | powrót do ostatniego głównego punktu kontrolnego (przed pierwszym: na start) |
 | Enter | wyścig od nowa, od odliczania („Jeszcze raz”) |
 | L | liczba okrążeń: 3 / 5 / 7 (i wyścig od nowa) |
 | P, Pause | pauza |
@@ -141,7 +146,7 @@ Pozostałe:
 | V | kamera za autem ↔ kamera swobodna (auto wtedy stoi) |
 | K | nakładka kolizji (debug; turkusowa woda, fioletowy głęboki piasek) |
 | G | obrysy bramek punktów kontrolnych (domyślnie włączone) |
-| N | przeskok do następnego punktu kontrolnego (debug, do sprawdzania okrążeń i mety) |
+| N | przeskok do następnego głównego punktu kontrolnego (debug, do sprawdzania okrążeń i mety) |
 | W / S / A / D | ruch kamery swobodnej |
 | E, Spacja / Q, C | w górę / w dół |
 | Shift | szybciej ×4 |
@@ -282,7 +287,8 @@ lib/Tempest     silnik (submoduł git)
   (beach_3: `cp_1_2`, `cp_3_1` na skale ponad metr nad drogą obok) albo na pomoście (beach_1: `cp_2_2`), więc dół
   bramki to najniższy grunt w poprzek niej, do 4 m pod markerem. Numeracja podpunktów ma dziury
   (country_1: `cp_4_3`, `cp_4_5`) i nie zawsze idzie po kolei w pliku, więc sortujemy po numerze.
-  `rcinfo race` przejeżdża wszystkie 10 tras po linii markerów i zalicza każdą bramkę, a `rcinfo gates` przejeżdża
+  `rcinfo race` przejeżdża wszystkie 10 tras po linii markerów (i drugi raz obok bramek pośrednich) i zalicza
+  każde okrążenie, a `rcinfo gates` przejeżdża
   każdą z 235 bramek autem z fizyką (rusza kilka metrów przed nią) i wszystkie się zaliczają.
 - Kokpit: `Settings/cockpit.ini` i `cockpit_time.ini` podają pozycje na ekranie 800x600 (np. `lapPosX` 713 → x 613,
   `timeTotalPosY` → y 6, `msgOffsetY` → komunikaty 142 px nad środkiem, `timeLapBlinkInSec` 4,2 s), `arrow.ini`

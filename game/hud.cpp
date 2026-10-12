@@ -150,9 +150,13 @@ void Hud::loadFont(Resources& res, std::string_view name, Font& f) {
 
 void Hud::event(rc::Race::Event e) {
   switch(e) {
+    case rc::Race::Event::None:
+      return;
     case rc::Race::Event::Go:
       message   = Message::Go;
       messageAt = clock;
+      return;
+    case rc::Race::Event::Checkpoint:
       break;
     case rc::Race::Event::BestLap:
       message   = Message::BestLap;
@@ -167,10 +171,9 @@ void Hud::event(rc::Race::Event e) {
       messageAt = clock;
       lapAt     = clock;
       break;
-    case rc::Race::Event::None:
-    case rc::Race::Event::Checkpoint:
-      break;
     }
+  // a main checkpoint passed (a lap ends on cp_1): its gate and "Punkt n/m" flash
+  flashAt = clock;
   }
 
 std::string Hud::formatTime(float seconds) {
@@ -243,40 +246,44 @@ void Hud::gates(const rc::Race& race, const rc::Mat4& vp) {
   const auto& route = cps.route();
   if(route.size()<2)
     return;
-  const size_t n    = route.size()-1;     // the last point is cp_1 again
-  const size_t next = cps.next();         // 1 .. n
+  const size_t n     = route.size()-1;     // the last point is cp_1 again
+  const size_t next  = cps.next();
+  const size_t after = next==n ? cps.nextMain(0) : cps.nextMain(next);
   for(size_t k=0; k<n; ++k) {
-    const size_t i     = k==0 ? n : k;     // route index; cp_1 is reached as route[n]
-    const auto&  p     = route[i];
-    const bool   flash = i==flashGate && clock-flashAt<GateFlash;
-    // order from the car's point of view: 0 = the next gate, 1 = the one after it ..
-    const size_t ahead = (i+n-next)%n;
+    const size_t i = k==0 ? n : k;           // route index; cp_1 is reached as route[n]
+    const auto&  p = route[i];
     Color c;
     float wdt = 2.f*scale;
-    if(flash) {
+    if(!p.main) {
+      // a sub-checkpoint: only the one the arrow shows, thin
+      if(i!=cps.guide() || i==next)
+        continue;
+      c = {0.3f,0.85f,1.f,0.8f};
+      }
+    else if(i==(cps.lastPassed()==0 ? n : cps.lastPassed()) && clock-flashAt<GateFlash) {
       const float f = 1.f-(clock-flashAt)/GateFlash;
       c   = {0.3f,1.f,0.3f,0.4f+0.6f*f};
       wdt = (3.f+6.f*f)*scale;
       }
-    else if(ahead==0) {
+    else if(i==next) {
       c   = {0.2f,1.f,0.3f,0.95f};
       wdt = 4.f*scale;
       }
-    else if(ahead==1)
+    else if(i==after)
       c = {1.f,0.85f,0.2f,0.8f};
     else if(i<next && race.phase()!=rc::Race::Phase::Countdown)
-      c = {0.6f,0.6f,0.6f,0.35f};          // passed in this lap
+      c = {0.6f,0.6f,0.6f,0.35f};            // passed in this lap
     else
       c = {1.f,1.f,1.f,0.45f};
+    // skip the far ones (clip w is the distance along the view direction)
+    const float w = vp.m[3][0]*p.position.x+vp.m[3][1]*p.position.y+vp.m[3][2]*p.position.z+vp.m[3][3];
+    if(w>GateRange || w<-p.width)
+      continue;
     const rc::Vec3 side = rc::Vec3{-p.dir.z,0,p.dir.x}*(p.width*0.5f);
     const float    top  = p.position.y+p.height+0.5f;
     const rc::Vec3 l0 = {p.position.x-side.x,p.bottom,p.position.z-side.z};
     const rc::Vec3 r0 = {p.position.x+side.x,p.bottom,p.position.z+side.z};
     const rc::Vec3 l1 = {l0.x,top,l0.z}, r1 = {r0.x,top,r0.z};
-    // skip the far ones (clip w is the distance along the view direction)
-    const float w = vp.m[3][0]*p.position.x+vp.m[3][1]*p.position.y+vp.m[3][2]*p.position.z+vp.m[3][3];
-    if(w>GateRange || w<-p.width)
-      continue;
     line3d(vp,l0,l1,wdt,c);
     line3d(vp,r0,r1,wdt,c);
     line3d(vp,l1,r1,wdt,c);
@@ -337,16 +344,8 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
   const auto  phase  = race.phase();
   const int   li     = (lang=="Polish") ? 0 : 1;
 
-  // a gate passed since the last frame flashes (not on a restart or a jump back)
   const auto&  cps  = race.checkpoints();
-  const size_t n    = cps.route().size()>1 ? cps.route().size()-1 : 0;
-  if(n>0 && cps.next()!=lastNext) {
-    if(lastNext!=0 && cps.next()==lastNext%n+1) {
-      flashGate = lastNext;
-      flashAt   = clock;
-      }
-    lastNext = cps.next();
-    }
+  const size_t n    = cps.mainCount();
   if(info.gates)
     gates(race,info.viewProj);
 
@@ -363,13 +362,13 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
   if(n>0) {
     const bool        lit    = clock-flashAt<GateFlash;
     const Color       green  = {0.3f,1.f,0.35f,1};
-    const size_t      passed = phase==rc::Race::Phase::Finished ? n : cps.next()-1;
+    const size_t      passed = phase==rc::Race::Phase::Finished ? n : cps.mainPassed();
     const std::string s      = std::string(Texts[li][4])+" "+std::to_string(passed)+"/"+std::to_string(n);
     text(font,s,float(w)-15.f*scale,py(LapY+100),26,lit ? green : white4,1);
     if(lit && phase==rc::Race::Phase::Racing) {
       const float f = 1.f-(clock-flashAt)/GateFlash;
-      const std::string got = std::string(Texts[li][4])+" "+std::to_string(flashGate==n ? n : flashGate)+"/"+
-                              std::to_string(n);
+      const size_t      k   = passed==0 ? n : passed;  // cp_1 again: the lap's last
+      const std::string got = std::string(Texts[li][4])+" "+std::to_string(k)+"/"+std::to_string(n);
       text(font,got,px(400),py(MessageY+70),30+10*f,Color{green[0],green[1],green[2],std::min(1.f,2.f*f)},0);
       }
     }

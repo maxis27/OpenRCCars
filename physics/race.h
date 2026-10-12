@@ -46,7 +46,7 @@ class Race {
     const std::vector<float>& lapTimes() const { return times; }
     // the fastest finished lap, 0 if none yet
     float  bestLap()   const;
-    // driving away from the next checkpoint for a while (missed it, or turned round)
+    // driving away from the point the arrow shows for a while (missed it, or turned round)
     bool   wrongWay()  const { return wrong; }
 
     const Checkpoints& checkpoints() const { return route; }
@@ -59,7 +59,7 @@ class Race {
     float              lapStart = 0;   // time() when the current lap began
     std::vector<float> times;
     bool               wrong    = false;
-    float              awayTime = 0;   // seconds driving away from the next checkpoint
+    float              awayTime = 0;   // seconds driving away from that point
     float              backTime = 0;   // seconds driving towards it again
   };
 

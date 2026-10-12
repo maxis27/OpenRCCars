@@ -76,7 +76,7 @@ endif()
 
 # --- Tempest ---
 set(TEMPEST_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-set(TEMPEST_BUILD_AUDIO  OFF CACHE BOOL "" FORCE)
+set(TEMPEST_BUILD_AUDIO  ON  CACHE BOOL "" FORCE) # OpenAL Soft, bundled with Tempest
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lib/Tempest/Engine/CMakeLists.txt")
   message(FATAL_ERROR "Tempest not found - run: git submodule update --init --recursive")
 endif()
@@ -90,6 +90,7 @@ add_library(rcengine STATIC
   game/camera.h            game/camera.cpp
   game/resources.h         game/resources.cpp
   game/hud.h               game/hud.cpp
+  game/sounds.h            game/sounds.cpp
   game/world/levelmesh.h   game/world/levelmesh.cpp
   game/world/modelmesh.h     game/world/modelmesh.cpp
   game/world/level.h       game/world/level.cpp

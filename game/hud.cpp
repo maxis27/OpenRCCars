@@ -168,6 +168,7 @@ void Hud::loadFont(Resources& res, std::string_view name, Font& f) {
 void Hud::event(rc::Race::Event e) {
   switch(e) {
     case rc::Race::Event::None:
+    case rc::Race::Event::Count:
       return;
     case rc::Race::Event::Go:
       message   = Message::Go;
@@ -476,7 +477,8 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
   if(info.paused) {
     sprite(msgPause,{0,0,float(msgPause.w),float(msgPause.h)},px(400),my,1,white4);
     }
-  else if(phase==rc::Race::Phase::Countdown) {
+  else if(phase==rc::Race::Phase::Countdown && race.countdown()<=rc::Race::CountTime) {
+    // nothing yet during the entry delay (rc::Race::EntryDelay)
     const float  left = race.countdown();
     const float* r    = left>2.f ? Count3 : left>1.f ? Count2 : Count1;
     // each number pops up and shrinks a little during its second

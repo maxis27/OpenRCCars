@@ -651,7 +651,7 @@ static int cmdRace(const fs::path& game, const fs::path& track, int laps) {
       rightAt = t;
     }
   std::printf("driving backwards from %.1f s: wrong way from %.2f s, cleared at %.2f s after turning at 7 s\n",
-              rc::Race::CountdownTime,wrongAt,rightAt);
+              race.startTime(),wrongAt,rightAt);
 
   // 3. past the first main gate outside its width (its sub-checkpoints counted as driven): not counted
   race.restart(start);

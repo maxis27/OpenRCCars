@@ -26,6 +26,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name)
   resetSwapchain();
   carScene = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
   hud      = std::make_unique<Hud>(device,res);
+  sounds   = std::make_unique<Sounds>(res.pack());
   loadCar(0);
   loadLevel(name);
   lastTick = Application::tickCount();
@@ -64,7 +65,7 @@ void MainWindow::loadCar(size_t id) {
   setupPhysics();
   }
 
-void MainWindow::setupPhysics(bool restartRace) {
+void MainWindow::setupPhysics(bool restartRace, bool again) {
   if(level==nullptr || car==nullptr)
     return;
   carPose = level->carStart(car->bboxMin().y);
@@ -77,7 +78,8 @@ void MainWindow::setupPhysics(bool restartRace) {
   const auto prm  = rc::CarParams::load(resources.pack(),int32_t(carId+1),upgrade);
   vehicle  = std::make_unique<rc::Vehicle>(*physics,geom,prm,carPose);
   if(restartRace) {
-    race->restart(carPose);
+    race->restart(carPose,again);
+    sounds->stopAll();
     paused = false;
     }
   lastCarPos = carPose.translation();
@@ -179,11 +181,11 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     respawnCar();
   // Enter: the race again from the countdown ("Jeszcze raz"), L: 3, 5 or 7 laps (and the race again)
   if(e.key==Event::K_Return && level)
-    setupPhysics();
+    setupPhysics(true,true);
   if(e.key==Event::K_L && level) {
     laps = (laps>=7) ? 3 : laps+2;
     race->setLaps(laps);
-    setupPhysics();
+    setupPhysics(true,true);
     }
   // N (debug): straight to the next checkpoint, to try out laps and the finish
   if(e.key==Event::K_N && level && vehicle && !checkpoints->empty() && !race->holdCar()) {
@@ -222,6 +224,7 @@ void MainWindow::mouseWheelEvent(MouseEvent& e) {
   }
 
 void MainWindow::tick(float dt) {
+  sounds->tick();
   if(paused)
     return;
   if(vehicle!=nullptr) {
@@ -246,7 +249,13 @@ void MainWindow::tick(float dt) {
     carPose = vehicle->pose();
     const rc::Vec3 at = carPose.translation();
     const size_t   was = checkpoints->next();
-    hud->event(race->update(dt,at,(at-lastCarPos)*(1.f/std::max(dt,1e-4f))));
+    const auto ev = race->update(dt,at,(at-lastCarPos)*(1.f/std::max(dt,1e-4f)));
+    hud->event(ev);
+    // with "3" the original plays cp_start (Checkpoint channel) and prestart (Prestart channel) together
+    if(ev==rc::Race::Event::Count) {
+      sounds->play("cp_start");
+      sounds->play("prestart");
+      }
     if(checkpoints->next()!=was) {
       vehicle->addBoost(rc::CarParams::BoostPerCheckpoint);
       Log::i("checkpoint ",checkpoints->route()[was].name," passed at ",Hud::formatTime(race->time()),

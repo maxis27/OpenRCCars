@@ -26,6 +26,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name)
   resetSwapchain();
   carScene = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
   hud      = std::make_unique<Hud>(device,res);
+  arrow    = std::make_unique<DirectionArrow>(device,res);
   sounds   = std::make_unique<Sounds>(res.pack());
   loadCar(0);
   loadLevel(name);
@@ -106,6 +107,7 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
   const auto geom = rc::carGeometry(carScene,Cars[carId]);
   const auto prm  = rc::CarParams::load(resources.pack(),int32_t(carId+1),upgrade);
   vehicle  = std::make_unique<rc::Vehicle>(*physics,geom,prm,carPose);
+  arrow->reset();
   if(restartRace) {
     race->restart(carPose,again);
     sounds->stopAll();
@@ -149,17 +151,42 @@ Hud::Info MainWindow::hudInfo() const {
       info.opponents.push_back({p.translation(),p.vector({0,0,1})});
       }
     }
-  // the next checkpoint seen from the car, positive = on the left (+X)
+  return info;
+  }
+
+float MainWindow::wayDirection() const {
+  // the point the arrow shows seen from the car, positive = on the left (+X)
   const auto&    route = checkpoints->route();
   const rc::Vec3 f     = carPose.vector({0,0,1});
-  if(!route.empty() && std::abs(f.x)+std::abs(f.z)>1e-3f) {
-    const rc::Vec3 to = route[checkpoints->guide()].position-carPose.translation();
-    float a = std::atan2(to.x,to.z)-std::atan2(f.x,f.z);
-    while(a> 3.14159265f) a -= 6.2831853f;
-    while(a<-3.14159265f) a += 6.2831853f;
-    info.direction = a;
-    }
-  return info;
+  if(route.empty() || std::abs(f.x)+std::abs(f.z)<=1e-3f)
+    return 0;
+  const rc::Vec3 to = route[checkpoints->guide()].position-carPose.translation();
+  float a = std::atan2(to.x,to.z)-std::atan2(f.x,f.z);
+  while(a> 3.14159265f) a -= 6.2831853f;
+  while(a<-3.14159265f) a += 6.2831853f;
+  return a;
+  }
+
+DirectionArrow::Input MainWindow::arrowInput() const {
+  DirectionArrow::Input in;
+  in.direction = wayDirection();
+  in.wrongWay  = race->wrongWay();
+  const auto& route = checkpoints->route();
+  if(route.empty())
+    return in;
+  // RCCars.exe 0x4eb670: the way still to go to the next main checkpoint over the way from the last one to it,
+  // along the route: to the point the arrow shows, then from point to point
+  const rc::Vec3 at   = carPose.translation();
+  const size_t   next = checkpoints->next(), guide = checkpoints->guide();
+  const size_t   last = checkpoints->lastPassed();
+  const float    from = last+1<route.size() ? checkpoints->along(last) : 0.f;
+  const rc::Vec3 d    = route[guide].position-at;
+  const float    left = std::sqrt(d.x*d.x+d.z*d.z)+checkpoints->along(next)-checkpoints->along(guide);
+  const float    way  = checkpoints->along(next)-from;
+  in.left     = way>1e-3f ? left/way : 1.f;
+  in.distance = (route[next].position-at).length();
+  in.next     = next;
+  return in;
   }
 
 std::vector<rc::Mat4> MainWindow::carPartPoses() const {
@@ -341,6 +368,7 @@ void MainWindow::tick(float dt) {
              " (",at.x," ",at.y," ",at.z,")");
       }
     lastCarPos = at;
+    arrow->tick(dt,arrowInput());
 
     // on its roof or side for a while: back on the wheels
     upsideDown = carPose.vector({0,1,0}).y<0.3f ? upsideDown+dt : 0;
@@ -447,6 +475,12 @@ void MainWindow::render() {
         info.gates    = showGates;
         info.viewProj = viewProj;
         hud->draw(enc,frameId,int(w()),int(h()),*race,info);
+        // the direction arrow over everything, in a depth buffer of its own
+        if(race->phase()!=rc::Race::Phase::Finished && !checkpoints->empty()) {
+          enc.setFramebuffer({{swapchain[swapchain.currentImage()],Tempest::Preserve,Tempest::Preserve}},
+                             {zbuffer,1.f,Tempest::Discard});
+          arrow->draw(enc,int(w()),int(h()));
+          }
         }
     }
 

@@ -27,9 +27,11 @@ void main() {
   outUvMask   = inUvMask;
   outUvBase   = inUvBase;
   if((push.flags & F_WATER)!=0u) {
-    // the texture drifts ("texSpeedMin/Max" 13..28); the waves are drawn per pixel in level.frag: the sea's
-    // vertices are metres apart, too coarse to move them
+    // the texture drifts ("texSpeedMin/Max" 13..28); water.tesc/.tese move the surface with the waves, level.frag
+    // shades them
     outUvBase = inUvBase + push.time*vec2(0.013, 0.028);
+    if((push.flags & (F_WAVES|F_TESS))==F_WAVES)
+      pos.y += seaHeight(pos.xz, push.time, inUvMask.x);
     }
   outUvLight  = inUvLight;
   outUvBase2  = inUvBase2;

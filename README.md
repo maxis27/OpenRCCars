@@ -226,23 +226,33 @@ lib/Tempest     silnik (submoduł git)
   (`pool1..3`), na country_3 strumień (kilka cm) i wodospady. `Settings/Water.ini` (`speedDropCenter` 125/500,
   `speedDropOther` 76/500, `DampingVelocity2` 950/1000) czytamy jako utratę prędkości przy wpadnięciu do wody
   nadwozia i kół oraz tłumienie pod wodą; to nasze odczytanie nazw.
-- Wygląd wody: tekstura `sea` nie ma kanału alfa, ale oryginał rysuje wodę półprzezroczystą (`Settings/WLOD_*.ini`:
-  `alphaMin` 26 … `alphaMax` 255, `distAlphaClampMax` 8, fale, env mapa). U nas płytka woda jest przezroczysta wg
-  głębokości nad dnem z kolizji (pełne krycie od 0,8 m; jednostka `distAlphaClampMax` to nasze zgadywanie), bez fal.
-  Piana przy brzegu to ściany `coast*` z teksturą `coast_base` i maską `ALP1` `coast` bez `BAS2`: maska to
-  przezroczystość piany (falista krawędź). W oryginale piana przesuwa się po plaży (`waterLOD_coast.ini`:
-  `HeightOn/HeightOff`, `ScrollVel`, `AlphaMin` 36); u nas co 4 s podchodzi na plażę i cofa się (maska przesuwa się
-  o 32% paska, przezroczystość 36…255), przesunięta w fazie wzdłuż brzegu.
-- Fale: dwie fale kierunkowe wg `WLOD_beach_1_more1.ini` (`angle` 6 i `angle2` 4 w krokach 10°, `amp` 16 i `amp2` 25
-  czytane jako pół centymetra, `length2` 161 cm), liczone na piksel (wierzchołki morza są co kilka metrów), z białymi
-  grzbietami i odblaskiem słońca; tekstura morza płynie (`texSpeedMin/Max`). Długości i prędkości fal dobrane na oko.
-- Brzeg: tafla morza jest płaska (beach_1: 0 m) i kończy się w powietrzu tam, gdzie plaża leży niżej (piasek przy
-  brzegu na -0,31 m, tam leży też piana), a na zrzutach z oryginału woda schodzi do poziomu plaży. Oryginał ma do tego
-  suwaki `magnetOffset`/`magnetRadius`/`clampY*` w `WLOD_*.ini`, ale ich kod w `RCCars.exe` jest zaszyfrowany
-  (zabezpieczenie Steam). U nas na ostatnim metrze przed brzegiem tafla wygina się w dół do wysokości gruntu za
-  brzegiem (`CollisionMesh::shoreHeight`); dalej jest płaska. Brzeg to miejsca, gdzie woda (wszystkie grupy i LOD-y
-  razem, siatka 0,25 m) graniczy z co najmniej 0,75 m bez wody, a grunt tam leży niżej niż woda — szwy między
-  grupami morza i skały wystające z wody się nie liczą. Tak samo dla rysowania i fizyki. Piana leży na wodzie.
+- Woda wg kodu oryginału (`RCCars.exe`; kod jest zaszyfrowany zabezpieczeniem Steam, odszyfrowaliśmy go tylko do
+  analizy). Morze to ściany `sea` pod węzłem, który ma plik `Settings/WLOD_<trasa>_<węzeł>.ini` (np.
+  `WLOD_beach_1_more1.ini`; `formats/water.*`). Suwaki są przycinane do zakresu i skalowane: `amp`, `amp2`, `speed`,
+  `length2` /100, `period`, `period2` /10, `angle` ×10°, `posX/posZ` −500, `offset` i `magnetOffset` /100 − 0,5 m,
+  `magnetRadius` /20 m, `alphaRadius` /10 m. Wierzchołek morza ma wysokość
+  `y0 + offset + (1−s)·magnetOffset + s·(fala1 + fala2)`, gdzie
+  `fala1 = amp·(0,75·sin(period·(x·cos angle + z·sin angle + speed·t)) + 0,25)`,
+  `fala2 = amp2·sin(|xz − środek|/length2 + period2·t)`, a `s = clamp(d/magnetRadius)` przy odległości `d` od brzegu
+  morza (krawędzi siatki wody). Fala 1 przychodzi z kierunku `angle`, fala 2 to kręgi zbiegające się do `posX/posZ`.
+  Na beach_1 `offset` to −0,37 m, więc morze leży poniżej piasku przy brzegu (−0,31 m) i styka się z plażą.
+  Odległość od brzegu liczy się tylko wewnątrz bryły `water_box` (`EVOL`, beach_1, beach_3, country_3); poza nią
+  `s = 1`. Krycie rośnie od 35/255 na brzegu do pełnego w odległości `alphaRadius`, ale tylko przy aucie: zwykła
+  odległość `sqrt(dxz² + 187·dy²)` od auta między `distAlphaClampMin` a `Max` (0 i 8) przechodzi w pełne krycie.
+  Szarość wierzchołka idzie od `colorMin` do `colorMax` z wysokością fali. Nie robimy `clampY*` (w znalezionym kodzie
+  nieużywane), `alphaPow` ani env mapy. U nas teselacja (`shader/water.tesc`, `water.tese`) dzieli morze przy kamerze
+  co 15 cm (dalej co 2% odległości) i podnosi wierzchołki w GPU; bez teselacji robi to shader wierzchołków na
+  oryginalnej siatce. Fizyka liczy wodę na tej samej wysokości co obraz (`y0 + offset`, bez fal).
+- Piana przy brzegu to ściany `coast*` z teksturą `coast_base` i maską `ALP1` `coast` bez `BAS2`: maska to
+  przezroczystość piany. Wg `RCCars.exe` piana idzie za falą 2 morza (`more1`): z `h = sin(faza fali 2)` w miejscu
+  piany, gdy woda opada, krycie spada od `AlphaMax` (h = −1) do `AlphaMin` (h = 1), a gdy woda rośnie, do `AlphaMin`
+  już przy `HeightOn` (`waterLOD_coast.ini`: `(v−100)/100`, czyli 0). Tekstura przesuwa się o `ScrollVel` (0,11) na
+  sekundę. `HeightOff` jest wczytywane, ale nieużywane.
+- Pozostała woda (kałuże na country_1, strumień i wodospady na country_3 bez fal w `WLOD`) jest płaska i
+  przezroczysta wg głębokości nad dnem z kolizji (pełne krycie od 0,8 m). Przy brzegu tafla wygina się w dół do
+  gruntu za brzegiem (`CollisionMesh::shoreHeight`), tak samo dla rysowania i fizyki.
+- `EVOL` to bryły w scenie: dziecko `0x03` nazwa, `0xd0` kształt (u32), `0xd4` liczby; kształt 2 to graniastosłup
+  `[ymin, ymax, x0, z0, x1, z1, …]` (wielokąt w XZ).
 - Start auta gracza to `INST 'Player'` w folderze `Players`; jego oś +Z wskazuje kierunek jazdy. Auta są w skali
   modeli RC (ok. 0,4–0,6 m długości), przód modelu to +Z.
 - `INST` (obiekt na trasie): `0x03` nazwa, `0x0a` rodzaj (3, a 2 przy rekwizytach położonych na boku; znaczenie

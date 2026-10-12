@@ -256,6 +256,10 @@ void MainWindow::render() {
     push.sunDir[0] = 0.4f; push.sunDir[1] = 0.8f; push.sunDir[2] = 0.3f;
     push.sunDir[3] = 1.0f;                     // lightmap scale
     push.time      = time;
+    if(car) {
+      const rc::Vec3 at = carPose.translation();
+      push.carPos[0] = at.x; push.carPos[1] = at.y; push.carPos[2] = at.z;
+      }
 
     {
       auto enc = cmd.startEncoding(device);

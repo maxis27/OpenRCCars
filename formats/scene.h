@@ -98,6 +98,18 @@ struct SbScript {
   std::string text;
   };
 
+// EVOL: named volume (trigger), e.g. "water_box", "car_shortcut", "car_reset_volume_*".
+//   0x03 name, 0xd0 u32 shape, 0xd4 shape data (floats, world space). All volumes in the tracks are shape 2, a
+//   vertical prism: y min, y max, then the corners of its outline (x, z).
+struct SbVolume {
+  std::string        name;
+  uint32_t           shape = 0;
+  std::vector<float> data;
+
+  // inside the prism (shape 2); false for other shapes
+  bool contains(const Vec3& p) const;
+  };
+
 // COLL - top level node of track scenes (MOD_COLLISION). The game collides with the render geometry itself:
 // COLL is a uniform grid over the track that lists, for every cell, the faces of SbScene::meshes that touch it.
 //   0x98 u32[3] cell counts (x, y, z), 0x99 vec3 grid min, 0x9a vec3 grid max, 0x9e u32 number of entries,
@@ -130,12 +142,14 @@ struct SbScene {
   std::vector<SbMarker>    markers;
   std::vector<SbInstance>  instances;
   std::vector<SbScript>    scripts;   // SCRI directly under MODL/FOLD/DESC
+  std::vector<SbVolume>    volumes;
   SbCollisionGrid          collision; // empty for scenes without COLL (cars, props)
 
   const SbTexture*  texture(int32_t index, int32_t model) const;
   const SbMarker*   marker(std::string_view name) const;
   const SbInstance* instance(std::string_view name) const;
   const SbScript*   script(int32_t model, std::string_view name = {}) const; // first script of the model if no name
+  const SbVolume*   volume(std::string_view name) const;
   int32_t           findModel(std::string_view name) const; // -1 if not found
 
   static SbScene load(const std::vector<uint8_t>& file); // throws FormatError

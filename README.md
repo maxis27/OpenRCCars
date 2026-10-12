@@ -54,9 +54,9 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   z `Settings/anim_cp.ini`. Na dole zegary z gry (`cockpit_sp1`/`cockpit_sp2`/`cockpit_sp4`): dopalacz po lewej,
   prędkość po prawej (pełny przy 50 km/h); pod numerem okrążenia mapa trasy (`trackmap_<n>`) wokół auta w ramce
   `messagebox`, z punktami głównymi (`map_cp`, następny świeci) i autem (`map_arrow`); strzałka kierunku zielona
-  w nawiasach z `overtaking.csi`; w lewym górnym rogu miejsce (`place1..6`), gdy będą przeciwnicy. Spoza
-  oryginału: pod mapą „Punkt n/m” (główne punkty zaliczone w tym okrążeniu), zielony „Punkt n/m” na
-  środku przy każdym zaliczeniu, a do debugowania bramki obrysowane na trasie (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
+  w nawiasach z `overtaking.csi`; w lewym górnym rogu miejsce (`place1..6`), gdy będą przeciwnicy. Czas i numer
+  okrążenia metaliczne jak w oryginale, czas okrążenia miga pod czasem tylko po jego ukończeniu. Spoza
+  oryginału są tylko bramki obrysowane na trasie do debugowania (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
   zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono, pośrednia, na którą wskazuje strzałka,
   niebieska. Każde zaliczenie trafia też do logu
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,

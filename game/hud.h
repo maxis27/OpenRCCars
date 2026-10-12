@@ -121,7 +121,7 @@ class Hud {
                 const Color* bottom = nullptr, float gap = 0);
     float  textWidth(const Font& f, std::string_view s, float size, float gap = 0) const;
     // the gauges' numbers: white to grey, outlined
-    void   metalText(const Font& f, std::string_view s, float x, float y, float size, int align);
+    void   metalText(const Font& f, std::string_view s, float x, float y, float size, int align, float gap = 2);
     // text with a dark shadow under it
     void   shadowText(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align = -1);
 

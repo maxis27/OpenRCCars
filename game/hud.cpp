@@ -26,7 +26,8 @@ const float CountFinish[4]={210,CellsY, 512,  2*CellsY};
 
 // Settings/cockpit.ini, cockpit_time.ini (slider positions mapped to their FValues ranges), 800x600 units
 constexpr float LapX       = 613,  LapY      = -20; // "lapPosX/Y": the "okrążenie" picture, top left
-constexpr float TimeTotalY = 6;                     // "timeTotalPosY" (cockpit_time.ini)
+constexpr float TimeSize   = 50;                    // the time and the lap number: digits 31 px high in the original
+constexpr float TimeY      = -2;                    // digits 7 px from the top as in the original ("timeTotalPosY" 6)
 constexpr float TimeLapY   = 43;                    // "timeLapPosY"
 constexpr float LapBlink   = 4.2f;                  // "timeLapBlinkInSec": a finished lap's time blinks
 constexpr float MessageY   = 300-142;               // "msgOffsetY" from the middle of the screen
@@ -34,7 +35,8 @@ constexpr float MessageY   = 300-142;               // "msgOffsetY" from the mid
 constexpr float ArrowX     = 400,  ArrowY    = 600*0.87f;
 constexpr float ArrowTilt  = 0.7071f;
 
-constexpr float LapNumY    = 24;                    // "lapNumPosY": the lap number
+constexpr float LapNumY    = 16;                    // the lap number's top ("lapNumPosY" reads 24)
+constexpr float LapNumDX   = 115;                   // from the "okrążenie" picture's left edge
 constexpr float PlaceX     = 25,   PlaceY    = -20; // "placePosX/Y": place<n>.csi, 128x128
 // the gauges: "indicatorAngMin" -34 and "indicatorAngMax" 127 degrees clockwise from the top are where the tube of
 // cockpit_sp1 (yellow) and cockpit_sp2 (red; its grey tube lies at 140..300) begins and ends around the dial's middle
@@ -91,10 +93,10 @@ const TrackMap TrackMaps[] = {
   {"urban_2",    4, {  0.5583f, -2.3726f}, {  261.783f,  283.176f}},
   };
 
-const char* const Texts[2][7] = {
+const char* const Texts[2][6] = {
   // Smash fonts have no Polish letters
-  {"Okr.", "Razem", "Najlepsze", "Enter - jeszcze raz", "Punkt",      "dopalacz", "km/h"},
-  {"Lap",  "Total", "Best",      "Enter - race again",  "Checkpoint", "boost", "km/h"},
+  {"Okr.", "Razem", "Najlepsze", "Enter - jeszcze raz", "dopalacz", "km/h"},
+  {"Lap",  "Total", "Best",      "Enter - race again",  "boost", "km/h"},
   };
 // Settings/anim_cp.ini: Size 146, Shift 128, MinDist 237, MaxDist 900, BlinkDelta 10. Shift reads as texels of
 // the 256 high picture: it is raised by half its height, so the shadow drawn at its bottom lies on the ground under
@@ -107,7 +109,7 @@ constexpr float CpArrowShift   = 128.f/256.f;
 constexpr float CpArrowMinDist = 2.37f;
 constexpr float CpArrowMaxDist = 9.f;
 constexpr float CpArrowFrame   = 0.1f;
-constexpr float GateFlash  = 1.2f;                  // the gate just passed flashes green, and "Punkt n/m" with it
+constexpr float GateFlash  = 1.2f;                  // the gate just passed flashes green
 constexpr float GateRange  = 150.f;                 // gates farther away are not outlined
 
 }
@@ -273,7 +275,7 @@ void Hud::event(rc::Race::Event e) {
       lapAt     = clock;
       break;
     }
-  // a main checkpoint passed (a lap ends on cp_1): its gate and "Punkt n/m" flash
+  // a main checkpoint passed (a lap ends on cp_1): its gate flashes
   flashAt = clock;
   }
 
@@ -574,14 +576,14 @@ void Hud::trackMap(const rc::Race& race, const Info& info) {
     }
   }
 
-void Hud::metalText(const Font& f, std::string_view s, float x, float y, float size, int align) {
-  // the original's numbers: white fading to grey downwards, outlined dark, the digits 2 texels apart
+void Hud::metalText(const Font& f, std::string_view s, float x, float y, float size, int align, float gap) {
+  // the original's numbers: white fading to grey downwards, outlined dark
   const float d = std::max(1.f,size*0.035f*scale);
   const Color dark = {0.08f,0.06f,0.05f,0.9f};
   for(auto [ox,oy]:{std::pair{-d,0.f},{d,0.f},{0.f,-d},{0.f,d},{d,d}})
-    text(f,s,x+ox,y+oy,size,dark,align,nullptr,2);
+    text(f,s,x+ox,y+oy,size,dark,align,nullptr,gap);
   const Color top = {1,1,1,1}, bottom = {0.55f,0.55f,0.58f,1};
-  text(f,s,x,y,size,top,align,&bottom,2);
+  text(f,s,x,y,size,top,align,&bottom,gap);
   }
 
 void Hud::shadowText(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align) {
@@ -656,8 +658,6 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
   const auto  phase  = race.phase();
   const int   li     = (lang=="Polish") ? 0 : 1;
 
-  const auto&  cps  = race.checkpoints();
-  const size_t n    = cps.mainCount();
   if(info.gates)
     gates(race,info.viewProj);
   checkpointArrow(race,info.viewProj);
@@ -667,10 +667,10 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     const float x = px(LapX,true), y = py(LapY);
     quad(lapLabel.tex,lapLabel.w,lapLabel.h,{0,0,float(lapLabel.w),float(lapLabel.h)},x,y,
          float(lapLabel.w)*scale,float(lapLabel.h)*scale,white4);
-    // after the picture's lettering (x 6..120, y 39..84 of 128): the Polish one is wider than the English one, which
-    // "lapNumPosX" 725 is set for
+    // right after the picture's lettering (x 6..120, y 39..84 of 128), as in the original's screenshot: the Polish
+    // one is wider than the English one, which "lapNumPosX" 725 is set for
     const std::string lap = std::to_string(race.lap())+"/"+std::to_string(race.laps());
-    shadowText(font,lap,x+130.f*scale,py(LapNumY),38,white4);
+    metalText(font,lap,x+LapNumDX*scale,py(LapNumY),TimeSize,-1);
     }
   // top left: the place, when there are opponents
   if(info.place>=1 && info.place<=6 && place[info.place-1].loaded) {
@@ -680,38 +680,20 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     }
   // under it the map
   trackMap(race,info);
-  // under the map: the checkpoints passed in this lap, green for a moment after each one
-  if(n>0) {
-    const bool        lit    = clock-flashAt<GateFlash;
-    const Color       green  = {0.3f,1.f,0.35f,1};
-    const size_t      passed = phase==rc::Race::Phase::Finished ? n : cps.mainPassed();
-    const std::string s      = std::string(Texts[li][4])+" "+std::to_string(passed)+"/"+std::to_string(n);
-    shadowText(font,s,float(w)-15.f*scale,py(MapY+MapSize+8),26,lit ? green : white4,1);
-    if(lit && phase==rc::Race::Phase::Racing) {
-      const float f = 1.f-(clock-flashAt)/GateFlash;
-      const size_t      k   = passed==0 ? n : passed;  // cp_1 again: the lap's last
-      const std::string got = std::string(Texts[li][4])+" "+std::to_string(k)+"/"+std::to_string(n);
-      text(font,got,px(400),py(MessageY+70),30+10*f,Color{green[0],green[1],green[2],std::min(1.f,2.f*f)},0);
-      }
-    }
 
-  // top middle: the total time, below it the lap time (a finished lap's time blinks for a while)
-  shadowText(font,formatTime(race.time()),px(400),py(TimeTotalY),46,white4,0);
-  if(clock-lapAt<LapBlink && !race.lapTimes().empty()) {
-    if(blink) {
-      const bool best = race.lapTimes().back()<=race.bestLap();
-      shadowText(font,formatTime(race.lapTimes().back()),px(400),py(TimeLapY),26,best ? yellow : white4,0);
-      }
-    }
-  else if(phase==rc::Race::Phase::Racing) {
-    shadowText(font,formatTime(race.lapTime()),px(400),py(TimeLapY),26,white4,0);
+  // top middle: the total time; under it a finished lap's time blinks for a while (the original shows no running
+  // lap time)
+  metalText(font,formatTime(race.time()),px(400),py(TimeY),TimeSize,0,1);
+  if(clock-lapAt<LapBlink && !race.lapTimes().empty() && blink) {
+    const bool best = race.lapTimes().back()<=race.bestLap();
+    shadowText(font,formatTime(race.lapTimes().back()),px(400),py(TimeLapY),26,best ? yellow : white4,0);
     }
 
   // bottom: turbo on the left, the speed on the right
   const float tank = info.turbo*info.turboMax;
-  gauge(false,tank,info.turboMax,std::to_string(int(std::lround(tank*100.f))),Texts[li][5]);
+  gauge(false,tank,info.turboMax,std::to_string(int(std::lround(tank*100.f))),Texts[li][4]);
   gauge(true,info.speed/GaugeKmh,info.speedMax>0 ? info.speedMax/GaugeKmh : 1.f,
-        std::to_string(int(std::lround(info.speed))),Texts[li][6]);
+        std::to_string(int(std::lround(info.speed))),Texts[li][5]);
 
   // the brackets around the arrow (overtaking.csi), the left one as drawn, the right one mirrored
   if(overtaking!=nullptr) {

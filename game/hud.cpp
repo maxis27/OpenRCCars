@@ -70,7 +70,7 @@ constexpr float BracketX    = 400, BracketY  = 530, BracketDX = 57, BracketScale
 // the map: "mapPosX_0" 620, "mapPosY_0" 79 (map.ini), the size is ours
 constexpr float MapX       = 620,  MapY      = 79,  MapSize = 165;
 // the map is shown around the car: 140 of its 512 texels (about 50 m) inside a 9 unit frame, as in the original
-constexpr float MapView    = 140,  MapInset  = 10;
+constexpr float MapView    = 140,  MapInset  = 10,  MapCorner = 30;
 
 // which trackmap_<n> belongs to which track and how the world lies on it: fitted to the main checkpoints, which the
 // maps mark with orange dots, and to the route drawn on them (a few texels off at most; the maps are turned freely)
@@ -506,7 +506,7 @@ void Hud::gauge(bool right, float value, float reach, const std::string& number,
   const auto c = at(GaugeCX,GaugeCY);
   metalText(font,number,c[0],c[1]-44.f*scale,53,0);
   quad(*white,1,1,{0,0,1,1},c[0]-46.f*scale,c[1]+1.f*scale,92.f*scale,2.5f*scale,Color{1,1,1,0.9f});
-  shadowText(font,label,c[0],c[1]+8.f*scale,28,white4,0);
+  text(font,label,c[0],c[1]+8.f*scale,28,white4,0);
   }
 
 void Hud::trackMap(const rc::Race& race, const Info& info) {
@@ -530,11 +530,44 @@ void Hud::trackMap(const rc::Race& race, const Info& info) {
   const float cv   = std::clamp(car[1],view*0.5f,512.f-view*0.5f);
   const Rect  crop = {cu-view*0.5f,cv-view*0.5f,cu+view*0.5f,cv+view*0.5f};
   const float inner = size-2*in;
-  quad(*map,512,512,crop,x+in,y+in,inner,inner,Color{1,1,1,1});
+  // cut to the frame's inside: a square with rounded corners (messagebox: straight edges 8 texels in from the
+  // outside, corners of radius 23 texels, in a 128 high picture)
+  const float round = MapCorner*scale;
+  auto inside = [&](float sx, float sy) {
+    const float dx = std::max(0.f,std::abs(sx-(x+size*0.5f))-(inner*0.5f-round));
+    const float dy = std::max(0.f,std::abs(sy-(y+size*0.5f))-(inner*0.5f-round));
+    return std::abs(sx-(x+size*0.5f))<=inner*0.5f && std::abs(sy-(y+size*0.5f))<=inner*0.5f && dx*dx+dy*dy<=round*round;
+    };
+  {
+    // a fan from the middle around the outline, 8 steps on each corner
+    std::vector<std::array<float,2>> outline;
+    const float c0 = in+round, c1 = size-in-round;
+    const std::array<std::array<float,3>,4> corners = {{{c1,c0,-0.5f},{c1,c1,0.f},{c0,c1,0.5f},{c0,c0,1.f}}};
+    for(auto& k:corners)
+      for(int i=0; i<=8; ++i) {
+        const float a = (k[2]+float(i)/16.f)*float(M_PI);
+        outline.push_back({x+k[0]+std::cos(a)*round, y+k[1]+std::sin(a)*round});
+        }
+    auto vert = [&](float sx, float sy) {
+      const float u = crop.x0+(sx-x-in)/inner*view, v = crop.y0+(sy-y-in)/inner*view;
+      return Vertex{{sx,sy},{u/512.f,v/512.f},{1,1,1,1}};
+      };
+    if(draws.empty() || draws.back().tex!=map || draws.back().depth)
+      draws.push_back({map,verts.size(),0,false});
+    const Vertex mid = vert(x+size*0.5f,y+size*0.5f);
+    for(size_t i=0; i<outline.size(); ++i) {
+      const auto& a = outline[i];
+      const auto& b = outline[(i+1)%outline.size()];
+      verts.push_back(mid);
+      verts.push_back(vert(a[0],a[1]));
+      verts.push_back(vert(b[0],b[1]));
+      }
+    draws.back().count += uint32_t(outline.size()*3);
+  }
   auto toScreen = [&](const rc::Vec3& p, bool& visible) {
     const auto  m = toMap(p);
     const float sx = x+in+(m[0]-crop.x0)/view*inner, sy = y+in+(m[1]-crop.y0)/view*inner;
-    visible = sx>=x+in && sx<=x+in+inner && sy>=y+in && sy<=y+in+inner;
+    visible = inside(sx,sy);
     return std::array<float,2>{sx,sy};
     };
 
@@ -577,19 +610,9 @@ void Hud::trackMap(const rc::Race& race, const Info& info) {
   }
 
 void Hud::metalText(const Font& f, std::string_view s, float x, float y, float size, int align, float gap) {
-  // the original's numbers: white fading to grey downwards, outlined dark
-  const float d = std::max(1.f,size*0.035f*scale);
-  const Color dark = {0.08f,0.06f,0.05f,0.9f};
-  for(auto [ox,oy]:{std::pair{-d,0.f},{d,0.f},{0.f,-d},{0.f,d},{d,d}})
-    text(f,s,x+ox,y+oy,size,dark,align,nullptr,gap);
+  // the original's numbers: white fading to grey downwards (the font's own 1 px shadow is all the outline they have)
   const Color top = {1,1,1,1}, bottom = {0.55f,0.55f,0.58f,1};
   text(f,s,x,y,size,top,align,&bottom,gap);
-  }
-
-void Hud::shadowText(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align) {
-  const float d = std::max(1.f,size*0.06f*scale);
-  text(f,s,x+d,y+d,size,Color{0,0,0,0.75f*c[3]},align);
-  text(f,s,x,y,size,c,align);
   }
 
 void Hud::quadAt(const Texture2d& tex, float x, float y, float w, float h, float depth, const Color& c) {
@@ -686,7 +709,7 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
   metalText(font,formatTime(race.time()),px(400),py(TimeY),TimeSize,0,1);
   if(clock-lapAt<LapBlink && !race.lapTimes().empty() && blink) {
     const bool best = race.lapTimes().back()<=race.bestLap();
-    shadowText(font,formatTime(race.lapTimes().back()),px(400),py(TimeLapY),26,best ? yellow : white4,0);
+    text(font,formatTime(race.lapTimes().back()),px(400),py(TimeLapY),26,best ? yellow : white4,0);
     }
 
   // bottom: turbo on the left, the speed on the right

@@ -25,9 +25,8 @@ class Resources;
 // At the bottom the original's two gauges (cockpit_sp1, cockpit_sp2): turbo on the left, the speed on the right; at the
 // top right under the lap the track map (trackmap_<n>, map_cp, map_arrow), at the top left the place (place<n>.csi)
 // when the race knows it.
-// Not from the original: the count of main checkpoints passed in this lap under the map, a green
-// "Punkt n/m" each time one is passed, and the gates outlined in the 3D view (G): the next main one green, the
-// one after it yellow, the ones passed in this lap grey, and the sub-checkpoint the arrow shows thin blue.
+// Not from the original: only the gates outlined in the 3D view (G): the next main one green, the one after it
+// yellow, the ones passed in this lap grey, and the sub-checkpoint the arrow shows thin blue.
 class Hud {
   public:
     // what the race does not know
@@ -123,7 +122,6 @@ class Hud {
     // the gauges' numbers: white to grey, outlined
     void   metalText(const Font& f, std::string_view s, float x, float y, float size, int align, float gap = 2);
     // text with a dark shadow under it
-    void   shadowText(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align = -1);
 
     Tempest::Device&                 device;
     Resources&                       resources;

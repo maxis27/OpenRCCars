@@ -7,6 +7,8 @@
 //   rcinfo <game_dir> obj <RCCarsDB/x.sb> <out.obj>  export scene geometry (world space) to OBJ
 //   rcinfo <game_dir> coll <RCCarsDB/x.sb> [out.obj]  collision grid statistics + self-test, optional OBJ export
 //   rcinfo <game_dir> drive <RCCarsDB/x.sb> [car 1-3] [upgrade 0-3]  headless test drive on a track (physics)
+//   rcinfo <game_dir> race <RCCarsDB/x.sb> [laps]  checkpoint gates + a race driven along the route (no physics)
+//   rcinfo <game_dir> gates <RCCarsDB/x.sb> [car]  every checkpoint gate driven through under physics
 //   rcinfo <game_dir> objects <RCCarsDB/x.sb>    objects placed on a track (INST): model, kind, physics, settling test
 //   rcinfo <game_dir> check                      decode every texture in the pack and every RCCarsDB/*.sb
 
@@ -17,6 +19,7 @@
 #include "formats/objects.h"
 #include "formats/water.h"
 #include "physics/checkpoints.h"
+#include "physics/race.h"
 #include "physics/props.h"
 #include "physics/vehicle.h"
 
@@ -361,16 +364,22 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   bool   fell = false;
   int    frame = 0;
   std::map<rc::Surface,float> onSurface;
+  // the autopilot drives at every point in turn (the arrow moves on earlier, and cutting corners lands it in the sea)
+  size_t   aim  = 1;
+  rc::Vec3 prev = veh.pose().translation();
   for(; t<limit && cps.laps()==0; t+=dt, ++frame) {
     const rc::Mat4 m = veh.pose();
     const rc::Vec3 p = m.translation(), f = m.vector({0,0,1});
     const size_t   next = cps.next();
+    if(cps.passes(aim,prev,p) || (route[aim].position-p).length()<1.5f)
+      aim = (aim+1<route.size()) ? aim+1 : 1;
+    prev = p;
     if(cps.update(p)) {
       std::printf("%6.2f reached %-6s (%7.2f %6.2f %7.2f)\n",t,route[next].name.c_str(),p.x,p.y,p.z);
       ++passed;
       continue;
       }
-    rc::Vec3 to = route[next].position-p;
+    rc::Vec3 to = route[aim].position-p;
     to.y = 0;
     // signed angle from the car's heading to the target, positive = target on the left (+X)
     const float want  = std::atan2(to.x,to.z), have = std::atan2(f.x,f.z);
@@ -408,8 +417,10 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
     if(veh.drowned()) {
       const rc::Vec3 at = veh.pose().translation();
       std::printf("%6.2f drowned at (%.2f %.2f %.2f), back to %s\n",t,at.x,at.y,at.z,
-                  route[cps.next()-1].name.c_str());
+                  route[cps.lastPassed()].name.c_str());
       veh.reset(cps.respawn(geom.min.y));
+      aim  = cps.guide();
+      prev = veh.pose().translation();
       ++drowned;
       continue;
       }
@@ -425,7 +436,7 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
     }
   const bool lap = cps.laps()>0;
   std::printf("%s: %zu of %zu checkpoints in %.1f s, max speed %.1f km/h, %zu times backed up, %zu times put back"
-              " on the wheels, drowned %zu times\n",lap ? "lap finished" : "lap not finished",passed,route.size()-1,t,
+              " on the wheels, drowned %zu times\n",lap ? "lap finished" : "lap not finished",passed,cps.mainCount(),t,
               maxSpeed*3.6f,reverses,flips,drowned);
   size_t knocked = 0;
   for(auto& p:props) {
@@ -441,6 +452,250 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
     std::printf(" %s %.1f s,",rc::surfaceName(s),v);
   std::printf("\n");
   return (!fell && passed>0) ? 0 : 3;
+  }
+
+// Every gate under real physics: the car is put down a few metres before the gate, facing it, and drives at it with
+// full throttle, steering at the marker. A gate counts as working when Checkpoints::passes() fires on the way. The
+// car starts on the straight line from the previous checkpoint, 12 m out and then closer, and then on the gate's
+// own axis, so that a rock or a wall between two checkpoints far apart does not fail the gate. Where it never
+// counts, the run reports where the car crossed the gate plane or how close it got.
+static int cmdGates(const fs::path& game, const fs::path& track, rc::PackFile& pack, int car) {
+  auto scene = rc::SbScene::load(readFile(game/track));
+  auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
+  rc::CollisionMesh coll(scene);
+  coll.setSeas(rc::Seas::load(scene,pack,track.stem().string()));
+  const auto geom = rc::carGeometry(cars,"Car"+std::to_string(car));
+  const auto prm  = rc::CarParams::load(pack,car,0);
+  rc::Checkpoints cps(scene,coll);
+  if(cps.empty()) {
+    std::printf("no checkpoints\n");
+    return 3;
+    }
+  const auto& route = cps.route();
+  rc::PhysicsWorld world(coll);
+  auto             props = placeProps(game,scene,world);
+  rc::Vehicle      veh(world,geom,prm,rc::Mat4());
+  const float dt = 1.f/60.f;
+  size_t ok = 0;
+  for(size_t i=1; i<route.size(); ++i) {
+    const auto&    g    = route[i];
+    const rc::Vec3 side = {-g.dir.z,0,g.dir.x};
+    rc::Vec3 line = g.position-route[i-1].position;
+    line.y = 0;
+    line   = line*(1.f/line.length());
+    std::vector<rc::Vec3> starts;
+    for(float run:{12.f,8.f,5.f,3.f})
+      starts.push_back(g.position-line*std::min(run,(g.position-route[i-1].position).length()));
+    for(float run:{8.f,5.f,3.f})
+      for(float s:{0.f,-0.25f,0.25f})
+        starts.push_back(g.position-g.dir*run+side*(s*g.width));
+
+    bool        passed = false;
+    int         tries  = 0;
+    float       t      = 0, closest = 1e9f;
+    rc::Vec3    near;
+    std::string miss;
+    for(const rc::Vec3& at:starts) {
+      auto h = coll.groundHeight(at+rc::Vec3{0,1.f,0});
+      if(!h || std::abs(*h-g.bottom)>4.f)
+        continue;
+      rc::Vec3 to = g.position-at;
+      const float yaw = std::atan2(to.x,to.z)*180.f/3.14159265f;
+      rc::Mat4 pose = rc::Mat4::translate(at)*rc::Mat4::rotate(1,yaw);
+      pose.m[1][3] = *h - geom.min.y;
+      veh.reset(pose);
+      for(int k=0; k<30; ++k)
+        world.step(dt);
+      ++tries;
+      rc::Vec3 last = veh.pose().translation();
+      float stuck = 0, backing = 0;
+      for(t=0; t<12.f && !passed; t+=dt) {
+        const rc::Mat4 m = veh.pose();
+        const rc::Vec3 p = m.translation(), f = m.vector({0,0,1});
+        to   = g.position-p;
+        to.y = 0;
+        float angle = std::atan2(to.x,to.z)-std::atan2(f.x,f.z);
+        while(angle> 3.14159265f) angle -= 6.2831853f;
+        while(angle<-3.14159265f) angle += 6.2831853f;
+        rc::Vehicle::Input in;
+        in.steer    = std::clamp(angle/0.35f,-1.f,1.f);
+        in.throttle = std::abs(angle)>1.0f ? 0.5f : 1.f;
+        stuck = (std::abs(veh.speed())<0.5f && backing<=0) ? stuck+dt : 0;
+        if(stuck>1.5f) { backing = 1.2f; stuck = 0; }
+        if(backing>0) { backing -= dt; in.throttle = -1; in.steer = -in.steer; }
+        if(m.vector({0,1,0}).y<0.3f)
+          veh.recover();
+        veh.update(in,dt);
+        world.step(dt);
+        const rc::Vec3 now = veh.pose().translation();
+        if(now.y<g.bottom-10.f)
+          break; // fell through the world where the car was put down
+        passed = cps.passes(i,last,now);
+        const float f0 = rc::Vec3::dot(last-g.position,g.dir), f1 = rc::Vec3::dot(now-g.position,g.dir);
+        if(!passed && f0<0 && f1>=0 && (now-last).length()<5.f) {
+          char buf[160];
+          std::snprintf(buf,sizeof(buf),"crossed the plane %.2f m to the side, %.2f m above the marker (gate %.2f..%.2f)",
+                        rc::Vec3::dot(now-g.position,side),now.y-g.position.y,g.bottom-g.position.y,g.height+0.5f);
+          miss = buf;
+          }
+        if((now-g.position).length()<closest) {
+          closest = (now-g.position).length();
+          near    = {rc::Vec3::dot(now-g.position,g.dir),rc::Vec3::dot(now-g.position,side),now.y-g.position.y};
+          }
+        last = now;
+        }
+      if(passed)
+        break;
+      }
+    if(passed) {
+      ++ok;
+      std::printf("  %-8s passed in %5.2f s (start %d)\n",g.name.c_str(),t,tries);
+      continue;
+      }
+    if(miss.empty()) {
+      char buf[160];
+      std::snprintf(buf,sizeof(buf),"never reached it: %.1f m away at best (%.1f in front, %.1f to the side, %.1f above)",
+                    closest,near.x,near.y,near.z);
+      miss = buf;
+      }
+    std::printf("  %-8s MISSED after %d starts, %s\n",g.name.c_str(),tries,miss.c_str());
+    }
+  std::printf("%zu of %zu gates passed under physics\n",ok,route.size()-1);
+  return ok+1==route.size() ? 0 : 3;
+  }
+
+// The race logic on its own: the car glides along the checkpoint markers (straight lines between them, on the
+// ground below) at a steady speed, so every gate must be passed and every lap counted. Then the same car
+// turns round after the start to check the wrong way warning, and passes one gate outside to check it is missed.
+static int cmdRace(const fs::path& game, const fs::path& track, int laps) {
+  auto scene = rc::SbScene::load(readFile(game/track));
+  rc::CollisionMesh coll(scene);
+  rc::Checkpoints   cps(scene,coll);
+  if(cps.empty()) {
+    std::printf("no checkpoints\n");
+    return 3;
+    }
+  const auto& route = cps.route();
+  float length = 0;
+  std::printf("gates:\n");
+  for(size_t i=0; i+1<route.size(); ++i) {
+    const auto& p = route[i];
+    const float d = (route[i+1].position-p.position).length();
+    length += d;
+    const auto  g = coll.groundHeight(p.position+rc::Vec3{0,1.f,0});
+    std::printf("  %-8s (%7.2f %6.2f %7.2f) width %4.1f height %3.1f expand %3.1f, %5.1f above the ground,"
+                " %5.1f m to the next\n",p.name.c_str(),p.position.x,p.position.y,p.position.z,p.width,p.height,
+                p.expand,g ? p.position.y-*g : 99.f,d);
+    }
+  std::printf("%zu points, %zu of them main checkpoints, %.0f m a lap along the markers\n",route.size()-1,
+              cps.mainCount(),length);
+
+  rc::Mat4 start;
+  if(auto p = scene.instance("Player"))
+    start = p->world;
+  const rc::Vec3 lift  = {0,0.15f,0}; // body centre above the ground
+  const float    speed = 8.f, dt = 1.f/60.f;
+
+  // 1. a whole race along the route
+  rc::Race race(cps,laps);
+  race.restart(start);
+  rc::Vec3 pos = start.translation()+lift;
+  size_t   at  = 1, events = 0;
+  float    t   = 0;
+  int      wrongFrames = 0;
+  while(race.phase()!=rc::Race::Phase::Finished && t<60.f*float(laps)*4.f) {
+    rc::Vec3 vel;
+    if(!race.holdCar()) {
+      rc::Vec3 to = route[at].position+lift-pos;
+      if(to.length()<speed*dt) {
+        at = (at+1<route.size()) ? at+1 : 1;
+        to = route[at].position+lift-pos;
+        }
+      vel = to*(speed/std::max(to.length(),1e-3f));
+      pos = pos+vel*dt;
+      }
+    // on the ground where there is some under the line between the markers
+    rc::Vec3 car = pos;
+    if(auto g = coll.groundHeight(pos+rc::Vec3{0,1.5f,0}))
+      car.y = *g+lift.y;
+    const auto ev = race.update(dt,car,vel);
+    t += dt;
+    wrongFrames += race.wrongWay() ? 1 : 0;
+    if(ev==rc::Race::Event::None)
+      continue;
+    ++events;
+    if(ev==rc::Race::Event::Go)
+      std::printf("%7.2f go\n",t);
+    if(ev==rc::Race::Event::Lap || ev==rc::Race::Event::BestLap || ev==rc::Race::Event::Finish)
+      std::printf("%7.2f lap %zu: %.2f s%s\n",t,race.lapTimes().size(),race.lapTimes().back(),
+                  ev==rc::Race::Event::BestLap ? " (best)" : ev==rc::Race::Event::Finish ? " - finish" : "");
+    }
+  const bool finished = race.phase()==rc::Race::Phase::Finished;
+  std::printf("race %s: %d laps in %.2f s, best lap %.2f s, %zu events, wrong way for %d frames\n",
+              finished ? "finished" : "NOT finished",race.laps(),race.time(),race.bestLap(),events,wrongFrames);
+
+  // 2. turn round right after the start: the warning must come, and go once heading for the checkpoint again
+  race.restart(start);
+  pos = start.translation()+lift;
+  const rc::Vec3 back = (pos-route[1].position)*(1.f/(pos-route[1].position).length());
+  float wrongAt = -1, rightAt = -1;
+  for(t=0; t<12.f; t+=dt) {
+    rc::Vec3 vel;
+    if(!race.holdCar())
+      vel = (t<7.f) ? back*speed : back*-speed;
+    pos = pos+vel*dt;
+    race.update(dt,pos,vel);
+    if(race.wrongWay() && wrongAt<0)
+      wrongAt = t;
+    if(!race.wrongWay() && wrongAt>=0 && rightAt<0)
+      rightAt = t;
+    }
+  std::printf("driving backwards from %.1f s: wrong way from %.2f s, cleared at %.2f s after turning at 7 s\n",
+              rc::Race::CountdownTime,wrongAt,rightAt);
+
+  // 3. past the first main gate outside its width (its sub-checkpoints counted as driven): not counted
+  race.restart(start);
+  cps.skipWay();
+  const auto&    g    = route[cps.next()];
+  const rc::Vec3 side = rc::Vec3{-g.dir.z,0,g.dir.x}*(g.width*0.5f+1.f);
+  bool counted = false;
+  for(int i=-60; i<=60; ++i) {
+    const rc::Vec3 p = g.position+lift+side+g.dir*(float(i)*0.1f);
+    counted |= cps.update(p);
+    }
+  std::printf("passing %s 1 m outside its width: %s\n",g.name.c_str(),counted ? "COUNTED" : "not counted");
+
+  // 4. along the route, but beside the gates of the sub-checkpoints (2 m outside them): every lap still counts,
+  // and the arrow (guide) only moves forward
+  race.restart(start);
+  size_t laps4 = 0, guideBack = 0;
+  {
+    auto via = [&](size_t i) {
+      const auto& p = route[i];
+      return p.main ? p.position+lift : p.position+lift+rc::Vec3{-p.dir.z,0,p.dir.x}*(p.width*0.5f+2.f)+p.dir*0.3f;
+      };
+    cps.update(route[0].position+lift);
+    for(int lap=0; lap<2; ++lap)
+      for(size_t i=1; i<route.size(); ++i) {
+        const rc::Vec3 a = via(i-1), b = via(i);
+        const int steps = int((b-a).length()/0.1f)+1;
+        for(int k=1; k<=steps; ++k) {
+          rc::Vec3 q = a+(b-a)*(float(k)/float(steps));
+          if(auto h = coll.groundHeight(q+rc::Vec3{0,1.5f,0}))
+            q.y = *h+lift.y;
+          const size_t before = cps.guide();
+          cps.update(q);
+          if(cps.guide()<before && cps.guide()!=1)
+            ++guideBack;
+          }
+        }
+    laps4 = cps.laps();
+  }
+  std::printf("beside the sub-checkpoints: %zu of 2 laps, the arrow went back %zu times\n",laps4,guideBack);
+
+  const bool ok = finished && wrongFrames==0 && wrongAt>0 && rightAt>7.f && !counted && laps4==2 && guideBack==0;
+  std::printf("%s\n",ok ? "ok" : "FAILED");
+  return ok ? 0 : 3;
   }
 
 static int cmdObjects(const fs::path& game, const fs::path& track) {
@@ -489,7 +744,7 @@ static int cmdObjects(const fs::path& game, const fs::path& track) {
 
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates ...\n");
     return 1;
     }
   try {
@@ -497,6 +752,8 @@ int main(int argc, char** argv) {
     const std::string cmd = argv[2];
     if(cmd=="coll" && argc>3)
       return cmdColl(game/argv[3],argc>4 ? argv[4] : nullptr);
+    if(cmd=="race" && argc>3)
+      return cmdRace(game,argv[3],argc>4 ? std::atoi(argv[4]) : rc::Race::DefaultLaps);
     if(cmd=="objects" && argc>3)
       return cmdObjects(game,argv[3]);
     if(cmd=="obj" && argc>4)
@@ -519,6 +776,8 @@ int main(int argc, char** argv) {
       }
     if(cmd=="sb" && argc>3)
       return cmdSb(game/argv[3],pack);
+    if(cmd=="gates" && argc>3)
+      return cmdGates(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1);
     if(cmd=="drive" && argc>3)
       return cmdDrive(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1,argc>5 ? std::atoi(argv[5]) : 0);
     std::fprintf(stderr,"unknown command\n");

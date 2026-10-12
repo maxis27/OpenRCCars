@@ -39,6 +39,23 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   wodospady) nie jest twarda: auto brodzi w płytkiej wodzie i zwalnia, w głębokiej tonie, a po 1 s całkiem pod wodą (po dach, antena się nie liczy)
   wraca do ostatniego punktu kontrolnego, jak w instrukcji („jeśli utoniesz w morzu”). Tam też wraca po klawiszu R
   i po wypadnięciu poza trasę. Nazwa nawierzchni pod autem jest w tytule okna
+- **wyścig**: odliczanie 3, 2, 1, „Jazda!” (auto stoi do startu), 3, 5 albo 7 okrążeń, czas całkowity i czas
+  okrążenia, najlepsze okrążenie, „zły kierunek”, meta z tabelą czasów i „jeszcze raz”. Na razie bez przeciwników.
+  Punkty kontrolne to bramki o szerokości i wysokości zapisanej w danych trasy (właściwości markerów `cp_*`).
+  Liczą się główne `cp_N` (na beach_1 cztery, każdy z kolorowym graffiti na ziemi): okrążenie to przejechanie
+  ich wszystkich po kolei, jak w instrukcji, a R wraca na ostatni zaliczony. Pośrednie `cp_N_M` prowadzą strzałkę
+  i „zły kierunek”; główny punkt zalicza się dopiero, gdy auto przejechało obok pośrednich przed nim (przez bramkę,
+  przez jej linię do 15 m obok albo bliżej niż 4 m od jej boku), bo trasa potrafi wcześniej minąć dalszy punkt
+  główny (country_3 objeżdża tę samą pętlę dwa razy, a `cp_3` stoi przy jej wjeździe). Kokpit rysujemy obrazkami
+  z gry (`Language/Polish` albo `Language/English`: odliczanie, „okrążenie”, komunikaty, czcionka `Smash26`)
+  w miejscach z `Settings/cockpit.ini`; strzałka (szewron `coc_str_2`) pokazuje następny punkt kontrolny
+  i miga na czerwono, gdy jedziesz w złą stronę. Nad następnym głównym punktem wisi animowana strzałka z gry
+  (`cp_ar_2_f1..3` zielona, a nad `cp_1`, gdzie kończy się okrążenie, czerwona `cp_ar_3_*`), z rozmiarem i odległościami
+  z `Settings/anim_cp.ini`. Prędkość i turbo na dole ekranu na razie tekstem. Spoza
+  oryginału: pod numerem okrążenia „Punkt n/m” (główne punkty zaliczone w tym okrążeniu), zielony „Punkt n/m” na
+  środku przy każdym zaliczeniu, a do debugowania bramki obrysowane na trasie (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
+  zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono, pośrednia, na którą wskazuje strzałka,
+  niebieska. Każde zaliczenie trafia też do logu
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
   baloniki, łuski, toczące się kłębki) stoją tam, gdzie kładzie je trasa (od 8 do 17 na trasie), i są bryłami
   sztywnymi: auto je potrąca, przewraca i pcha, a koła po nich przejeżdżają. Masa, sprężystość, tarcie, kształt
@@ -55,6 +72,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 
 ![Auto wjeżdża do morza: na plaży, przy brzegu, w wodzie (beach_1)](docs/water_beach_1.jpg)
 
+![Wyścig: odliczanie, jazda, zły kierunek, meta (beach_1)](docs/race_beach_1.jpg)
 ![Rekwizyty: pachołek (beach_2), butelki (urban_1), kłębek przy werandzie (country_3), czajnik (country_1)](docs/objects.jpg)
 
 ![Auto pcha piłkę plażową (beach_1)](docs/props_beach_1.jpg)
@@ -116,7 +134,10 @@ Jazda (kamera za autem):
 | Shift | dopalacz (zużywa turbo, ok. 3 s z pełnego zbiornika; procent w tytule okna) |
 | B | zablokuj koła (tylne, do poślizgu) |
 | T | postaw auto na koła w miejscu |
-| R | powrót do ostatniego punktu kontrolnego (przed pierwszym: na start) |
+| R | powrót do ostatniego głównego punktu kontrolnego (przed pierwszym: na start) |
+| Enter | wyścig od nowa, od odliczania („Jeszcze raz”) |
+| L | liczba okrążeń: 3 / 5 / 7 (i wyścig od nowa) |
+| P, Pause | pauza |
 | U | następny poziom ulepszeń (0–3: dopalacze, rezonatory, opony razem) |
 | 1 / 2 / 3 | auto: Overkill / Buggy / Hummer |
 
@@ -126,6 +147,8 @@ Pozostałe:
 |---|---|
 | V | kamera za autem ↔ kamera swobodna (auto wtedy stoi) |
 | K | nakładka kolizji (debug; turkusowa woda, fioletowy głęboki piasek) |
+| G | obrysy bramek punktów kontrolnych (debug, domyślnie wyłączone) |
+| N | przeskok do następnego głównego punktu kontrolnego (debug, do sprawdzania okrążeń i mety) |
 | W / S / A / D | ruch kamery swobodnej |
 | E, Spacja / Q, C | w górę / w dół |
 | Shift | szybciej ×4 |
@@ -134,7 +157,7 @@ Pozostałe:
 | F1–F10 | trasy: beach_1–4, country_1–4, urban_1–2 |
 | Esc | wyjście |
 
-Prędkość auta (km/h) jest w tytule okna.
+Prędkość auta (km/h) jest też w tytule okna.
 
 ## Narzędzia
 
@@ -146,6 +169,8 @@ rcinfo <folder_gry> obj RCCarsDB/Car.sb car.obj   # eksport geometrii do OBJ
 rcinfo <folder_gry> coll RCCarsDB/beach_1.sb [coll.obj]  # siatka kolizji: statystyki, test raycastu, eksport OBJ
 rcinfo <folder_gry> drive RCCarsDB/beach_1.sb [auto 1-3] [ulepszenie 0-3]  # jazda testowa bez GPU (autopilot po checkpointach, z rekwizytami)
 rcinfo <folder_gry> objects RCCarsDB/beach_1.sb   # obiekty na trasie (INST): model, rodzaj, fizyka; test opadania rekwizytów
+rcinfo <folder_gry> race RCCarsDB/beach_1.sb [okrążenia]  # bramki punktów kontrolnych i test logiki wyścigu (bez fizyki)
+rcinfo <folder_gry> gates RCCarsDB/beach_1.sb [auto 1-3]  # każda bramka przejechana autem z fizyką
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
 rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
 rcshot <folder_gry> beach_1 shot.png [w h] [x y z yaw pitch]   # render offscreen, z autem i kamerą za nim
@@ -174,11 +199,13 @@ physics/        fizyka jazdy (Bullet, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
   vehicle.*     świat Bulleta trasy, btRaycastVehicle z promieniami przez siatkę COLL, nawierzchnie i woda
-  checkpoints.* kolejność punktów kontrolnych, postęp auta, powrót do ostatniego punktu
+  checkpoints.* bramki punktów kontrolnych w kolejności, postęp auta, powrót do ostatniego punktu
+  race.*        wyścig: odliczanie, okrążenia, czasy, zły kierunek, meta
   props.*       rekwizyty: parametry ze skryptu SCRI, kształt, bryła sztywna
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
   camera.*      kamera swobodna
+  hud.*         kokpit wyścigu (obrazki i czcionka z Language/<język>)
   world/        Level (trasa), LevelMesh (geometria na GPU, batche po teksturach), ModelMesh (auto, obiekt),
                 Objects (rekwizyty trasy), CollisionView (nakładka kolizji)
   mainwindow.*  okno, pętla, wejście
@@ -253,6 +280,29 @@ lib/Tempest     silnik (submoduł git)
   gruntu za brzegiem (`CollisionMesh::shoreHeight`), tak samo dla rysowania i fizyki.
 - `EVOL` to bryły w scenie: dziecko `0x03` nazwa, `0xd0` kształt (u32), `0xd4` liczby; kształt 2 to graniastosłup
   `[ymin, ymax, x0, z0, x1, z1, …]` (wielokąt w XZ).
+- Markery (`MARK`) mają w elemencie `0x04` właściwości wpisane w edytorze poziomów jako pary tekstów (lista
+  `0x05 { 0x06 klucz, 0x07 wartość }`). Punkty kontrolne mają `width`, `height` i `expand` (np. beach_1 `cp_1`:
+  szerokość 8, wysokość 1, expand 3); tam, gdzie ich brak (cały country_1, prawie cały country_2), przyjmujemy
+  6 / 2 / 1. Czytamy je jako bramkę w poprzek trasy (markery nie mają obrotu, więc bramka stoi prostopadle do linii
+  od poprzedniego do następnego punktu) od gruntu do `height` nad markerem, a `expand` jako odległość przed i za
+  bramką, w której punkt też się zalicza. Markery wiszą do 2,7 m nad ziemią, a bywają postawione na kamieniu
+  (beach_3: `cp_1_2`, `cp_3_1` na skale ponad metr nad drogą obok) albo na pomoście (beach_1: `cp_2_2`), więc dół
+  bramki to najniższy grunt w poprzek niej, do 4 m pod markerem. Numeracja podpunktów ma dziury
+  (country_1: `cp_4_3`, `cp_4_5`) i nie zawsze idzie po kolei w pliku, więc sortujemy po numerze.
+  `rcinfo race` przejeżdża wszystkie 10 tras po linii markerów (i drugi raz obok bramek pośrednich) i zalicza
+  każde okrążenie, a `rcinfo gates` przejeżdża
+  każdą z 235 bramek autem z fizyką (rusza kilka metrów przed nią) i wszystkie się zaliczają.
+- Kokpit: `Settings/cockpit.ini` i `cockpit_time.ini` podają pozycje na ekranie 800x600 (np. `lapPosX` 713 → x 613,
+  `timeTotalPosY` → y 6, `msgOffsetY` → komunikaty 142 px nad środkiem, `timeLapBlinkInSec` 4,2 s), `arrow.ini`
+  strzałkę (`CX` 50 %, `CY` 87 %, pochylona o `AngleVert` 45°). `anim_cp.ini` (`Size` 146, `Shift` 128,
+  `MinDist` 237, `MaxDist` 900, `BlinkDelta` 10): `Shift` to texele obrazka wysokiego na 256, więc jest podniesiony
+  o połowę wysokości i cień narysowany u jego dołu leży na ziemi pod markerem; resztę czytamy jako centymetry
+  i setne sekundy: strzałka ma 1,46 m, znika bliżej niż 2,37 m od kamery, dalej niż 9 m trzyma rozmiar na ekranie
+  (rośnie w górę od ziemi), klatka co 0,1 s (zgadnięte; kod gry, który to czyta, nie jest rozpracowany). Obrazki z napisami są w `Language/<język>/*.csi`
+  (poza archiwum), `msg_321_s_f.csi` to „3”, „Jazda!”/„GO!”, „2”, „1”, „meta”/„Finish” w jednej teksturze.
+  Czcionka `Smash20/26.csi` to siatka 10 kolumn × 9 wierszy (25,6 × 28,4 px) ze znakami w kolejności z `Smash*.dat`;
+  szerokość liter mierzymy z kanału alfa. Teksty w `Language/Game/*.tbl` są zaszyfrowane, więc napisy tabeli
+  wyników są na razie wpisane w kod. Liczbę okrążeń (3, 5 lub 7) wybiera się w oryginale w menu.
 - Start auta gracza to `INST 'Player'` w folderze `Players`; jego oś +Z wskazuje kierunek jazdy. Auta są w skali
   modeli RC (ok. 0,4–0,6 m długości), przód modelu to +Z.
 - `INST` (obiekt na trasie): `0x03` nazwa, `0x0a` rodzaj (3, a 2 przy rekwizytach położonych na boku; znaczenie
@@ -283,7 +333,9 @@ lib/Tempest     silnik (submoduł git)
    wiatru dla kłębków i dźwięków uderzeń `SNCH`); postacie, zwierzęta i ruch uliczny czekają na animacje
    (`SPLN`/`ANIM`/`ASEQ`) i AI. Do tego `HHID` (widoczność/sektory)
 5. Dźwięk: odszyfrowane WAV z `Sound/`, muzyka MP3 z `Tracks/`
-6. Linie jazdy AI z `CarProfiles/` i logika wyścigu (checkpointy `cp_*`, okrążenia, tryby)
+6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
+   prędkościomierza i wskaźnika turbo z `cockpit_sp*`, świateł startowych z `cockpit.sb`, menu i zapisu rekordów)
+7. Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`), tryby
 
 ## Licencja
 

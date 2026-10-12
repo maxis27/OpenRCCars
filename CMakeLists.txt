@@ -61,6 +61,7 @@ add_library(rcphysics STATIC
   physics/carparams.h   physics/carparams.cpp
   physics/vehicle.h     physics/vehicle.cpp
   physics/checkpoints.h physics/checkpoints.cpp
+  physics/race.h        physics/race.cpp
   physics/props.h       physics/props.cpp
   physics/btconvert.h
   )
@@ -88,6 +89,7 @@ add_subdirectory(shader)
 add_library(rcengine STATIC
   game/camera.h            game/camera.cpp
   game/resources.h         game/resources.cpp
+  game/hud.h               game/hud.cpp
   game/world/levelmesh.h   game/world/levelmesh.cpp
   game/world/modelmesh.h     game/world/modelmesh.cpp
   game/world/level.h       game/world/level.cpp

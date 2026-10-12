@@ -3,6 +3,7 @@
 #include "chunk.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 
 using namespace rc;
@@ -240,6 +241,16 @@ class Loader {
       for(auto& ch:c.children()) {
         if(ch.id==0x03) mk.name  = std::string(ch.str());
         if(ch.id==0x0b) mk.world = parentWorld*readTransform(ch);
+        if(ch.id==0x04 && ch.type==0x06) {
+          for(auto& p:ch.children()) {
+            std::pair<std::string,std::string> kv;
+            for(auto& e:p.children(0)) {
+              if(e.id==0x06) kv.first  = std::string(e.str());
+              if(e.id==0x07) kv.second = std::string(e.str());
+              }
+            mk.props.push_back(std::move(kv));
+            }
+          }
         if(ch.id==0x00 && ch.type==0x92) nested.push_back(ch); // e.g. cp_1 -> cp_1_1, cp_1_2 ...
         }
       scene.markers.push_back(std::move(mk));
@@ -370,6 +381,17 @@ int32_t SbScene::findModel(std::string_view name) const {
     if(models[i]==name)
       return int32_t(i);
   return -1;
+  }
+
+float SbMarker::number(std::string_view key, float def) const {
+  for(auto& [k,v]:props) {
+    if(k!=key)
+      continue;
+    char* end = nullptr;
+    const float f = std::strtof(v.c_str(),&end);
+    return (end!=v.c_str()) ? f : def;
+    }
+  return def;
   }
 
 const SbMarker* SbScene::marker(std::string_view name) const {

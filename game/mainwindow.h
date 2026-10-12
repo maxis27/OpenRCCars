@@ -12,7 +12,9 @@
 #include <memory>
 
 #include "camera.h"
+#include "hud.h"
 #include "physics/checkpoints.h"
+#include "physics/race.h"
 #include "physics/vehicle.h"
 #include "resources.h"
 #include "world/modelmesh.h"
@@ -40,8 +42,9 @@ class MainWindow : public Tempest::Window {
     void loadLevel(const std::string& name);
     void loadCar(size_t id);
     void respawnCar();    // back to the last checkpoint passed (R, drowned, off the track)
-    void setupPhysics();
+    void setupPhysics(bool restartRace = true); // the car on the start line and the race from the countdown
     std::vector<rc::Mat4> carPartPoses() const;
+    Hud::Info             hudInfo() const;
 
     Tempest::Device&        device;
     Resources&              resources;
@@ -60,12 +63,18 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<Objects>          objects; // props: bodies in `physics`
     std::unique_ptr<rc::Vehicle>      vehicle;
     std::unique_ptr<rc::Checkpoints>  checkpoints;
+    std::unique_ptr<rc::Race>         race;
+    int                     laps     = rc::Race::DefaultLaps; // L: 3, 5 or 7 as in the original
+    bool                    paused   = false;
+    rc::Vec3                lastCarPos;     // for the car's velocity
+    std::unique_ptr<Hud>    hud;
     bool                    jumpPressed = false;
     float                   upsideDown = 0; // seconds on the roof or side, then the car is put back
     Camera                  camera;
     float                   chaseYaw = 0;   // smoothed heading for the chase camera, degrees
     bool                    freeCamera = false;
     bool                    showCollision = false; // K: collision debug overlay
+    bool                    showGates     = false; // G: checkpoint gates outlined (debug)
 
     Tempest::CommandBuffer  commands[MaxFramesInFlight];
     Tempest::Fence          fence[MaxFramesInFlight];

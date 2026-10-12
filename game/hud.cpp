@@ -44,8 +44,11 @@ constexpr float PlaceX     = 25,   PlaceY    = -20; // "placePosX/Y": place<n>.c
 // cockpit_sp4 sits on the value. The size and the place are measured from a screenshot of the original at 800x600:
 // the dial's brown plate is 107 units across with its middle at (94, 497), the number 30 units high.
 constexpr float GaugeAngMin = -34, GaugeAngMax = 127;
-constexpr float GaugeCX     = 130, GaugeCY     = 126.6f, GaugeR = 87;
-constexpr float GaugeGreyAt = 184;                  // cockpit_sp2's grey tube (from 140) turned onto the scale
+constexpr float GaugeCX     = 130, GaugeCY     = 126.6f, GaugeR = 86;
+// the tube's own middle (its edges fitted in cockpit_sp1/sp2: radius 79.6..92.6), and that of cockpit_sp2's grey tube,
+// which is turned onto the scale
+constexpr float TubeCX      = 128.5f, TubeCY = 128.5f;
+constexpr float GreyCX      = 127.5f, GreyCY = 127.5f, GaugeGreyAt = 184;
 constexpr float GaugeSize   = 245;
 constexpr float GaugeMidX   = 94,  GaugeMidY = 497;  // the dial's middle, from the left (right) and the top
 constexpr float GaugeX      = GaugeMidX-GaugeCX*GaugeSize/256.f, GaugeY = GaugeMidY-GaugeCY*GaugeSize/256.f;
@@ -446,18 +449,19 @@ void Hud::gauge(bool right, float value, float reach, const std::string& number,
   const Color white4 = {1,1,1,1};
   constexpr float Deg = 3.14159265f/180.f;
   // a part of the tube from angle a0 to a1, cut out of `tex` turned by `turn` degrees: a fan of thin slices
-  auto tube = [&](const Texture2d& tex, float a0, float a1, float turn) {
-    constexpr float R0 = GaugeR-20, R1 = GaugeR+20;
-    for(float s0=a0; s0<a1; s0+=4.f) {
-      const float s1 = std::min(s0+4.f,a1);
+  // (the texture's tube around (scx, scy))
+  auto tube = [&](const Texture2d& tex, float a0, float a1, float turn, float scx, float scy) {
+    constexpr float R0 = 72, R1 = 100;
+    for(float s0=a0; s0<a1; s0+=2.f) {
+      const float s1 = std::min(s0+2.f,a1);
       const std::array<float,2> pt[4] = {
-        {GaugeCX+R0*std::sin(s0*Deg),GaugeCY-R0*std::cos(s0*Deg)}, {GaugeCX+R1*std::sin(s0*Deg),GaugeCY-R1*std::cos(s0*Deg)},
-        {GaugeCX+R1*std::sin(s1*Deg),GaugeCY-R1*std::cos(s1*Deg)}, {GaugeCX+R0*std::sin(s1*Deg),GaugeCY-R0*std::cos(s1*Deg)},
+        {TubeCX+R0*std::sin(s0*Deg),TubeCY-R0*std::cos(s0*Deg)}, {TubeCX+R1*std::sin(s0*Deg),TubeCY-R1*std::cos(s0*Deg)},
+        {TubeCX+R1*std::sin(s1*Deg),TubeCY-R1*std::cos(s1*Deg)}, {TubeCX+R0*std::sin(s1*Deg),TubeCY-R0*std::cos(s1*Deg)},
         };
       const float t0 = (s0+turn)*Deg, t1 = (s1+turn)*Deg;
       const std::array<float,2> uv[4] = {
-        {GaugeCX+R0*std::sin(t0),GaugeCY-R0*std::cos(t0)}, {GaugeCX+R1*std::sin(t0),GaugeCY-R1*std::cos(t0)},
-        {GaugeCX+R1*std::sin(t1),GaugeCY-R1*std::cos(t1)}, {GaugeCX+R0*std::sin(t1),GaugeCY-R0*std::cos(t1)},
+        {scx+R0*std::sin(t0),scy-R0*std::cos(t0)}, {scx+R1*std::sin(t0),scy-R1*std::cos(t0)},
+        {scx+R1*std::sin(t1),scy-R1*std::cos(t1)}, {scx+R0*std::sin(t1),scy-R0*std::cos(t1)},
         };
       if(draws.empty() || draws.back().tex!=&tex || draws.back().depth)
         draws.push_back({&tex,verts.size(),0,false});
@@ -472,7 +476,7 @@ void Hud::gauge(bool right, float value, float reach, const std::string& number,
   auto piece = [&](const float* r, const float* size, float a) {
     if(gaugePieces==nullptr)
       return;
-    const auto  c  = at(GaugeCX+GaugeR*std::sin(a*Deg),GaugeCY-GaugeR*std::cos(a*Deg));
+    const auto  c  = at(TubeCX+GaugeR*std::sin(a*Deg),TubeCY-GaugeR*std::cos(a*Deg));
     const float w  = size[0]*k, h = size[1]*k;
     // the picture's x along the tube: level at the top, turned with the angle
     const float turn = right ? a*Deg : -a*Deg;
@@ -488,9 +492,9 @@ void Hud::gauge(bool right, float value, float reach, const std::string& number,
   const float reachAt = GaugeAngMax-span*reach;
   // red up to the value (with the tube's rounded lower end), grey beyond the reach (with its upper end)
   if(value>0.f)
-    tube(*gaugeFill,valueAt,GaugeAngMax+8.f,0);
+    tube(*gaugeFill,valueAt,GaugeAngMax+8.f,0,TubeCX,TubeCY);
   if(reach<1.f)
-    tube(*gaugeFill,GaugeAngMin-10.f,reachAt,GaugeGreyAt);
+    tube(*gaugeFill,GaugeAngMin-10.f,reachAt,GaugeGreyAt,GreyCX,GreyCY);
   if(reach<1.f)
     piece(GaugeCap,GaugeCapSize,reachAt);
   piece(GaugeClamp,GaugeClampSize,valueAt);

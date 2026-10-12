@@ -247,9 +247,11 @@ void MainWindow::tick(float dt) {
     const rc::Vec3 at = carPose.translation();
     const size_t   was = checkpoints->next();
     hud->event(race->update(dt,at,(at-lastCarPos)*(1.f/std::max(dt,1e-4f))));
-    if(checkpoints->next()!=was)
+    if(checkpoints->next()!=was) {
+      vehicle->addBoost(rc::CarParams::BoostPerCheckpoint);
       Log::i("checkpoint ",checkpoints->route()[was].name," passed at ",Hud::formatTime(race->time()),
              " (",at.x," ",at.y," ",at.z,")");
+      }
     lastCarPos = at;
 
     // on its roof or side for a while: back on the wheels

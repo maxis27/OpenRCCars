@@ -33,7 +33,7 @@ namespace rc {
 class PhysicsWorld {
   public:
     static constexpr float Scale   = 10.f;
-    static constexpr float Gravity = 9.81f;   // m/s^2
+    static constexpr float Gravity = 10.f;    // m/s^2, as in RCCars.exe
     static constexpr float FixedDt = 1.f/120.f;
 
     explicit PhysicsWorld(const CollisionMesh& track);
@@ -80,7 +80,7 @@ class Vehicle {
       float throttle  = 0;     // -1 (brake / reverse) .. 1
       float steer     = 0;     // -1 (right) .. 1 (left)
       bool  handbrake = false;
-      bool  jump      = false; // pressed this frame; works with at least two wheels on the ground
+      bool  jump      = false; // pressed this frame: jumps with a wheel on the ground, or puts a tipped-over car back
       bool  boost     = false; // held: uses the turbo tank
       };
 
@@ -98,8 +98,13 @@ class Vehicle {
     Mat4                       pose()  const;
     // forward speed, m/s (negative when reversing)
     float                      speed() const;
-    // turbo tank, 0..1
-    float                      boostLevel() const { return tank; }
+    // turbo tank, 0..1 of a full one
+    float                      boostLevel() const { return tank/prm.boostTank; }
+    // turbo tank in units (CarParams::boostTank when full)
+    float                      boostTank() const { return tank; }
+    // adds units to the turbo tank, up to a full one (the game gives CarParams::BoostPerCheckpoint per checkpoint)
+    void                       addBoost(float units);
+    bool                       boosting() const { return boostOn; }
     // what most of the wheels touching the ground stand on (Water when the car is in water), as of the last update
     Surface                    surface() const { return under; }
     // how deep the body is in water: 0 dry .. 1 fully under water
@@ -124,9 +129,12 @@ class Vehicle {
     CarGeometry                           geom;
     CarParams                             prm;
     Vec3                                  com;       // centre of mass, model space
-    float                                 steer = 0; // smoothed, -1..1
-    float                                 jumpCooldown = 0;
-    float                                 tank = 1;
+    float                                 steer = 0; // steering position, see CarParams::steerCurve; + = left
+    float                                 jumpTimer = 0;
+    float                                 tank = 0;
+    float                                 boostTimer = 0;     // s since the start or since the tank ran dry
+    bool                                  boostLock = false;  // ran dry with the key held
+    bool                                  boostOn = false;
     Surface                               under = Surface::Default;
     float                                 sub   = 0;
     float                                 wet   = 0;          // share of the wheels in water, 0..1

@@ -39,6 +39,15 @@ const char* const Texts[2][5] = {
   {"Okr.", "Razem", "Najlepsze", "Enter - jeszcze raz", "Punkt"},
   {"Lap",  "Total", "Best",      "Enter - race again",  "Checkpoint"},
   };
+// Settings/anim_cp.ini, read as centimetres (Size 146, Shift 128, MinDist 237, MaxDist 900) and BlinkDelta 10 as
+// hundredths of a second per frame: a guess, the game's code that uses them is not decoded. The arrow is 1.46 m
+// big, 1.28 m above the marker, hidden when the camera is closer than 2.37 m, and farther than 9 m it keeps the
+// size it has on the screen at 9 m, so that it shows the way from afar.
+constexpr float CpArrowSize    = 1.46f;
+constexpr float CpArrowShift   = 1.28f;
+constexpr float CpArrowMinDist = 2.37f;
+constexpr float CpArrowMaxDist = 9.f;
+constexpr float CpArrowFrame   = 0.1f;
 constexpr float GateFlash  = 1.2f;                  // the gate just passed flashes green, and "Punkt n/m" with it
 constexpr float GateRange  = 150.f;                 // gates farther away are not outlined
 
@@ -62,6 +71,10 @@ Hud::Hud(Device& device, Resources& res) : device(device) {
   loadFont(res,"Smash26",font);
   if(auto t = res.texture("coc_str_2"))
     arrow = &t->tex;
+  for(int c=0; c<2; ++c)
+    for(int f=0; f<3; ++f)
+      if(auto t = res.texture("cp_ar_"+std::to_string(c+2)+"_f"+std::to_string(f+1)))
+        cpArrow[c][f] = &t->tex;
   white = &res.white();
 
   auto sh   = AppShader::get("hud.vert.sprv");
@@ -291,6 +304,38 @@ void Hud::gates(const rc::Race& race, const rc::Mat4& vp) {
     }
   }
 
+void Hud::checkpointArrow(const rc::Race& race, const rc::Mat4& vp) {
+  const auto& route = race.checkpoints().route();
+  if(route.size()<2 || race.phase()==rc::Race::Phase::Finished)
+    return;
+  // red while driving the wrong way, green otherwise; the frames go 1 2 3 2 1 ..
+  const int      colour = race.wrongWay() ? 1 : 0;
+  const int      step   = int(clock/CpArrowFrame)%4;
+  const auto*    tex    = cpArrow[colour][step==3 ? 1 : step];
+  if(tex==nullptr)
+    return;
+  const auto&    p  = route[race.checkpoints().next()];
+  const rc::Vec3 at = {p.position.x,std::max(p.position.y,p.bottom+0.5f)+CpArrowShift,p.position.z};
+  auto project = [&](const rc::Vec3& v, float& sx, float& sy) {
+    const float w = vp.m[3][0]*v.x+vp.m[3][1]*v.y+vp.m[3][2]*v.z+vp.m[3][3];
+    const rc::Vec3 c = vp.point(v);
+    sx = (c.x/w*0.5f+0.5f)*float(scrW);
+    sy = (c.y/w*0.5f+0.5f)*float(scrH);
+    return w;
+    };
+  float x, y, x0, y0, x1, y1;
+  const float dist = project(at,x,y);
+  if(dist<CpArrowMinDist)
+    return;
+  // the size on the screen: the arrow's height projected, kept from growing smaller beyond MaxDist
+  const float size = CpArrowSize*std::max(1.f,dist/CpArrowMaxDist);
+  project(at+rc::Vec3{0,size*0.5f,0},x0,y0);
+  project(at-rc::Vec3{0,size*0.5f,0},x1,y1);
+  const float h     = std::abs(y1-y0);
+  const float alpha = std::min(1.f,dist-CpArrowMinDist);   // fades in over the first metre
+  quad(*tex,256,256,{0,0,256,256},x-h*0.5f,y-h*0.5f,h,h,Color{1,1,1,alpha});
+  }
+
 void Hud::sprite(const Image& img, const Rect& src, float cx, float cy, float size, const Color& c) {
   if(!img.loaded)
     return;
@@ -348,6 +393,7 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
   const size_t n    = cps.mainCount();
   if(info.gates)
     gates(race,info.viewProj);
+  checkpointArrow(race,info.viewProj);
 
   // top right: "okrążenie" and the lap number
   if(lapLabel.loaded) {

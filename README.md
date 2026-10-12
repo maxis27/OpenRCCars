@@ -49,7 +49,9 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   główny (country_3 objeżdża tę samą pętlę dwa razy, a `cp_3` stoi przy jej wjeździe). Kokpit rysujemy obrazkami
   z gry (`Language/Polish` albo `Language/English`: odliczanie, „okrążenie”, komunikaty, czcionka `Smash26`)
   w miejscach z `Settings/cockpit.ini`; strzałka (szewron `coc_str_2`) pokazuje następny punkt kontrolny
-  i miga na czerwono, gdy jedziesz w złą stronę. Prędkość i turbo na dole ekranu na razie tekstem. Spoza
+  i miga na czerwono, gdy jedziesz w złą stronę. Nad następnym głównym punktem wisi animowana strzałka z gry
+  (`cp_ar_2_f1..3`, zielona; czerwona `cp_ar_3_*` przy jeździe w złą stronę), z rozmiarem i odległościami
+  z `Settings/anim_cp.ini`. Prędkość i turbo na dole ekranu na razie tekstem. Spoza
   oryginału: pod numerem okrążenia „Punkt n/m” (główne punkty zaliczone w tym okrążeniu), zielony „Punkt n/m” na
   środku przy każdym zaliczeniu, a bramki obrysowane na trasie (klawisz G): następna główna zielona, kolejna żółta,
   zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono, pośrednia, na którą wskazuje strzałka,
@@ -292,7 +294,10 @@ lib/Tempest     silnik (submoduł git)
   każdą z 235 bramek autem z fizyką (rusza kilka metrów przed nią) i wszystkie się zaliczają.
 - Kokpit: `Settings/cockpit.ini` i `cockpit_time.ini` podają pozycje na ekranie 800x600 (np. `lapPosX` 713 → x 613,
   `timeTotalPosY` → y 6, `msgOffsetY` → komunikaty 142 px nad środkiem, `timeLapBlinkInSec` 4,2 s), `arrow.ini`
-  strzałkę (`CX` 50 %, `CY` 87 %, pochylona o `AngleVert` 45°). Obrazki z napisami są w `Language/<język>/*.csi`
+  strzałkę (`CX` 50 %, `CY` 87 %, pochylona o `AngleVert` 45°). `anim_cp.ini` (`Size` 146, `Shift` 128,
+  `MinDist` 237, `MaxDist` 900, `BlinkDelta` 10) czytamy jako centymetry i setne sekundy: strzałka nad punktem ma
+  1,46 m, wisi 1,28 m nad markerem, znika bliżej niż 2,37 m od kamery, dalej niż 9 m trzyma rozmiar na ekranie,
+  klatka co 0,1 s (zgadnięte; kod gry, który to czyta, nie jest rozpracowany). Obrazki z napisami są w `Language/<język>/*.csi`
   (poza archiwum), `msg_321_s_f.csi` to „3”, „Jazda!”/„GO!”, „2”, „1”, „meta”/„Finish” w jednej teksturze.
   Czcionka `Smash20/26.csi` to siatka 10 kolumn × 9 wierszy (25,6 × 28,4 px) ze znakami w kolejności z `Smash*.dat`;
   szerokość liter mierzymy z kanału alfa. Teksty w `Language/Game/*.tbl` są zaszyfrowane, więc napisy tabeli
@@ -328,8 +333,7 @@ lib/Tempest     silnik (submoduł git)
    (`SPLN`/`ANIM`/`ASEQ`) i AI. Do tego `HHID` (widoczność/sektory)
 5. Dźwięk: odszyfrowane WAV z `Sound/`, muzyka MP3 z `Tracks/`
 6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
-   prędkościomierza i wskaźnika turbo z `cockpit_sp*`, świateł startowych z `cockpit.sb`, migających strzałek nad
-   punktami kontrolnymi `cp_ar_*`, menu i zapisu rekordów)
+   prędkościomierza i wskaźnika turbo z `cockpit_sp*`, świateł startowych z `cockpit.sb`, menu i zapisu rekordów)
 7. Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`), tryby
 
 ## Licencja

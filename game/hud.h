@@ -20,7 +20,8 @@ class Resources;
 // countdown ("3", "2", "1", "Jazda!"), "okrążenie" with the lap number, "zły kierunek", "najlepsze okrążenie",
 // "meta", "pauza", and the times in the game's Smash font. Positions follow Settings/cockpit.ini and
 // cockpit_time.ini (a 800x600 screen; elements on the right keep their distance from the right edge on wider
-// screens). The direction arrow is the cockpit's chevron (coc_str_2) turned towards the next checkpoint.
+// screens). The direction arrow is the cockpit's chevron (coc_str_2) turned towards the next checkpoint. Over the
+// next main checkpoint hangs the animated arrow cp_ar_* (Settings/anim_cp.ini).
 // Not from the original: the count of main checkpoints passed in this lap under the lap number, a green
 // "Punkt n/m" each time one is passed, and the gates outlined in the 3D view (G): the next main one green, the
 // one after it yellow, the ones passed in this lap grey, and the sub-checkpoint the arrow shows thin blue.
@@ -33,7 +34,7 @@ class Hud {
       float direction = 0;     // the next checkpoint relative to the car's heading, radians, positive = left
       bool  paused    = false;
       bool  gates     = true;  // the checkpoint gates drawn over the 3D view
-      rc::Mat4 viewProj;       // the camera, for the gates
+      rc::Mat4 viewProj;       // the camera, for the gates and the checkpoint arrows
       };
 
     Hud(Tempest::Device& device, Resources& res);
@@ -92,6 +93,7 @@ class Hud {
     // a world-space line of the given thickness in pixels, cut at the camera's near plane
     void   line3d(const rc::Mat4& viewProj, const rc::Vec3& a, const rc::Vec3& b, float width, const Color& c);
     void   gates(const rc::Race& race, const rc::Mat4& viewProj);
+    void   checkpointArrow(const rc::Race& race, const rc::Mat4& viewProj);
     void   quad(const Tempest::Texture2d& tex, int tw, int th, const Rect& src, float x, float y, float w, float h,
                 const Color& c, float angle = 0, float squash = 1);
     void   sprite(const Image& img, const Rect& src, float cx, float cy, float size, const Color& c);
@@ -103,6 +105,8 @@ class Hud {
     std::string                      lang;
     Image                            msg321, msgGo, msgBest, msgWrong, msgPause, lapLabel;
     const Tempest::Texture2d*        arrow = nullptr; // coc_str_2, 128x128
+    // cp_ar_<2 green, 3 red>_f<1..3>, 256x256: arrows pointing down at the next checkpoint, three frames
+    const Tempest::Texture2d*        cpArrow[2][3] = {};
     Font                             font;
     const Tempest::Texture2d*        white = nullptr;
 

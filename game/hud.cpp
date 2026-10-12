@@ -36,18 +36,35 @@ constexpr float ArrowTilt  = 0.7071f;
 
 constexpr float LapNumY    = 24;                    // "lapNumPosY": the lap number
 constexpr float PlaceX     = 25,   PlaceY    = -20; // "placePosX/Y": place<n>.csi, 128x128
-// the gauges: "indicatorAngMin" -34 and "indicatorAngMax" 127 degrees clockwise from the top are where the yellow
-// scale of cockpit_sp1 and the red one of cockpit_sp2 begin and end around the dial's middle (130, 126.6 of 256).
-// How the original fills it is not decoded: here the red scale covers the yellow one up to the value. The size and
-// the place in the corner are measured from the original's picture of its cockpit (opt_cock_all): 256 texels are 200
-// units, the dial's edge 10 units from the side and the bottom of the screen.
+// the gauges: "indicatorAngMin" -34 and "indicatorAngMax" 127 degrees clockwise from the top are where the tube of
+// cockpit_sp1 (yellow) and cockpit_sp2 (red; its grey tube lies at 140..300) begins and ends around the dial's middle
+// (130, 126.6 of 256, radius 87). As in the original (Mateusz's screenshot): the tube fills from its lower end (127,
+// zero) towards the upper one (-34, full) in red; above the value it stays yellow up to what the car can reach (its
+// turbo tank, its top speed), with the dark cap of cockpit_sp4 there, and grey beyond it. The silver clamp of
+// cockpit_sp4 sits on the value. The size and the place in the corner are measured from the original's picture of
+// its cockpit (opt_cock_all) and a screenshot: 256 texels are 240 units, the dial's edge 10 units from the side and
+// the bottom.
 constexpr float GaugeAngMin = -34, GaugeAngMax = 127;
-constexpr float GaugeCX     = 130, GaugeCY     = 126.6f;
-constexpr float GaugeSize   = 200;
+constexpr float GaugeCX     = 130, GaugeCY     = 126.6f, GaugeR = 87;
+constexpr float GaugeGreyAt = 184;                  // cockpit_sp2's grey tube (from 140) turned onto the scale
+constexpr float GaugeSize   = 240;
 constexpr float GaugeX      = 10.f-36.f*GaugeSize/256.f, GaugeY = 590.f-219.f*GaugeSize/256.f;
-constexpr float GaugeKmh    = 40;                   // the speed of a full gauge, above the fastest car's turbo
+// a full speed gauge: the stock Buggy's top speed with turbo (the fastest car); the original's Overkill reaches 0.85
+// of its gauge, close to its 32 km/h of 38
+constexpr float GaugeKmh    = 38;
+// cockpit_sp4: the cap (where the car's range ends) and the clamp (on the value), texels; drawn at 0.38 of the
+// dial's scale with their x across the tube
+const float GaugeCap[4]   = { 29,69, 75, 95};
+const float GaugeClamp[4] = {149,55,227,111};
+constexpr float GaugePiece  = 0.38f;
+// Settings/cockpit.ini "overtakingLeftPosX/Y" (400, 530) and "overtakingBRectOffsetX" -57: overtaking.csi's bracket
+// (x 50..86, y 14..116 of 128) on both sides of the direction arrow; its red mark (x 14..27) shows a car behind
+const float Bracket[4]    = { 50,14, 86,116};
+constexpr float BracketX    = 400, BracketY  = 530, BracketDX = 57, BracketScale = 0.9f;
 // the map: "mapPosX_0" 620, "mapPosY_0" 79 (map.ini), the size is ours
-constexpr float MapX       = 620,  MapY      = 79,  MapSize = 160;
+constexpr float MapX       = 620,  MapY      = 79,  MapSize = 165;
+// the map is shown around the car: 140 of its 512 texels (about 50 m) inside a 9 unit frame, as in the original
+constexpr float MapView    = 140,  MapInset  = 10;
 
 // which trackmap_<n> belongs to which track and how the world lies on it: fitted to the main checkpoints, which the
 // maps mark with orange dots, and to the route drawn on them (a few texels off at most; the maps are turned freely)
@@ -72,7 +89,7 @@ const TrackMap TrackMaps[] = {
 
 const char* const Texts[2][7] = {
   // Smash fonts have no Polish letters
-  {"Okr.", "Razem", "Najlepsze", "Enter - jeszcze raz", "Punkt",      "turbo", "km/h"},
+  {"Okr.", "Razem", "Najlepsze", "Enter - jeszcze raz", "Punkt",      "dopalacz", "km/h"},
   {"Lap",  "Total", "Best",      "Enter - race again",  "Checkpoint", "boost", "km/h"},
   };
 // Settings/anim_cp.ini: Size 146, Shift 128, MinDist 237, MaxDist 900, BlinkDelta 10. Shift reads as texels of
@@ -107,7 +124,6 @@ Hud::Hud(Device& device, Resources& res) : device(device), resources(res) {
   msgPause = loadImage(res,"msg_pause.csi");
   lapLabel = loadImage(res,"lap.csi");
   loadFont(res,"Smash26",font);
-  loadFont(res,"Smash20",fontSmall);
   for(int i=0; i<6; ++i)
     place[i] = loadImage(res,"place"+std::to_string(i+1)+".csi");
   auto tex = [&](const char* name) -> const Texture2d* {
@@ -118,6 +134,9 @@ Hud::Hud(Device& device, Resources& res) : device(device), resources(res) {
     };
   gaugeBase = tex("cockpit_sp1");
   gaugeFill = tex("cockpit_sp2");
+  gaugePieces = tex("cockpit_sp4");
+  overtaking  = tex("overtaking");
+  panel       = tex("messagebox");
   mapArrow  = tex("map_arrow");
   mapCp     = tex("map_cp");
   if(auto t = res.texture("coc_str_2"))
@@ -412,7 +431,7 @@ void Hud::checkpointArrow(const rc::Race& race, const rc::Mat4& vp) {
   quadAt(*tex,x-h*0.5f,std::min(y0,y1),h,h,z,Color{1,1,1,alpha});
   }
 
-void Hud::gauge(bool right, float value, const std::string& number, std::string_view label) {
+void Hud::gauge(bool right, float value, float reach, const std::string& number, std::string_view label) {
   if(gaugeBase==nullptr || gaugeFill==nullptr)
     return;
   const float k  = GaugeSize/256.f*scale;
@@ -423,63 +442,92 @@ void Hud::gauge(bool right, float value, const std::string& number, std::string_
     return std::array<float,2>{x0+(right ? 256.f-u : u)*k, y0+v*k};
     };
   const Color white4 = {1,1,1,1};
-  auto tri = [&](const Texture2d& tex, const std::array<std::array<float,2>,3>& t) {
-    if(draws.empty() || draws.back().tex!=&tex || draws.back().depth)
-      draws.push_back({&tex,verts.size(),0,false});
-    for(auto& c:t) {
-      const auto p = at(c[0],c[1]);
-      verts.push_back(Vertex{{p[0],p[1]},{c[0]/256.f,c[1]/256.f},{1,1,1,1}});
+  constexpr float Deg = 3.14159265f/180.f;
+  // a part of the tube from angle a0 to a1, cut out of `tex` turned by `turn` degrees: a fan of thin slices
+  auto tube = [&](const Texture2d& tex, float a0, float a1, float turn) {
+    constexpr float R0 = GaugeR-20, R1 = GaugeR+20;
+    for(float s0=a0; s0<a1; s0+=4.f) {
+      const float s1 = std::min(s0+4.f,a1);
+      const std::array<float,2> pt[4] = {
+        {GaugeCX+R0*std::sin(s0*Deg),GaugeCY-R0*std::cos(s0*Deg)}, {GaugeCX+R1*std::sin(s0*Deg),GaugeCY-R1*std::cos(s0*Deg)},
+        {GaugeCX+R1*std::sin(s1*Deg),GaugeCY-R1*std::cos(s1*Deg)}, {GaugeCX+R0*std::sin(s1*Deg),GaugeCY-R0*std::cos(s1*Deg)},
+        };
+      const float t0 = (s0+turn)*Deg, t1 = (s1+turn)*Deg;
+      const std::array<float,2> uv[4] = {
+        {GaugeCX+R0*std::sin(t0),GaugeCY-R0*std::cos(t0)}, {GaugeCX+R1*std::sin(t0),GaugeCY-R1*std::cos(t0)},
+        {GaugeCX+R1*std::sin(t1),GaugeCY-R1*std::cos(t1)}, {GaugeCX+R0*std::sin(t1),GaugeCY-R0*std::cos(t1)},
+        };
+      if(draws.empty() || draws.back().tex!=&tex || draws.back().depth)
+        draws.push_back({&tex,verts.size(),0,false});
+      for(int i:{0,1,2,0,2,3}) {
+        const auto p = at(pt[i][0],pt[i][1]);
+        verts.push_back(Vertex{{p[0],p[1]},{uv[i][0]/256.f,uv[i][1]/256.f},{1,1,1,1}});
+        }
+      draws.back().count += 6;
       }
-    draws.back().count += 3;
     };
+  // a piece of cockpit_sp4 across the tube at angle `a`
+  auto piece = [&](const float* r, float a) {
+    if(gaugePieces==nullptr)
+      return;
+    const auto  c  = at(GaugeCX+GaugeR*std::sin(a*Deg),GaugeCY-GaugeR*std::cos(a*Deg));
+    const float w  = (r[2]-r[0])*GaugePiece*k, h = (r[3]-r[1])*GaugePiece*k;
+    // the picture's x along the radius
+    const float turn = right ? 3.14159265f*0.5f+a*Deg : 3.14159265f*0.5f-a*Deg;
+    quad(*gaugePieces,256,256,{r[0],r[1],r[2],r[3]},c[0]-w*0.5f,c[1]-h*0.5f,w,h,white4,turn);
+    };
+
   const Rect src = right ? Rect{256,0,0,256} : Rect{0,0,256,256};
   quad(*gaugeBase,256,256,src,x0,y0,256.f*k,256.f*k,white4);
-  // the red scale up to the value: a fan of thin slices around the dial's middle, wide enough for the whole scale
-  // (it starts a little before the scale's beginning, to take its rounded end)
-  const float end = GaugeAngMin+(GaugeAngMax-GaugeAngMin)*std::clamp(value,0.f,1.f);
-  constexpr float R = 110, Deg = 3.14159265f/180.f;
-  for(float a0=GaugeAngMin-6.f; value>0.005f && a0<end; a0+=4.f) {
-    const float a1 = std::min(a0+4.f,end);
-    tri(*gaugeFill,{{{GaugeCX,GaugeCY},
-                     {GaugeCX+R*std::sin(a0*Deg),GaugeCY-R*std::cos(a0*Deg)},
-                     {GaugeCX+R*std::sin(a1*Deg),GaugeCY-R*std::cos(a1*Deg)}}});
-    }
+  const float span = GaugeAngMax-GaugeAngMin;
+  value = std::clamp(value,0.f,1.f);
+  reach = std::clamp(reach,value,1.f);
+  const float valueAt = GaugeAngMax-span*value;
+  const float reachAt = GaugeAngMax-span*reach;
+  // red up to the value (with the tube's rounded lower end), grey beyond the reach (with its upper end)
+  if(value>0.f)
+    tube(*gaugeFill,valueAt,GaugeAngMax+8.f,0);
+  if(reach<1.f)
+    tube(*gaugeFill,GaugeAngMin-10.f,reachAt,GaugeGreyAt);
+  if(reach<1.f)
+    piece(GaugeCap,reachAt);
+  piece(GaugeClamp,valueAt);
+
   // the number over a line, the unit under it, in the dial's middle
   const auto c = at(GaugeCX,GaugeCY);
-  text(font,number,c[0],c[1]-34.f*scale,32,white4,0);
-  quad(*white,1,1,{0,0,1,1},c[0]-30.f*scale,c[1]+1.f*scale,60.f*scale,2.f*scale,Color{1,1,1,0.85f});
-  text(fontSmall,label,c[0],c[1]+7.f*scale,20,white4,0);
+  shadowText(font,number,c[0],c[1]-44.f*scale,46,white4,0);
+  quad(*white,1,1,{0,0,1,1},c[0]-36.f*scale,c[1]+2.f*scale,72.f*scale,2.f*scale,Color{1,1,1,0.9f});
+  shadowText(font,label,c[0],c[1]+8.f*scale,27,white4,0);
   }
 
 void Hud::trackMap(const rc::Race& race, const Info& info) {
-  const auto& route = race.checkpoints().route();
-  if(map==nullptr || route.empty())
+  if(map==nullptr)
     return;
+  const auto& route = race.checkpoints().route();
   auto toMap = [&](const rc::Vec3& p) {
     return std::array<float,2>{mapK[0]*p.x-mapK[1]*p.z+mapOffset[0], mapK[1]*p.x+mapK[0]*p.z+mapOffset[1]};
     };
-  // the square of the map around the route, with a margin
-  float u0 = 512, v0 = 512, u1 = 0, v1 = 0;
-  for(auto& p:route) {
-    const auto m = toMap(p.position);
-    u0 = std::min(u0,m[0]); u1 = std::max(u1,m[0]);
-    v0 = std::min(v0,m[1]); v1 = std::max(v1,m[1]);
-    }
-  const float side = std::min(512.f,std::max(u1-u0,v1-v0)+48.f);
-  const float cu   = std::clamp((u0+u1)*0.5f,side*0.5f,512.f-side*0.5f);
-  const float cv   = std::clamp((v0+v1)*0.5f,side*0.5f,512.f-side*0.5f);
-  const Rect  crop = {cu-side*0.5f,cv-side*0.5f,cu+side*0.5f,cv+side*0.5f};
-
+  // the frame: messagebox.csi's box (x 0..128 of 256, open on the right) and the same mirrored
   const float x = px(MapX,true), y = py(MapY), size = MapSize*scale;
-  auto toScreen = [&](const rc::Vec3& p) {
-    const auto m = toMap(p);
-    return std::array<float,2>{x+(m[0]-crop.x0)/side*size, y+(m[1]-crop.y0)/side*size};
+  if(panel!=nullptr) {
+    quad(*panel,256,128,{0,0,64,128},x,y,size*0.5f,size,Color{1,1,1,1});
+    quad(*panel,256,128,{64,0,0,128},x+size*0.5f,y,size*0.5f,size,Color{1,1,1,1});
+    }
+  // inside it the map around the car, north of the map up
+  const float in   = MapInset*scale;
+  const float view = MapView;
+  const auto  car  = toMap(info.carPos);
+  const float cu   = std::clamp(car[0],view*0.5f,512.f-view*0.5f);
+  const float cv   = std::clamp(car[1],view*0.5f,512.f-view*0.5f);
+  const Rect  crop = {cu-view*0.5f,cv-view*0.5f,cu+view*0.5f,cv+view*0.5f};
+  const float inner = size-2*in;
+  quad(*map,512,512,crop,x+in,y+in,inner,inner,Color{1,1,1,1});
+  auto toScreen = [&](const rc::Vec3& p, bool& visible) {
+    const auto  m = toMap(p);
+    const float sx = x+in+(m[0]-crop.x0)/view*inner, sy = y+in+(m[1]-crop.y0)/view*inner;
+    visible = sx>=x+in && sx<=x+in+inner && sy>=y+in && sy<=y+in+inner;
+    return std::array<float,2>{sx,sy};
     };
-  const float b = 2.f*scale;
-  // a light frame, the sea of the map is see-through: a dark backing
-  quad(*white,1,1,{0,0,1,1},x-b,y-b,size+2*b,size+2*b,Color{0.85f,0.85f,0.85f,0.9f});
-  quad(*white,1,1,{0,0,1,1},x,y,size,size,Color{0.05f,0.06f,0.12f,0.85f});
-  quad(*map,512,512,crop,x,y,size,size,Color{1,1,1,1});
 
   // the main checkpoints, the next one glowing
   const float dot = 11.f*scale;
@@ -488,8 +536,11 @@ void Hud::trackMap(const rc::Race& race, const Info& info) {
     for(size_t i=0; i+1<route.size(); ++i) {
       if(!route[i].main)
         continue;
-      const auto s     = toScreen(route[i].position);
+      bool       vis    = false;
+      const auto s      = toScreen(route[i].position,vis);
       const bool isNext = (i==0 ? route.size()-1 : i)==next && race.phase()!=rc::Race::Phase::Finished;
+      if(!vis)
+        continue;
       if(isNext) {
         const float g = dot*(2.2f+0.4f*std::sin(clock*6.f));
         quad(*mapCp,64,32,{32,0,64,32},s[0]-g*0.5f,s[1]-g*0.5f,g,g,Color{1,1,1,0.9f});
@@ -500,19 +551,26 @@ void Hud::trackMap(const rc::Race& race, const Info& info) {
   // the cars: arrows pointing where each one heads
   if(mapArrow!=nullptr) {
     const float sz = 20.f*scale;
-    auto car = [&](const rc::Vec3& pos, const rc::Vec3& fwd, float u) {
-      const auto s = toScreen(pos);
-      const auto f = toScreen(pos+fwd);
+    auto drawCar = [&](const rc::Vec3& pos, const rc::Vec3& fwd, float u) {
+      bool vis = false, dummy = false;
+      const auto s = toScreen(pos,vis);
+      const auto f = toScreen(pos+fwd,dummy);
       const float dx = f[0]-s[0], dy = f[1]-s[1];
-      if(std::abs(dx)+std::abs(dy)<1e-4f)
+      if(!vis || std::abs(dx)+std::abs(dy)<1e-4f)
         return;
       // quad() turns counter-clockwise: its "up" (0,-1) goes to (dx,dy)
       quad(*mapArrow,64,32,{u,0,u+32,32},s[0]-sz*0.5f,s[1]-sz*0.5f,sz,sz,Color{1,1,1,1},std::atan2(-dx,-dy));
       };
     for(auto& o:info.opponents)
-      car(o.pos,o.forward,32);
-    car(info.carPos,info.carForward,0);
+      drawCar(o.pos,o.forward,32);
+    drawCar(info.carPos,info.carForward,0);
     }
+  }
+
+void Hud::shadowText(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align) {
+  const float d = std::max(1.f,size*0.06f*scale);
+  text(f,s,x+d,y+d,size,Color{0,0,0,0.75f*c[3]},align);
+  text(f,s,x,y,size,c,align);
   }
 
 void Hud::quadAt(const Texture2d& tex, float x, float y, float w, float h, float depth, const Color& c) {
@@ -594,7 +652,7 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     // after the picture's lettering (x 6..120, y 39..84 of 128): the Polish one is wider than the English one, which
     // "lapNumPosX" 725 is set for
     const std::string lap = std::to_string(race.lap())+"/"+std::to_string(race.laps());
-    text(font,lap,x+130.f*scale,py(LapNumY),34,white4);
+    shadowText(font,lap,x+130.f*scale,py(LapNumY),38,white4);
     }
   // top left: the place, when there are opponents
   if(info.place>=1 && info.place<=6 && place[info.place-1].loaded) {
@@ -610,7 +668,7 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     const Color       green  = {0.3f,1.f,0.35f,1};
     const size_t      passed = phase==rc::Race::Phase::Finished ? n : cps.mainPassed();
     const std::string s      = std::string(Texts[li][4])+" "+std::to_string(passed)+"/"+std::to_string(n);
-    text(font,s,float(w)-15.f*scale,py(MapY+MapSize+8),26,lit ? green : white4,1);
+    shadowText(font,s,float(w)-15.f*scale,py(MapY+MapSize+8),26,lit ? green : white4,1);
     if(lit && phase==rc::Race::Phase::Racing) {
       const float f = 1.f-(clock-flashAt)/GateFlash;
       const size_t      k   = passed==0 ? n : passed;  // cp_1 again: the lap's last
@@ -620,27 +678,44 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     }
 
   // top middle: the total time, below it the lap time (a finished lap's time blinks for a while)
-  text(font,formatTime(race.time()),px(400),py(TimeTotalY),34,white4,0);
+  shadowText(font,formatTime(race.time()),px(400),py(TimeTotalY),46,white4,0);
   if(clock-lapAt<LapBlink && !race.lapTimes().empty()) {
     if(blink) {
       const bool best = race.lapTimes().back()<=race.bestLap();
-      text(font,formatTime(race.lapTimes().back()),px(400),py(TimeLapY),26,best ? yellow : white4,0);
+      shadowText(font,formatTime(race.lapTimes().back()),px(400),py(TimeLapY),26,best ? yellow : white4,0);
       }
     }
   else if(phase==rc::Race::Phase::Racing) {
-    text(font,formatTime(race.lapTime()),px(400),py(TimeLapY),26,white4,0);
+    shadowText(font,formatTime(race.lapTime()),px(400),py(TimeLapY),26,white4,0);
     }
 
   // bottom: turbo on the left, the speed on the right
-  gauge(false,info.turbo,std::to_string(int(std::lround(info.turbo*100.f))),Texts[li][5]);
-  gauge(true,info.speed/GaugeKmh,std::to_string(int(std::lround(info.speed))),Texts[li][6]);
+  const float tank = info.turbo*info.turboMax;
+  gauge(false,tank,info.turboMax,std::to_string(int(std::lround(tank*100.f))),Texts[li][5]);
+  gauge(true,info.speed/GaugeKmh,info.speedMax>0 ? info.speedMax/GaugeKmh : 1.f,
+        std::to_string(int(std::lround(info.speed))),Texts[li][6]);
 
-  // the arrow towards the next checkpoint: red and blinking on the wrong way
+  // the brackets around the arrow (overtaking.csi), the left one as drawn, the right one mirrored
+  if(overtaking!=nullptr) {
+    const float bw = (Bracket[2]-Bracket[0])*BracketScale*scale, bh = (Bracket[3]-Bracket[1])*BracketScale*scale;
+    const float by = py(BracketY)-bh*0.5f;
+    quad(*overtaking,128,128,{Bracket[0],Bracket[1],Bracket[2],Bracket[3]},px(BracketX-BracketDX)-bw*0.5f,by,bw,bh,
+         white4);
+    quad(*overtaking,128,128,{Bracket[2],Bracket[1],Bracket[0],Bracket[3]},px(BracketX+BracketDX)-bw*0.5f,by,bw,bh,
+         white4);
+    }
+  // the arrow towards the next checkpoint: green, red and blinking on the wrong way. The original's is a 3D chevron
+  // (extru9 in cockpit.sb, coloured by its materials green/red): here coc_str_2 tinted, with a darker copy under it
+  // as its side.
   if(arrow!=nullptr && phase!=rc::Race::Phase::Finished) {
     const bool  wrong = race.wrongWay();
-    const Color c     = wrong ? Color{1.f,0.15f,0.1f,blink ? 1.f : 0.35f} : Color{1,1,1,0.9f};
+    const float a     = wrong ? (blink ? 1.f : 0.35f) : 1.f;
+    const Color top   = wrong ? Color{1.f,0.25f,0.2f,a} : Color{0.45f,1.f,0.35f,a};
+    const Color side  = wrong ? Color{0.45f,0.05f,0.05f,a} : Color{0.1f,0.45f,0.1f,a};
     const float size  = 96.f*scale;
-    quad(*arrow,128,128,{0,0,128,128},px(ArrowX)-size*0.5f,py(ArrowY)-size*0.5f,size,size,c,info.direction,ArrowTilt);
+    const float ax = px(ArrowX)-size*0.5f, ay = py(ArrowY)-size*0.5f;
+    quad(*arrow,128,128,{0,0,128,128},ax,ay+7.f*scale,size,size,side,info.direction,ArrowTilt);
+    quad(*arrow,128,128,{0,0,128,128},ax,ay,size,size,top,info.direction,ArrowTilt);
     }
 
   // one message in the middle at a time

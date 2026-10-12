@@ -51,9 +51,10 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   w miejscach z `Settings/cockpit.ini`; strzałka (szewron `coc_str_2`) pokazuje następny punkt kontrolny
   i miga na czerwono, gdy jedziesz w złą stronę. Nad następnym głównym punktem wisi animowana strzałka z gry
   (`cp_ar_2_f1..3` zielona, a nad `cp_1`, gdzie kończy się okrążenie, czerwona `cp_ar_3_*`), z rozmiarem i odległościami
-  z `Settings/anim_cp.ini`. Na dole zegary z gry (`cockpit_sp1`/`cockpit_sp2`): turbo po lewej, prędkość po prawej
-  (pełny przy 40 km/h); pod numerem okrążenia mapa trasy (`trackmap_<n>`) z punktami głównymi (`map_cp`, następny
-  świeci) i autem (`map_arrow`); w lewym górnym rogu miejsce (`place1..6`), gdy będą przeciwnicy. Spoza
+  z `Settings/anim_cp.ini`. Na dole zegary z gry (`cockpit_sp1`/`cockpit_sp2`/`cockpit_sp4`): dopalacz po lewej,
+  prędkość po prawej (pełny przy 38 km/h); pod numerem okrążenia mapa trasy (`trackmap_<n>`) wokół auta w ramce
+  `messagebox`, z punktami głównymi (`map_cp`, następny świeci) i autem (`map_arrow`); strzałka kierunku zielona
+  w nawiasach z `overtaking.csi`; w lewym górnym rogu miejsce (`place1..6`), gdy będą przeciwnicy. Spoza
   oryginału: pod mapą „Punkt n/m” (główne punkty zaliczone w tym okrążeniu), zielony „Punkt n/m” na
   środku przy każdym zaliczeniu, a do debugowania bramki obrysowane na trasie (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
   zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono, pośrednia, na którą wskazuje strzałka,
@@ -296,7 +297,11 @@ lib/Tempest     silnik (submoduł git)
   każdą z 235 bramek autem z fizyką (rusza kilka metrów przed nią) i wszystkie się zaliczają.
 - Zegary i mapa: `indicatorAngMin`/`indicatorAngMax` z `cockpit.ini` (−34° i 127° od góry, zgodnie z ruchem
   wskazówek) to dokładnie początek i koniec żółtej skali `cockpit_sp1` i czerwonej `cockpit_sp2` wokół środka tarczy
-  (130; 126,6 z 256). Jak oryginał ją wypełnia, nie wiemy: u nas czerwona skala zakrywa żółtą do wartości. Rozmiar
+  (130; 126,6 z 256). Ze zrzutu oryginału: rurka wypełnia się na czerwono od dolnego końca (zero) w górę, nad
+  wartością jest żółta do tego, co auto może osiągnąć (zbiornik dopalacza, prędkość maksymalna z dopalaczem;
+  tam ciemna zatyczka z `cockpit_sp4`), dalej szara (szara rurka z `cockpit_sp2` obrócona o 184°); na wartości
+  srebrna obejma z `cockpit_sp4`. Strzałka kierunku w oryginale to bryła 3D `extru9` z `cockpit.sb` (materiały
+  green/red, `arrow.ini` to jej kamera); u nas na razie `coc_str_2` zabarwiona na zielono. Rozmiar
   i miejsce zegarów zmierzone z obrazka kokpitu w opcjach (`opt_cock_all`; `opt_cock_[aclm]_*` pokazują części
   kokpitu: miejsce i tabela, mapa, czat i turbo). Mapy `trackmap_1..10` (512x512) są obrócone dowolnie; która należy
   do której trasy i jak leży na niej świat, dopasowaliśmy do pomarańczowych kropek (to `map_cp` w miejscach głównych

@@ -101,6 +101,12 @@ Hud::Info MainWindow::hudInfo() const {
   Hud::Info info;
   info.speed  = std::abs(vehicle->speed())*3.6f;
   info.turbo  = vehicle->boostLevel();
+  // the top speed with turbo: where its acceleration ends
+  for(float v=0; v<40.f; v+=0.05f)
+    if(vehicle->params().acceleration(v,true)<=0) {
+      info.speedMax = v*3.6f;
+      break;
+      }
   info.paused = paused;
   info.carPos     = carPose.translation();
   info.carForward = carPose.vector({0,0,1});

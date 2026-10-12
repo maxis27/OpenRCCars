@@ -33,7 +33,9 @@ class Hud {
     // what the race does not know
     struct Info {
       float speed     = 0;     // km/h
-      float turbo     = 0;     // 0..1
+      float turbo     = 0;     // 0..1 of the tank
+      float turboMax  = 1;     // the tank's size, 0..1 of the gauge (the original: 50..100 units of 100)
+      float speedMax  = 0;     // km/h the car can reach (with turbo)
       float direction = 0;     // the next checkpoint relative to the car's heading, radians, positive = left
       int   place     = 0;     // 1.. the place in the race, 0: not shown (no opponents)
       rc::Vec3 carPos, carForward;            // the player's car, for the map
@@ -105,7 +107,8 @@ class Hud {
     void   line3d(const rc::Mat4& viewProj, const rc::Vec3& a, const rc::Vec3& b, float width, const Color& c);
     void   gates(const rc::Race& race, const rc::Mat4& viewProj);
     // a gauge in the bottom corner (mirrored on the right) filled up to `value` (0..1) with the number in it
-    void   gauge(bool right, float value, const std::string& number, std::string_view label);
+    // `reach` (value..1): how far the car can get, the gauge is grey beyond it
+    void   gauge(bool right, float value, float reach, const std::string& number, std::string_view label);
     void   trackMap(const rc::Race& race, const Info& info);
     void   checkpointArrow(const rc::Race& race, const rc::Mat4& viewProj);
     void   quad(const Tempest::Texture2d& tex, int tw, int th, const Rect& src, float x, float y, float w, float h,
@@ -115,6 +118,8 @@ class Hud {
     void   sprite(const Image& img, const Rect& src, float cx, float cy, float size, const Color& c);
     float  text(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align = -1);
     float  textWidth(const Font& f, std::string_view s, float size) const;
+    // text with a dark shadow under it, as the original's numbers
+    void   shadowText(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align = -1);
 
     Tempest::Device&                 device;
     Resources&                       resources;
@@ -126,10 +131,12 @@ class Hud {
     // cp_ar_<2 green, 3 red: the lap's end>_f<1..3>, 256x256: arrows pointing down at the next checkpoint
     const Tempest::Texture2d*        cpArrow[2][3] = {};
     Font                             font;
-    Font                             fontSmall;  // Smash20
     Image                            place[6];
     const Tempest::Texture2d*        gaugeBase = nullptr; // cockpit_sp1: the dial with its yellow scale
-    const Tempest::Texture2d*        gaugeFill = nullptr; // cockpit_sp2: the same scale in red
+    const Tempest::Texture2d*        gaugeFill = nullptr; // cockpit_sp2: the same tube in red, a grey one opposite
+    const Tempest::Texture2d*        gaugePieces = nullptr; // cockpit_sp4: the tube's cap and clamp
+    const Tempest::Texture2d*        overtaking  = nullptr; // brackets around the direction arrow
+    const Tempest::Texture2d*        panel       = nullptr; // messagebox: the map's frame
     const Tempest::Texture2d*        mapArrow  = nullptr; // 64x32: green (the player), violet (the others)
     const Tempest::Texture2d*        mapCp     = nullptr; // 64x32: an orange dot, a glow
     // the track's map: world (x,z) -> map texels u+iv = k*(x+iz)+offset

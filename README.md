@@ -51,9 +51,12 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   w miejscach z `Settings/cockpit.ini`; strzałka (szewron `coc_str_2`) pokazuje następny punkt kontrolny
   i miga na czerwono, gdy jedziesz w złą stronę. Nad następnym głównym punktem wisi animowana strzałka z gry
   (`cp_ar_2_f1..3` zielona, a nad `cp_1`, gdzie kończy się okrążenie, czerwona `cp_ar_3_*`), z rozmiarem i odległościami
-  z `Settings/anim_cp.ini`. Prędkość i turbo na dole ekranu na razie tekstem. Spoza
-  oryginału: pod numerem okrążenia „Punkt n/m” (główne punkty zaliczone w tym okrążeniu), zielony „Punkt n/m” na
-  środku przy każdym zaliczeniu, a do debugowania bramki obrysowane na trasie (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
+  z `Settings/anim_cp.ini`. Na dole zegary z gry (`cockpit_sp1`/`cockpit_sp2`/`cockpit_sp4`): dopalacz po lewej,
+  prędkość po prawej (pełny przy 50 km/h); pod numerem okrążenia mapa trasy (`trackmap_<n>`) wokół auta w ramce
+  `messagebox`, z punktami głównymi (`map_cp`, następny świeci) i autem (`map_arrow`); strzałka kierunku zielona
+  w nawiasach z `overtaking.csi`; w lewym górnym rogu miejsce (`place1..6`), gdy będą przeciwnicy. Czas i numer
+  okrążenia metaliczne jak w oryginale, czas okrążenia miga pod czasem tylko po jego ukończeniu. Spoza
+  oryginału są tylko bramki obrysowane na trasie do debugowania (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
   zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono, pośrednia, na którą wskazuje strzałka,
   niebieska. Każde zaliczenie trafia też do logu
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
@@ -319,6 +322,19 @@ lib/Tempest     silnik (submoduł git)
   `rcinfo race` przejeżdża wszystkie 10 tras po linii markerów (i drugi raz obok bramek pośrednich) i zalicza
   każde okrążenie, a `rcinfo gates` przejeżdża
   każdą z 235 bramek autem z fizyką (rusza kilka metrów przed nią) i wszystkie się zaliczają.
+- Zegary i mapa: `indicatorAngMin`/`indicatorAngMax` z `cockpit.ini` (−34° i 127° od góry, zgodnie z ruchem
+  wskazówek) to dokładnie początek i koniec żółtej skali `cockpit_sp1` i czerwonej `cockpit_sp2` wokół środka tarczy
+  (130; 126,6 z 256). Ze zrzutu oryginału: rurka wypełnia się na czerwono od dolnego końca (zero) w górę, nad
+  wartością jest żółta do tego, co auto może osiągnąć (zbiornik dopalacza, prędkość maksymalna z dopalaczem;
+  tam ciemna zatyczka z `cockpit_sp4`), dalej szara (szara rurka z `cockpit_sp2` obrócona o 184°); na wartości
+  srebrna obejma z `cockpit_sp4`. Strzałka kierunku w oryginale to bryła 3D `extru9` z `cockpit.sb` (materiały
+  green/red, `arrow.ini` to jej kamera); u nas na razie `coc_str_2` zabarwiona na zielono. Rozmiar
+  i miejsce zegarów zmierzone z obrazka kokpitu w opcjach (`opt_cock_all`; `opt_cock_[aclm]_*` pokazują części
+  kokpitu: miejsce i tabela, mapa, czat i turbo). Mapy `trackmap_1..10` (512x512) są obrócone dowolnie; która należy
+  do której trasy i jak leży na niej świat, dopasowaliśmy do pomarańczowych kropek (to `map_cp` w miejscach głównych
+  punktów `cp_N`) i do narysowanej trasy: beach_1..4 → 1, 6, 3, 10; country_1..4 → 8, 5, 2, 9; urban_1..2 → 7, 4
+  (tabela `TrackMaps` w `game/hud.cpp`; odchyłki do kilku texeli). `map.ini` podaje róg mapy (620, 79).
+  `cockpit.sb` to model świateł startowych (`light1..3`, `lightsframe`), ale jego tekstur nie ma w paczce.
 - Kokpit: `Settings/cockpit.ini` i `cockpit_time.ini` podają pozycje na ekranie 800x600 (np. `lapPosX` 713 → x 613,
   `timeTotalPosY` → y 6, `msgOffsetY` → komunikaty 142 px nad środkiem, `timeLapBlinkInSec` 4,2 s), `arrow.ini`
   strzałkę (`CX` 50 %, `CY` 87 %, pochylona o `AngleVert` 45°). `anim_cp.ini` (`Size` 146, `Shift` 128,
@@ -361,7 +377,7 @@ lib/Tempest     silnik (submoduł git)
    (`SPLN`/`ANIM`/`ASEQ`) i AI. Do tego `HHID` (widoczność/sektory)
 5. Dźwięk: odszyfrowane WAV z `Sound/`, muzyka MP3 z `Tracks/`
 6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
-   prędkościomierza i wskaźnika turbo z `cockpit_sp*`, świateł startowych z `cockpit.sb`, menu i zapisu rekordów)
+   świateł startowych z `cockpit.sb` (ich tekstur `lights`/`cockpit` nie ma w RCCars.pack), menu i zapisu rekordów)
 7. Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`), tryby
 
 ## Licencja

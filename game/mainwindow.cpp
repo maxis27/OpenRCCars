@@ -47,6 +47,7 @@ void MainWindow::loadLevel(const std::string& name) {
     level   = std::move(next);
     checkpoints = std::make_unique<rc::Checkpoints>(level->scene(),level->collision());
     race        = std::make_unique<rc::Race>(*checkpoints,laps);
+    hud->setTrack(name);
     camera  = level->startCamera();
     setupPhysics();
     }
@@ -100,7 +101,11 @@ Hud::Info MainWindow::hudInfo() const {
   Hud::Info info;
   info.speed  = std::abs(vehicle->speed())*3.6f;
   info.turbo  = vehicle->boostLevel();
+  info.turboMax = vehicle->params().boostTank/100.f;
+  info.speedMax = vehicle->params().boostTopSpeed*3.6f;
   info.paused = paused;
+  info.carPos     = carPose.translation();
+  info.carForward = carPose.vector({0,0,1});
   // the next checkpoint seen from the car, positive = on the left (+X)
   const auto&    route = checkpoints->route();
   const rc::Vec3 f     = carPose.vector({0,0,1});

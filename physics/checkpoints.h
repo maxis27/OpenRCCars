@@ -69,6 +69,9 @@ class Checkpoints {
     size_t                    mainPassed() const;
     // laps finished since reset()
     size_t                    laps() const { return lapCount; }
+    // metres along the route from cp_1 to route()[i] (horizontally, straight from point to point), and the whole lap
+    float                     along(size_t i) const { return distances[i]; }
+    float                     lapLength() const { return distances.empty() ? 0.f : distances.back(); }
 
     // whether moving from `from` to `to` passes the gate of route()[i]
     bool                      passes(size_t i, const Vec3& from, const Vec3& to) const;
@@ -84,6 +87,7 @@ class Checkpoints {
     const CollisionMesh& coll;
     std::vector<Point>   points;
     std::vector<size_t>  mains;             // indices of the main checkpoints, 0 .. points.size()-1
+    std::vector<float>   distances;         // metres along the route from cp_1 to each point
     Mat4                 startPose;
     Vec3                 last;              // car position at the previous update()
     bool                 hasLast  = false;

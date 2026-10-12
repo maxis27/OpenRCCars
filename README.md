@@ -40,7 +40,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   wraca do ostatniego punktu kontrolnego, jak w instrukcji („jeśli utoniesz w morzu”). Tam też wraca po klawiszu R
   i po wypadnięciu poza trasę.
 - **wyścig**: odliczanie 3, 2, 1, „Jazda!” z dźwiękami startu `cp_start` i `prestart` (auto stoi do startu), 3, 5
-  albo 7 okrążeń, czas całkowity i czas okrążenia, najlepsze okrążenie, „zły kierunek”, meta z tabelą czasów i „jeszcze raz”. Na razie bez przeciwników.
+  albo 7 okrążeń, czas całkowity i czas okrążenia, najlepsze okrążenie, „zły kierunek”, meta z tabelą czasów i
+  „jeszcze raz”.
   Punkty kontrolne to bramki o szerokości i wysokości zapisanej w danych trasy (właściwości markerów `cp_*`).
   Liczą się główne `cp_N` (na beach_1 cztery, każdy z kolorowym graffiti na ziemi): okrążenie to przejechanie
   ich wszystkich po kolei, jak w instrukcji, a R wraca na ostatni zaliczony. Pośrednie `cp_N_M` prowadzą strzałkę
@@ -51,11 +52,26 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   w miejscach z `Settings/cockpit.ini`; strzałka (szewron `coc_str_2`) pokazuje następny punkt kontrolny
   i miga na czerwono, gdy jedziesz w złą stronę. Nad następnym głównym punktem wisi animowana strzałka z gry
   (`cp_ar_2_f1..3` zielona, a nad `cp_1`, gdzie kończy się okrążenie, czerwona `cp_ar_3_*`), z rozmiarem i odległościami
-  z `Settings/anim_cp.ini`. Prędkość i turbo na dole ekranu na razie tekstem. Spoza
-  oryginału: pod numerem okrążenia „Punkt n/m” (główne punkty zaliczone w tym okrążeniu), zielony „Punkt n/m” na
-  środku przy każdym zaliczeniu, a do debugowania bramki obrysowane na trasie (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
+  z `Settings/anim_cp.ini`. Na dole zegary z gry (`cockpit_sp1`/`cockpit_sp2`/`cockpit_sp4`): dopalacz po lewej,
+  prędkość po prawej (pełny przy 50 km/h); pod numerem okrążenia mapa trasy (`trackmap_<n>`) wokół auta w ramce
+  `messagebox`, z punktami głównymi (`map_cp`, następny świeci) i autami (`map_arrow`: gracz i przeciwnicy); strzałka kierunku zielona
+  w nawiasach z `overtaking.csi`; w lewym górnym rogu miejsce (`place1..6`) w wyścigu z przeciwnikami. Czas i numer
+  okrążenia metaliczne jak w oryginale, czas okrążenia miga pod czasem tylko po jego ukończeniu. Spoza
+  oryginału są tylko bramki obrysowane na trasie do debugowania (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
   zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono, pośrednia, na którą wskazuje strzałka,
   niebieska. Każde zaliczenie trafia też do logu
+- **przeciwnicy**: jak w oryginale, nie jeżdżą z fizyką, tylko odtwarzają przejazdy nagrane na każdej trasie
+  (`CarProfiles/<trasa>/*.dat`). Skład wyścigu (do pięciu kierowców, auto, nagranie) jest w `Scripts/ailayouts.ini`;
+  na łatwym startują trzej, na normalnym czterej, na trudnym wszyscy (klawisz O, domyślnie normalny). Nagranie to
+  jedno okrążenie od startu, którego koniec schodzi się z początkiem pętli; kolejne okrążenia kierowca jedzie z
+  odmian tego nagrania (`over1`, `over1_2`, `over1_3` …) po kolei. Tempo odtwarzania jest takie jak w `RCCars.exe`:
+  współczynnik trasy (`CoeffCommonOpponents`, 0,85–0,97) razy poziom trudności (`Scripts/aiCommonCoeffs.ini`:
+  0,92 / 1 / 1,07) razy „gumka” (`Splines/FuncWaitAccel<n>_A.bspl`): kto jest 40–50 m za graczem, jedzie do
+  1,1–1,2 raza szybciej, kto 20–45 m przed nim, zwalnia do 0,6–0,65. Gracz staje na swoim miejscu w szyku
+  (`PlayerPath`, `start.dat`). Kierowcy (Doc, BabyShark, Daisy, Dakilla, Johny, MCJocker, MaxXMad) mają swoje
+  malowanie auta (`car_askin<auto><1–4>`). U nas są bryłami kinematycznymi: gracz się od nich odbija, a one
+  pchają rekwizyty, ale nic ich nie zepchnie z toru jazdy. Kokpit pokazuje miejsce obrazkiem z gry
+  (`place1..6.csi`: „1szy” … „6ty”), a meta tabelę wyników, w którą wpadają czasy kolejnych kierowców
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
   baloniki, łuski, toczące się kłębki) stoją tam, gdzie kładzie je trasa (od 8 do 17 na trasie), i są bryłami
   sztywnymi: auto je potrąca, przewraca i pcha, a koła po nich przejeżdżają. Masa, sprężystość, tarcie, kształt
@@ -73,6 +89,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 ![Auto wjeżdża do morza: na plaży, przy brzegu, w wodzie (beach_1)](docs/water_beach_1.jpg)
 
 ![Wyścig: odliczanie, jazda, zły kierunek, meta (beach_1)](docs/race_beach_1.jpg)
+![Przeciwnicy: start, wyścig, meta (beach_1)](docs/opponents_beach_1.jpg)
+
 ![Rekwizyty: pachołek (beach_2), butelki (urban_1), kłębek przy werandzie (country_3), czajnik (country_1)](docs/objects.jpg)
 
 ![Auto pcha piłkę plażową (beach_1)](docs/props_beach_1.jpg)
@@ -138,6 +156,7 @@ Jazda (kamera za autem):
 | Enter | wyścig od nowa, od odliczania („Jeszcze raz”) |
 | L | liczba okrążeń: 3 / 5 / 7 (i wyścig od nowa) |
 | P, Pause | pauza |
+| O | przeciwnicy: brak / łatwy / normalny / trudny (i wyścig od nowa) |
 | U | następny poziom ulepszeń (0–3: dopalacze, rezonatory, opony razem) |
 | 1 / 2 / 3 | auto: Overkill / Buggy / Hummer |
 
@@ -169,6 +188,7 @@ rcinfo <folder_gry> drive RCCarsDB/beach_1.sb [auto 1-3] [ulepszenie 0-3]  # jaz
 rcinfo <folder_gry> objects RCCarsDB/beach_1.sb   # obiekty na trasie (INST): model, rodzaj, fizyka; test opadania rekwizytów
 rcinfo <folder_gry> race RCCarsDB/beach_1.sb [okrążenia]  # bramki punktów kontrolnych i test logiki wyścigu (bez fizyki)
 rcinfo <folder_gry> gates RCCarsDB/beach_1.sb [auto 1-3]  # każda bramka przejechana autem z fizyką
+rcinfo <folder_gry> ai RCCarsDB/beach_1.sb [poziom 1-3] [okrążenia]  # przeciwnicy: nagrania, ich pętle i wyścig bez gracza
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
 rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
 rcshot <folder_gry> beach_1 shot.png [w h] [x y z yaw pitch]   # render offscreen, z autem i kamerą za nim
@@ -193,6 +213,7 @@ formats/        formaty danych, czyste C++ bez zależności
   collision.*   siatka kolizji z węzła COLL, raycast, nawierzchnie
   settings.*    pliki suwaków Settings/*.ini, Scripts/upgrades.ini, krzywe .bspl
   objects.*     modele obiektów z INST: w którym pliku leżą (stone.sb, people.sb, AIChars.sb, Roadcar.sb)
+  carprofile.*  nagrane przejazdy przeciwników (CarProfiles/*.dat), Scripts/ailayouts.ini
 physics/        fizyka jazdy (Bullet, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
@@ -200,6 +221,7 @@ physics/        fizyka jazdy (Bullet, bez GPU)
   checkpoints.* bramki punktów kontrolnych w kolejności, postęp auta, powrót do ostatniego punktu
   race.*        wyścig: odliczanie, okrążenia, czasy, zły kierunek, meta
   props.*       rekwizyty: parametry ze skryptu SCRI, kształt, bryła sztywna
+  opponents.*   przeciwnicy: odtwarzanie nagrań w tempie z gumką, okrążenia, kolejność w wyścigu
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
   camera.*      kamera swobodna
@@ -319,6 +341,19 @@ lib/Tempest     silnik (submoduł git)
   `rcinfo race` przejeżdża wszystkie 10 tras po linii markerów (i drugi raz obok bramek pośrednich) i zalicza
   każde okrążenie, a `rcinfo gates` przejeżdża
   każdą z 235 bramek autem z fizyką (rusza kilka metrów przed nią) i wszystkie się zaliczają.
+- Zegary i mapa: `indicatorAngMin`/`indicatorAngMax` z `cockpit.ini` (−34° i 127° od góry, zgodnie z ruchem
+  wskazówek) to dokładnie początek i koniec żółtej skali `cockpit_sp1` i czerwonej `cockpit_sp2` wokół środka tarczy
+  (130; 126,6 z 256). Ze zrzutu oryginału: rurka wypełnia się na czerwono od dolnego końca (zero) w górę, nad
+  wartością jest żółta do tego, co auto może osiągnąć (zbiornik dopalacza, prędkość maksymalna z dopalaczem;
+  tam ciemna zatyczka z `cockpit_sp4`), dalej szara (szara rurka z `cockpit_sp2` obrócona o 184°); na wartości
+  srebrna obejma z `cockpit_sp4`. Strzałka kierunku w oryginale to bryła 3D `extru9` z `cockpit.sb` (materiały
+  green/red, `arrow.ini` to jej kamera); u nas na razie `coc_str_2` zabarwiona na zielono. Rozmiar
+  i miejsce zegarów zmierzone z obrazka kokpitu w opcjach (`opt_cock_all`; `opt_cock_[aclm]_*` pokazują części
+  kokpitu: miejsce i tabela, mapa, czat i turbo). Mapy `trackmap_1..10` (512x512) są obrócone dowolnie; która należy
+  do której trasy i jak leży na niej świat, dopasowaliśmy do pomarańczowych kropek (to `map_cp` w miejscach głównych
+  punktów `cp_N`) i do narysowanej trasy: beach_1..4 → 1, 6, 3, 10; country_1..4 → 8, 5, 2, 9; urban_1..2 → 7, 4
+  (tabela `TrackMaps` w `game/hud.cpp`; odchyłki do kilku texeli). `map.ini` podaje róg mapy (620, 79).
+  `cockpit.sb` to model świateł startowych (`light1..3`, `lightsframe`), ale jego tekstur nie ma w paczce.
 - Kokpit: `Settings/cockpit.ini` i `cockpit_time.ini` podają pozycje na ekranie 800x600 (np. `lapPosX` 713 → x 613,
   `timeTotalPosY` → y 6, `msgOffsetY` → komunikaty 142 px nad środkiem, `timeLapBlinkInSec` 4,2 s), `arrow.ini`
   strzałkę (`CX` 50 %, `CY` 87 %, pochylona o `AngleVert` 45°). `anim_cp.ini` (`Size` 146, `Shift` 128,
@@ -336,6 +371,24 @@ lib/Tempest     silnik (submoduł git)
   `cp_reset`, `cp_wrongway`), czyli `cp_start.wav`, i kanał `Prestart` (`prestart.wav`, 9 s) naraz. Dźwięki są w
   archiwum w `Sound\*.wav` jako zwykłe PCM 16 bit. Światła startowe z `cockpit.sb` (`lightsframe`, `light1..12`)
   oryginał pomija: wczytuje ten plik jako model `Arrow` tylko dla strzałki `extru9`, a tekstur świateł nie ma w archiwum.
+- `CarProfiles/<trasa>/<nazwa>.dat` (nagrania przeciwników) mają ten sam format elementów co sceny: nagłówek
+  `0x60` (m.in. `g` = 136, długość klatki, i teksty „Time path FULL: 68.185939”, „CYCLE: 65.022942”), `0x63`
+  (liczba klatek, czas), `0x64` klatki, `0x65` lista zdarzeń (nieużywana). Klatka (ok. 100 na sekundę) to pełny
+  stan auta: czas, pozycja początku układu modelu, kwaternion (w x y z), prędkość, prędkość kątowa, 4 długości
+  zawieszenia, obroty kół (?) i na końcu słowo klawiszy (0x01 gaz, 0x10 prawie zawsze z nim, 0x20 zdarzenie z
+  numerem w górnych 16 bitach; `RCCars.exe` 0x5029b0). Nagranie to jedno okrążenie od miejsca w szyku: od czasu
+  FULL − CYCLE do końca to pętla (koniec 0,01–0,25 m od jej początku). Odmiany `_2`, `_3` zaczynają się tak samo
+  i inaczej jadą okrążenie; `_3` bywają skrótami (`surf\over1_3` omija pętlę `cp_4_1` … `cp_4_6`), więc okrążenia
+  przeciwników liczymy po przejechaniu `cp_1` pod koniec nagrania, a nie po bramkach. Trasy w `ailayouts.ini` i
+  `championship.ini` mają nazwy z gry: 1 Surf (beach_1), 2 Fishers (country_3), 3 Fort (beach_3), 4 AAD (urban_2),
+  5 Mines (country_2), 6 Camping (beach_2), 7 Avax (urban_1), 8 Rancho (country_1), 9 Silo (country_4),
+  10 War path (beach_4). `Demo*` to długie (ok. 220 s) nagrania do dema. Odtwarzanie w `RCCars.exe`: czas
+  nagrania rośnie o `dt` × współczynnik (0x503430), współczynnik to `CoeffCommonOpponents` × poziom trudności ×
+  wartość krzywej `FuncWaitAccel<n>` w odległości przeciwnika przed graczem wzdłuż trasy (0x4fd4b0, 0x4fd5d0);
+  szybki wyścig bierze krzywe `_A` (0x4fd6e2). `Settings/OpponentBehav.ini` (`distEquil`, `coeffWait*`,
+  `coeffAccel*`) i `Scripts/aiShiftsFuncWaitAccel.ini` należą do innych trybów i jeszcze ich nie używamy. Które z
+  odmian nagrania i w jakiej kolejności bierze oryginał, nie wiemy; malowanie `Skin` 1–3 czytamy jako drugą do
+  czwartej tekstury `car_askin<auto>N` (pierwszą ma model i gracz), to też zgadnięte.
 - Start auta gracza to `INST 'Player'` w folderze `Players`; jego oś +Z wskazuje kierunek jazdy. Auta są w skali
   modeli RC (ok. 0,4–0,6 m długości), przód modelu to +Z.
 - `INST` (obiekt na trasie): `0x03` nazwa, `0x0a` rodzaj (3, a 2 przy rekwizytach położonych na boku; znaczenie
@@ -368,8 +421,10 @@ lib/Tempest     silnik (submoduł git)
 5. Dźwięk: WAV z `Sound\` w archiwum (na razie tylko dźwięki odliczania, przez OpenAL Soft z Tempest), muzyka MP3
    z `Tracks/`
 6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
-   prędkościomierza i wskaźnika turbo z `cockpit_sp*`, menu i zapisu rekordów)
-7. Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`), tryby
+   menu i zapisu rekordów)
+7. ~~Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`)~~
+   (zrobione dla szybkiego wyścigu; brakuje zderzeń, które wytrącają przeciwnika z nagrania, mistrzostw z
+   `championship.ini`, duchów z `GhostRecords`, twarzy kierowców i ich wyboru w menu)
 
 ## Licencja
 

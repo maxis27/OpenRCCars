@@ -13,7 +13,7 @@
 using namespace Tempest;
 
 ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
-                     const rc::Vec3& origin)
+                     const rc::Vec3& origin, int skin)
   :modelName(model), pso(device) {
   const int32_t modelId = sb.findModel(model);
   if(modelId<0)
@@ -104,7 +104,14 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
     b.first = all.size();
     b.count = verts.size();
     if(auto t = sb.texture(key.second,modelId)) {
-      if(auto r = res.texture(t->name)) {
+      std::string name = t->name;
+      if(skin>0 && skin<4 && name.rfind("car_",0)==0 && name.find("skin")!=std::string::npos && name.back()=='1') {
+        std::string other = name;
+        other.back() = char('1'+skin);
+        if(res.texture(other)!=nullptr)
+          name = other;
+        }
+      if(auto r = res.texture(name)) {
         b.tex  = &r->tex;
         b.mode = r->alpha;
         }

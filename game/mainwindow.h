@@ -9,11 +9,13 @@
 #include <Tempest/ZBuffer>
 
 #include <array>
+#include <map>
 #include <memory>
 
 #include "camera.h"
 #include "hud.h"
 #include "physics/checkpoints.h"
+#include "physics/opponents.h"
 #include "physics/race.h"
 #include "physics/vehicle.h"
 #include "resources.h"
@@ -45,7 +47,9 @@ class MainWindow : public Tempest::Window {
     void respawnCar();    // back to the last checkpoint passed (R, drowned, off the track)
     // the car on the start line and the race from the countdown; `again`: "Jeszcze raz", no delay before "3"
     void setupPhysics(bool restartRace = true, bool again = false);
+    void setupOpponents();                      // the opponents of the track for aiLevel
     std::vector<rc::Mat4> carPartPoses() const;
+    std::vector<rc::Mat4> opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const;
     Hud::Info             hudInfo() const;
 
     Tempest::Device&        device;
@@ -66,6 +70,11 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<rc::Vehicle>      vehicle;
     std::unique_ptr<rc::Checkpoints>  checkpoints;
     std::unique_ptr<rc::Race>         race;
+    // declared after `checkpoints` and `physics`: they refer to both
+    std::unique_ptr<rc::Opponents>    opponents;
+    rc::Opponents::Level              aiLevel = rc::Opponents::Level::Normal; // O: off, easy, normal, hard
+    std::map<std::pair<int32_t,int32_t>,std::unique_ptr<ModelMesh>> aiMeshes; // by car and skin
+    float                             playerFinish = -1;  // race time of the player's finish
     int                     laps     = rc::Race::DefaultLaps; // L: 3, 5 or 7 as in the original
     bool                    paused   = false;
     rc::Vec3                lastCarPos;     // for the car's velocity

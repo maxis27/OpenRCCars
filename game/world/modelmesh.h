@@ -25,9 +25,11 @@ class ModelMesh {
       rc::Vec3    pivot;  // model space centre of the part (wheel hub); part vertices are relative to it
       };
 
-    // `origin`: model space point that becomes the origin (ObjectLibrary::Model::origin)
+    // `origin`: model space point that becomes the origin (ObjectLibrary::Model::origin). `skin` > 0 paints a car
+    // with another of its liveries: Textures*/car_askin<car><1..4>.csi (and car_bskin..), the model using 1;
+    // skin 1 is the second one and so on (a guess: Scripts/ailayouts.ini gives the opponents skins 1 .. 3)
     ModelMesh(Tempest::Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
-              const rc::Vec3& origin = {});
+              const rc::Vec3& origin = {}, int skin = 0);
 
     // `world` places the model (rotation, translation and a uniform scale); `partPoses`, if given, places each part in model
     // space (index as in parts(), rotation + translation), default: translate(pivot) - the modelled position

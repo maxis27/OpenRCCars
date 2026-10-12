@@ -305,8 +305,8 @@ void Hud::quad(const Texture2d& tex, int tw, int th, const Rect& src, float x, f
     };
   const float hw = w*0.5f, hh = h*0.5f;
   const Vertex a = vert(-hw,-hh,u0,v0), b = vert(hw,-hh,u1,v0), d = vert(hw,hh,u1,v1), e = vert(-hw,hh,u0,v1);
-  if(draws.empty() || draws.back().tex!=&tex || draws.back().depth)
-    draws.push_back({&tex,verts.size(),0,false});
+  if(draws.empty() || draws.back().tex!=&tex || draws.back().depth || draws.back().sharpen!=sharpen)
+    draws.push_back({&tex,verts.size(),0,false,sharpen});
   for(auto& v:{a,b,d,a,d,e})
     verts.push_back(v);
   draws.back().count += 6;
@@ -658,6 +658,9 @@ float Hud::text(const Font& f, std::string_view s, float x, float y, float size,
     return x;
   const float k = size*scale/f.cell;
   const float w = textWidth(f,s,size,gap);
+  // the font's opacity is all or nothing: enlarged, its edges follow the bilinear filter's smooth outline, about a
+  // pixel soft (as the original draws them), instead of a ramp as wide as a texel that shows the texel grid
+  sharpen = std::max(1.f,k);
   if(align==0) x -= w*0.5f;
   if(align>0)  x -= w;
   for(char ch:s) {
@@ -669,6 +672,7 @@ float Hud::text(const Font& f, std::string_view s, float x, float y, float size,
       quad(f.img.tex,f.img.w,f.img.h,{g.u0,g.v0,g.u1,g.v1},x,y,(g.u1-g.u0)*k,(g.v1-g.v0)*k,c,0,1,bottom);
     x += (g.u1-g.u0+gap)*k;
     }
+  sharpen = 0;
   return x;
   }
 
@@ -814,9 +818,11 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
   vbo[frame%2] = device.vbo(BufferHeap::Upload,verts);
   struct Push {
     float screen[2];
-    } push = {{float(w),float(h)}};
+    float sharpen;
+    } push = {{float(w),float(h)},0};
   for(auto& d:draws) {
     enc.setPipeline(d.depth ? psoDepth : pso);
+    push.sharpen = d.sharpen;
     enc.setPushData(push);
     enc.setBinding(0,*d.tex,Sampler::bilinear(ClampMode::ClampToEdge));
     enc.draw(vbo[frame%2],d.first,d.count);

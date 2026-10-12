@@ -3,7 +3,8 @@
 // 2D overlay (game/hud.cpp): positions in pixels, top left origin; a depth for sprites placed in the 3D view
 
 layout(push_constant, std430) uniform Push {
-  vec2 screen;  // framebuffer size in pixels
+  vec2  screen;   // framebuffer size in pixels
+  float sharpen;  // >0: the opacity's edge narrowed this many times around 0.5 (the font, enlarged)
   } push;
 
 layout(location = 0) in vec2 inPos;

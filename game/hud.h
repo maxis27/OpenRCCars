@@ -92,6 +92,7 @@ class Hud {
       const Tempest::Texture2d* tex = nullptr;
       size_t                    first = 0, count = 0;
       bool                      depth = false;  // hidden behind the scene (sprites in the 3D view)
+      float                     sharpen = 0;    // >0: the opacity's edge narrowed this many times (text)
       };
     enum class Message { None, Go, BestLap, Finish };
     using Color = std::array<float,4>;
@@ -150,6 +151,7 @@ class Hud {
     const Tempest::Texture2d*        white = nullptr;
 
     std::vector<Vertex>              verts;
+    float                            sharpen = 0;   // for the quads being added: see Draw::sharpen
     std::vector<Draw>                draws;
     Tempest::VertexBuffer<Vertex>    vbo[2];
 

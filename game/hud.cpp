@@ -27,7 +27,7 @@ const float CountFinish[4]={210,CellsY, 512,  2*CellsY};
 
 // Settings/cockpit.ini, cockpit_time.ini (slider positions mapped to their FValues ranges), 800x600 units
 constexpr float LapX       = 613,  LapY      = -20; // "lapPosX/Y": the "okrążenie" picture, top left
-constexpr float TimeY      = -11;                    // cock_num cells: the digits begin 7 px from the top as in the original
+constexpr float TimeY      = -10;                    // cock_num cells: the digits begin 7 px from the top as in the original
 constexpr float TimeLapY   = 43;                    // "timeLapPosY"
 constexpr float LapBlink   = 4.2f;                  // "timeLapBlinkInSec": a finished lap's time blinks
 constexpr float MessageY   = 300-142;               // "msgOffsetY" from the middle of the screen
@@ -35,7 +35,7 @@ constexpr float MessageY   = 300-142;               // "msgOffsetY" from the mid
 constexpr float ArrowX     = 400,  ArrowY    = 600*0.87f;
 constexpr float ArrowTilt  = 0.7071f;
 
-constexpr float LapNumY    = 11;                    // the lap number's cells (fitted to the original; "lapNumPosY" reads 24)
+constexpr float LapNumY    = 8;                     // the lap number's cells (fitted to the original; "lapNumPosY" reads 24)
 constexpr float LapNumDX   = 115;                   // from the "okrążenie" picture's left edge
 constexpr float PlaceX     = 25,   PlaceY    = -20; // "placePosX/Y": place<n>.csi, 128x128
 // the gauges: "indicatorAngMin" -34 and "indicatorAngMax" 127 degrees clockwise from the top are where the tube of
@@ -54,7 +54,8 @@ constexpr float GreyCX      = 127.5f, GreyCY = 127.5f, GaugeGreyAt = 184;
 // the dial's picture is drawn 1:1 (256 units), its middle 89.5 from the left (right) and 511 from the top: fitted to
 // the original's screenshot (the picture runs off the bottom of the screen)
 constexpr float GaugeSize   = 256;
-constexpr float GaugeNumY   = -54;   // the number's cells, from the dial's middle
+constexpr float GaugeNumY   = -53;
+constexpr float GaugeTextCX = 126.5f;  // the number, line and label are centred a little left of the dial's middle   // the number's cells, from the dial's middle
 constexpr float GaugeMidX   = 89.5f, GaugeMidY = 511;
 constexpr float GaugeX      = GaugeMidX-GaugeCX*GaugeSize/256.f, GaugeY = GaugeMidY-GaugeCY*GaugeSize/256.f;
 // a full speed gauge, km/h: in the screenshot the fully upgraded Overkill (turbo tank 82, 42.7 km/h with turbo)
@@ -574,7 +575,7 @@ void Hud::gauge(bool right, float value, float reach, const std::string& number,
   piece(GaugeClamp,GaugeClampSize,valueAt);
 
   // the number over a line, the unit under it, in the dial's middle
-  const auto c = at(GaugeCX,GaugeCY);
+  const auto c = at(GaugeTextCX,GaugeCY);
   numberText(number,c[0],c[1]+GaugeNumY*scale,0);
   quad(*white,1,1,{0,0,1,1},c[0]-46.f*scale,c[1]+2.5f*scale,92.f*scale,1.5f*scale,Color{1,1,1,0.9f});
   text(font,label,c[0],c[1]+12.f*scale,28,white4,0);

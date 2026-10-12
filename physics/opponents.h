@@ -55,7 +55,7 @@ class RouteTracker {
 // A recording is one lap from the grid whose end joins where its loop begins (CarProfile::cycleStart); the
 // opponent drives the recording and its variants in turn (over1, over1_2, over1_3, over1 ..): they all start
 // the same way, so they join there too. A lap counts when the replay crosses the line of cp_1 near the end of
-// a recording, wherever the recorded driver went (the gates only judge the player).
+// a recording, wherever the recorded driver went (the checkpoints only judge the player).
 // Here the cars are kinematic bodies in the Bullet world: the player bumps into them and they push the props,
 // but nothing pushes them off their line.
 class Opponent {

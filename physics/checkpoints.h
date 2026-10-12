@@ -11,16 +11,13 @@ namespace rc {
 // The checkpoints of a track in driving order (markers cp_1, cp_1_1, cp_1_2 .., cp_2 .. and back to cp_1) and
 // the player's progress along them. Only the main checkpoints cp_<n> count: a lap is passing all of them in order,
 // and R, drowning or falling into a hole puts the car back on the last one passed (manual: "Wróć na tor"). The
-// sub-checkpoints cp_<n>_<m> between them show the way: the arrow points at the next one, and a main checkpoint
-// counts only once the car has come along them (through their gates, or past them close by), so that a track
-// passing by a later main checkpoint early (country_3) cannot be cut short.
+// sub-checkpoints cp_<n>_<m> between them show the way: the arrow points at the next one.
 //
-// Every checkpoint is a gate: a vertical rectangle across the route, `width` wide, from the ground up to `height`
-// above the marker (markers float up to 2.7 m above the ground, beach_4, or stand on a rock or a pier), facing along the route (the markers
-// carry no rotation). The level designers set the sizes per marker (MARK properties `width`, `height`, `expand`);
-// `expand` is read as how far in front of and behind the gate the car still counts as having passed it. A lap
-// means passing all gates in order, as in the manual ("zaliczenie wszystkich punktów kontrolnych we właściwej
-// kolejności").
+// As in RCCars.exe, the next main checkpoint counts once the car (its origin) comes within PassRadius of the
+// marker, measured in 3D; the computer's cars get AiPassRadius. Only the next one is tested, so the order holds by
+// itself. The markers' `width`, `height` and `expand` (MARK properties) describe in the original the route
+// corridor from one marker to the next, from which race progress and places are worked out; here only `width`
+// helps the arrow move on.
 class Checkpoints {
   public:
     struct Point {
@@ -30,7 +27,6 @@ class Checkpoints {
       float       width  = DefaultWidth;
       float       height = DefaultHeight;
       float       expand = DefaultExpand;
-      float       bottom = 0;       // world height of the gate's lower edge: the lowest ground across it
       float       ground = 0;       // world height of the ground right under the marker
       bool        main   = false;   // cp_<n>, not a sub-checkpoint cp_<n>_<m>
       };
@@ -39,11 +35,14 @@ class Checkpoints {
     static constexpr float DefaultWidth  = 6.f;
     static constexpr float DefaultHeight = 2.f;
     static constexpr float DefaultExpand = 1.f;
-    // how far below the marker the gate may reach down to the ground
+    // RCCars.exe: a main checkpoint counts within this distance of its marker, for the player and for the computer
+    static constexpr float PassRadius    = 1.6f;
+    static constexpr float AiPassRadius  = 2.88f;
+    // how far below the marker to look for the ground under it
     static constexpr float MaxDepth      = 4.f;
-    // a sub-checkpoint is left behind once the car crosses its gate line this close to it
+    // a sub-checkpoint is left behind once the car crosses its line (across the route) this close to it
     static constexpr float GuideRadius   = 15.f;
-    // .. or comes this close to the side of its gate
+    // .. or comes this close to the side of its corridor (`width`)
     static constexpr float NearMargin    = 4.f;
 
     Checkpoints(const SbScene& scene, const CollisionMesh& track);
@@ -60,7 +59,7 @@ class Checkpoints {
     size_t                    next() const { return target; }
     // index of the point the arrow shows: the next sub-checkpoint on the way to next(), or next() itself
     size_t                    guide() const { return way; }
-    // debug (N): count the way to next() as driven, so that a jump onto it passes it
+    // debug (N): the arrow straight to next()
     void                      skipWay() { way = target; }
     // index of the main checkpoint passed last (0 = cp_1, the start)
     size_t                    lastPassed() const { return lastMain; }
@@ -73,8 +72,8 @@ class Checkpoints {
     float                     along(size_t i) const { return distances[i]; }
     float                     lapLength() const { return distances.empty() ? 0.f : distances.back(); }
 
-    // whether moving from `from` to `to` passes the gate of route()[i]
-    bool                      passes(size_t i, const Vec3& from, const Vec3& to) const;
+    // whether moving from `from` to `to` comes within `radius` of the marker of route()[i]
+    bool                      passes(size_t i, const Vec3& from, const Vec3& to, float radius = PassRadius) const;
     // the main checkpoint after route()[i]
     size_t                    nextMain(size_t i) const;
 

@@ -7,8 +7,8 @@
 //   rcinfo <game_dir> obj <RCCarsDB/x.sb> <out.obj>  export scene geometry (world space) to OBJ
 //   rcinfo <game_dir> coll <RCCarsDB/x.sb> [out.obj]  collision grid statistics + self-test, optional OBJ export
 //   rcinfo <game_dir> drive <RCCarsDB/x.sb> [car 1-3] [upgrade 0-3]  headless test drive on a track (physics)
-//   rcinfo <game_dir> race <RCCarsDB/x.sb> [laps]  checkpoint gates + a race driven along the route (no physics)
-//   rcinfo <game_dir> gates <RCCarsDB/x.sb> [car]  every checkpoint gate driven through under physics
+//   rcinfo <game_dir> race <RCCarsDB/x.sb> [laps]  checkpoints + a race driven along the route (no physics)
+//   rcinfo <game_dir> gates <RCCarsDB/x.sb> [car]  every main checkpoint driven at under physics
 //   rcinfo <game_dir> objects <RCCarsDB/x.sb>    objects placed on a track (INST): model, kind, physics, settling test
 //   rcinfo <game_dir> ai <RCCarsDB/x.sb> [level 1-3] [laps]  the opponents: recordings, their loops, a race without the player
 //   rcinfo <game_dir> check                      decode every texture in the pack and every RCCarsDB/*.sb
@@ -456,11 +456,11 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   return (!fell && passed>0) ? 0 : 3;
   }
 
-// Every gate under real physics: the car is put down a few metres before the gate, facing it, and drives at it with
-// full throttle, steering at the marker. A gate counts as working when Checkpoints::passes() fires on the way. The
-// car starts on the straight line from the previous checkpoint, 12 m out and then closer, and then on the gate's
-// own axis, so that a rock or a wall between two checkpoints far apart does not fail the gate. Where it never
-// counts, the run reports where the car crossed the gate plane or how close it got.
+// Every main checkpoint under real physics: the car is put down a few metres before it, facing it, and drives at it
+// with full throttle, steering at the marker. A checkpoint counts as working when Checkpoints::passes() fires on the
+// way (the car's origin within 1.6 m of the marker). The car starts on the straight line from the previous point,
+// 12 m out and then closer, and then on the route's axis through it, so that a rock or a wall between two points far
+// apart does not fail it. Where it never counts, the run reports how close the car got.
 static int cmdGates(const fs::path& game, const fs::path& track, rc::PackFile& pack, int car) {
   auto scene = rc::SbScene::load(readFile(game/track));
   auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
@@ -478,9 +478,12 @@ static int cmdGates(const fs::path& game, const fs::path& track, rc::PackFile& p
   auto             props = placeProps(game,scene,world);
   rc::Vehicle      veh(world,geom,prm,rc::Mat4());
   const float dt = 1.f/60.f;
-  size_t ok = 0;
+  size_t ok = 0, count = 0;
   for(size_t i=1; i<route.size(); ++i) {
     const auto&    g    = route[i];
+    if(!g.main)
+      continue;
+    ++count;
     const rc::Vec3 side = {-g.dir.z,0,g.dir.x};
     rc::Vec3 line = g.position-route[i-1].position;
     line.y = 0;
@@ -499,7 +502,7 @@ static int cmdGates(const fs::path& game, const fs::path& track, rc::PackFile& p
     std::string miss;
     for(const rc::Vec3& at:starts) {
       auto h = coll.groundHeight(at+rc::Vec3{0,1.f,0});
-      if(!h || std::abs(*h-g.bottom)>4.f)
+      if(!h || std::abs(*h-g.ground)>4.f)
         continue;
       rc::Vec3 to = g.position-at;
       const float yaw = std::atan2(to.x,to.z)*180.f/3.14159265f;
@@ -530,16 +533,9 @@ static int cmdGates(const fs::path& game, const fs::path& track, rc::PackFile& p
         veh.update(in,dt);
         world.step(dt);
         const rc::Vec3 now = veh.pose().translation();
-        if(now.y<g.bottom-10.f)
+        if(now.y<g.ground-10.f)
           break; // fell through the world where the car was put down
         passed = cps.passes(i,last,now);
-        const float f0 = rc::Vec3::dot(last-g.position,g.dir), f1 = rc::Vec3::dot(now-g.position,g.dir);
-        if(!passed && f0<0 && f1>=0 && (now-last).length()<5.f) {
-          char buf[160];
-          std::snprintf(buf,sizeof(buf),"crossed the plane %.2f m to the side, %.2f m above the marker (gate %.2f..%.2f)",
-                        rc::Vec3::dot(now-g.position,side),now.y-g.position.y,g.bottom-g.position.y,g.height+0.5f);
-          miss = buf;
-          }
         if((now-g.position).length()<closest) {
           closest = (now-g.position).length();
           near    = {rc::Vec3::dot(now-g.position,g.dir),rc::Vec3::dot(now-g.position,side),now.y-g.position.y};
@@ -562,13 +558,14 @@ static int cmdGates(const fs::path& game, const fs::path& track, rc::PackFile& p
       }
     std::printf("  %-8s MISSED after %d starts, %s\n",g.name.c_str(),tries,miss.c_str());
     }
-  std::printf("%zu of %zu gates passed under physics\n",ok,route.size()-1);
-  return ok+1==route.size() ? 0 : 3;
+  std::printf("%zu of %zu main checkpoints passed under physics\n",ok,count);
+  return ok==count ? 0 : 3;
   }
 
 // The race logic on its own: the car glides along the checkpoint markers (straight lines between them, on the
-// ground below) at a steady speed, so every gate must be passed and every lap counted. Then the same car
-// turns round after the start to check the wrong way warning, and passes one gate outside to check it is missed.
+// ground below) at a steady speed, so every checkpoint must be passed and every lap counted. Then the same car
+// turns round after the start to check the wrong way warning, and passes one checkpoint just outside its radius to
+// check it is missed.
 static int cmdRace(const fs::path& game, const fs::path& track, int laps) {
   auto scene = rc::SbScene::load(readFile(game/track));
   rc::CollisionMesh coll(scene);
@@ -579,7 +576,7 @@ static int cmdRace(const fs::path& game, const fs::path& track, int laps) {
     }
   const auto& route = cps.route();
   float length = 0;
-  std::printf("gates:\n");
+  std::printf("checkpoints:\n");
   for(size_t i=0; i+1<route.size(); ++i) {
     const auto& p = route[i];
     const float d = (route[i+1].position-p.position).length();
@@ -655,19 +652,18 @@ static int cmdRace(const fs::path& game, const fs::path& track, int laps) {
   std::printf("driving backwards from %.1f s: wrong way from %.2f s, cleared at %.2f s after turning at 7 s\n",
               rc::Race::CountdownTime,wrongAt,rightAt);
 
-  // 3. past the first main gate outside its width (its sub-checkpoints counted as driven): not counted
+  // 3. past the first main checkpoint 0.3 m outside its radius: not counted
   race.restart(start);
-  cps.skipWay();
   const auto&    g    = route[cps.next()];
-  const rc::Vec3 side = rc::Vec3{-g.dir.z,0,g.dir.x}*(g.width*0.5f+1.f);
+  const rc::Vec3 side = rc::Vec3{-g.dir.z,0,g.dir.x}*(rc::Checkpoints::PassRadius+0.3f);
   bool counted = false;
   for(int i=-60; i<=60; ++i) {
     const rc::Vec3 p = g.position+lift+side+g.dir*(float(i)*0.1f);
     counted |= cps.update(p);
     }
-  std::printf("passing %s 1 m outside its width: %s\n",g.name.c_str(),counted ? "COUNTED" : "not counted");
+  std::printf("passing %s 0.3 m outside its radius: %s\n",g.name.c_str(),counted ? "COUNTED" : "not counted");
 
-  // 4. along the route, but beside the gates of the sub-checkpoints (2 m outside them): every lap still counts,
+  // 4. along the route, but beside the sub-checkpoints (2 m outside their width): every lap still counts,
   // and the arrow (guide) only moves forward
   race.restart(start);
   size_t laps4 = 0, guideBack = 0;

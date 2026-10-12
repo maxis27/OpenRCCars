@@ -7,6 +7,8 @@ const uint F_BLEND    = 2u;  // ALP1 + BAS2 terrain blending
 const uint F_CUTOUT   = 4u;  // alpha test
 const uint F_WATER    = 16u; // sea: inUvMask.x is the water depth, shallow water is see-through
 const uint F_MASK     = 8u;  // ALP1 without BAS2: the mask is the base texture's opacity (shore foam)
+const uint F_WAVES    = 32u; // sea with WLOD waves (Water block): inUvMask.x is the distance to its outline
+const uint F_TESS     = 64u; // drawn with water.tesc/.tese, which move the vertices instead of level.vert
 
 layout(push_constant, std430) uniform Push {
   mat4  viewProj;
@@ -14,22 +16,50 @@ layout(push_constant, std430) uniform Push {
   vec4  sunDir;       // xyz, w = lightmap scale
   uint  flags;
   float time;         // seconds
+  vec4  carPos;       // the player's car
   } push;
 
-// Waves of the sea, after Settings/WLOD_*.ini (beach_1 more1): two directional waves, "angle" 6 and "angle2" 4
-// in 10 degree steps, "amp" 16 and "amp2" 25 read as half-centimetres, "length2" 161 as centimetres. The original's
-// wave code is not readable (encrypted exe), so wavelengths and speeds are picked by eye.
-// Returns the height offset in .x and its gradient in .yz (d/dx, d/dz).
-vec3 waterWaves(vec2 xz, float t) {
-  const float a1 = radians(60.0), a2 = radians(40.0);
-  const vec2  d1 = vec2(cos(a1), sin(a1)), d2 = vec2(cos(a2), sin(a2));
-  const float k1 = 6.2831853/3.0,  w1 = k1*0.6, h1 = 0.08;
-  const float k2 = 6.2831853/1.61, w2 = k2*0.5, h2 = 0.125;
-  float p1 = k1*dot(d1,xz) - w1*t;
-  float p2 = k2*dot(d2,xz) - w2*t;
-  float y  = h1*sin(p1) + h2*sin(p2);
-  vec2  g  = h1*k1*cos(p1)*d1 + h2*k2*cos(p2)*d2;
+// keep in sync with WaterBlock (game/world/levelmesh.h); formats/water.h has the formulas
+layout(binding = 4, std140) uniform Water {
+  vec4 wave;          // amp, period, speed, amp2
+  vec4 wave2;         // period2, 1/length2, center x, center z
+  vec4 dir;           // cos(angle), sin(angle), offset, magnetOffset
+  vec4 edge;          // 1/magnetRadius, alphaRadius, distAlphaClampMin, distAlphaClampMax
+  vec4 color;         // colorMin, colorMax (0..1), 1 = set, foam heightOn
+  vec4 foam;          // foam alphaMin, alphaMax, scrollVel
+  } water;
+
+// phase of wave 2, which runs in to its center; the shore foam follows it
+float seaPhase2(vec2 xz, float t) {
+  return distance(xz, water.wave2.zw)*water.wave2.y + water.wave2.x*t;
+  }
+
+// the two waves of the sea (RCCars.exe 0x5240c0): height in .x, its gradient in .yz
+vec3 seaWaves(vec2 xz, float t) {
+  float p1 = water.wave.y*(dot(xz, water.dir.xy) + water.wave.z*t);
+  float p2 = seaPhase2(xz, t);
+  vec2  r  = xz - water.wave2.zw;
+  float y  = water.wave.x*(0.75*sin(p1) + 0.25) + water.wave.w*sin(p2);
+  vec2  g  = water.wave.x*0.75*cos(p1)*water.wave.y*water.dir.xy +
+             water.wave.w*cos(p2)*water.wave2.y*r/max(length(r), 1e-3);
   return vec3(y, g);
+  }
+
+// how much of the waves a vertex `edge` metres from the outline of the sea gets
+float seaMagnet(float edge) {
+  return water.edge.x>0.0 ? clamp(edge*water.edge.x, 0.0, 1.0) : 1.0;
+  }
+
+// height of the sea above the scene's surface: lowered by "offset", pulled by "magnetOffset" near the outline
+float seaHeight(vec2 xz, float t, float edge) {
+  float s = seaMagnet(edge);
+  float y = water.dir.z + (1.0-s)*water.dir.w + s*seaWaves(xz, t).x;
+  return edge<0.01 ? y + water.dir.w : y;
+  }
+
+// how far apart the vertices of the moving sea are (water.tesc) at `dist` metres from the camera
+float waterSpacing(float dist) {
+  return max(0.15, dist*0.02);
   }
 
 #endif

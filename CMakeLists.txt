@@ -26,6 +26,7 @@ add_library(rcformats STATIC
   formats/scene.h  formats/scene.cpp
   formats/collision.h formats/collision.cpp
   formats/settings.h  formats/settings.cpp
+  formats/water.h     formats/water.cpp
   )
 target_include_directories(rcformats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

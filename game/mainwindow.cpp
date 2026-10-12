@@ -22,6 +22,7 @@ static const char* const Tracks[] = {
 MainWindow::MainWindow(Device& device, Resources& res, const std::string& name)
   : Window(Maximized), device(device), resources(res), swapchain(device,hwnd()),
     library([&res](const std::string& path){ return res.readFile(path); }) {
+  setWindowTitle("OpenRCCars");
   resetSwapchain();
   carScene = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
   hud      = std::make_unique<Hud>(device,res);
@@ -47,9 +48,9 @@ void MainWindow::loadLevel(const std::string& name) {
     level   = std::move(next);
     checkpoints = std::make_unique<rc::Checkpoints>(level->scene(),level->collision());
     race        = std::make_unique<rc::Race>(*checkpoints,laps);
+    hud->setTrack(name);
     camera  = level->startCamera();
     setupPhysics();
-    setWindowTitle(("OpenRCCars - "+name).c_str());
     }
   catch(const std::exception& e) {
     Log::e("unable to load track \"",name,"\": ",e.what());
@@ -133,10 +134,18 @@ Hud::Info MainWindow::hudInfo() const {
   Hud::Info info;
   info.speed  = std::abs(vehicle->speed())*3.6f;
   info.turbo  = vehicle->boostLevel();
+  info.turboMax = vehicle->params().boostTank/100.f;
+  info.speedMax = vehicle->params().boostTopSpeed*3.6f;
   info.paused = paused;
+  info.carPos     = carPose.translation();
+  info.carForward = carPose.vector({0,0,1});
   if(opponents && opponents->size()>0) {
     info.place     = opponents->place(playerFinish);
     info.standings = opponents->standings(playerFinish);
+    for(size_t i=0; i<opponents->size(); ++i) {
+      const rc::Mat4 p = (*opponents)[i].pose();
+      info.opponents.push_back({p.translation(),p.vector({0,0,1})});
+      }
     }
   // the next checkpoint seen from the car, positive = on the left (+X)
   const auto&    route = checkpoints->route();
@@ -314,9 +323,11 @@ void MainWindow::tick(float dt) {
         Log::i("finished ",opponents->place(playerFinish),". of ",opponents->size()+1," in ",Hud::formatTime(playerFinish));
       }
     hud->event(ev);
-    if(checkpoints->next()!=was)
+    if(checkpoints->next()!=was) {
+      vehicle->addBoost(rc::CarParams::BoostPerCheckpoint);
       Log::i("checkpoint ",checkpoints->route()[was].name," passed at ",Hud::formatTime(race->time()),
              " (",at.x," ",at.y," ",at.z,")");
+      }
     lastCarPos = at;
 
     // on its roof or side for a while: back on the wheels
@@ -429,22 +440,6 @@ void MainWindow::render() {
 
     sync = device.submit(cmd);
     device.present(swapchain);
-
-    fpsTime += dt;
-    fpsCount++;
-    if(fpsTime>0.25f) {
-      std::string title = "OpenRCCars - "+(level ? level->name() : std::string())+
-                          " - "+std::to_string(int(float(fpsCount)/fpsTime))+" fps";
-      if(vehicle)
-        title += " - "+std::to_string(int(std::round(std::abs(vehicle->speed())*3.6f)))+" km/h"+
-                 " - turbo "+std::to_string(int(std::round(vehicle->boostLevel()*100.f)))+"%"+
-                 " - "+rc::surfaceName(vehicle->surface())+
-                 (upgrade>0 ? " - upgrade "+std::to_string(upgrade) : std::string())+
-                 " - opponents "+rc::Opponents::levelName(aiLevel);
-      setWindowTitle(title.c_str());
-      fpsTime  = 0;
-      fpsCount = 0;
-      }
     }
   catch(const Tempest::SwapchainSuboptimal&) {
     resetSwapchain();

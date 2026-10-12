@@ -26,19 +26,19 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 - **fizyka jazdy** ([Bullet](https://github.com/bulletphysics/bullet3) `btRaycastVehicle`): auto jeździ po trasie
   z klawiatury. Koła to promienie rzucane przez siatkę kolizji `COLL` (raycast z kroku 2), nadwozie to prostopadłościan
   zderzający się z tymi samymi trójkątami (ściany, słupy, niewidoczne bariery). Parametry każdego auta z
-  `Settings/engine|springs|tires|steering|resistance|cdt<N>.ini`, krzywa przyspieszenia z `Splines/splAccelBase<N>.bspl`,
-  ulepszenia (dopalacze, rezonatory, opony) z `Scripts/upgrades.ini`. Koła kręcą się, skręcają i pracują na
+  `Settings/engine|springs|tires|steering|resistance|cdt<N>.ini`, silnik, dopalacz, turbo, skręt, skok, opory oraz
+  głęboki piasek i woda tak jak w kodzie `RCCars.exe` (krzywa `Splines/OVERKILL|BUGGY|HUMMER.bspl`, zob. „Fizyka wg
+  `RCCars.exe`”), ulepszenia (dopalacze, rezonatory, opony) z `Scripts/upgrades.ini`. Koła kręcą się, skręcają i pracują na
   zawieszeniu; klawisze jak w instrukcji oryginału (`Instrukcja.pdf`: spacja skok, Shift dopalacz, B blokada kół);
-  dopalacz jedzie po krzywej `Splines/OVERKILL|BUGGY|HUMMER.bspl` (32/38/30 km/h zamiast 25/30/20), zbiornik turbo
-  ładuje się z czasem (w oryginale na torze; jak dokładnie, jeszcze nie wiemy); skok (akcja `Jump` w `RCCars.exe`, bez parametru w danych, więc wysokość
-  ok. 0,3 m jest dobrana na oko); auto przewrócone na dach wraca na koła po 2 s
+  zbiornik turbo ładuje się sam i dostaje 10 jednostek za każdy punkt kontrolny; skok +3 m/s w górę auta (spacja
+  na przewróconym aucie stawia je na koła); auto przewrócone na dach wraca na koła po 2 s
 - **nawierzchnie i woda**: rodzaj nawierzchni pochodzi z bitów materiału tekstury (`GLTX`): piasek, mokry piasek,
   głęboki piasek (`Sand_trample`), żwir i reszta. Jak w danych oryginału, jazdę zmieniają tylko głęboki piasek i woda
   (`Settings/tires<N>.ini`: `coeffDeepSand`, `coeffWater`; Hummer na dużych kołach mniej traci w wodzie); pozostałe
   nawierzchnie różnią się w oryginale tylko kurzem spod kół. Woda (tekstura `sea`: morze, strumienie, kałuże,
   wodospady) nie jest twarda: auto brodzi w płytkiej wodzie i zwalnia, w głębokiej tonie, a po 1 s całkiem pod wodą (po dach, antena się nie liczy)
   wraca do ostatniego punktu kontrolnego, jak w instrukcji („jeśli utoniesz w morzu”). Tam też wraca po klawiszu R
-  i po wypadnięciu poza trasę. Nazwa nawierzchni pod autem jest w tytule okna
+  i po wypadnięciu poza trasę.
 - **wyścig**: odliczanie 3, 2, 1, „Jazda!” (auto stoi do startu), 3, 5 albo 7 okrążeń, czas całkowity i czas
   okrążenia, najlepsze okrążenie, „zły kierunek”, meta z tabelą czasów i „jeszcze raz”.
   Punkty kontrolne to bramki o szerokości i wysokości zapisanej w danych trasy (właściwości markerów `cp_*`).
@@ -51,9 +51,12 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   w miejscach z `Settings/cockpit.ini`; strzałka (szewron `coc_str_2`) pokazuje następny punkt kontrolny
   i miga na czerwono, gdy jedziesz w złą stronę. Nad następnym głównym punktem wisi animowana strzałka z gry
   (`cp_ar_2_f1..3` zielona, a nad `cp_1`, gdzie kończy się okrążenie, czerwona `cp_ar_3_*`), z rozmiarem i odległościami
-  z `Settings/anim_cp.ini`. Prędkość i turbo na dole ekranu na razie tekstem. Spoza
-  oryginału: pod numerem okrążenia „Punkt n/m” (główne punkty zaliczone w tym okrążeniu), zielony „Punkt n/m” na
-  środku przy każdym zaliczeniu, a do debugowania bramki obrysowane na trasie (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
+  z `Settings/anim_cp.ini`. Na dole zegary z gry (`cockpit_sp1`/`cockpit_sp2`/`cockpit_sp4`): dopalacz po lewej,
+  prędkość po prawej (pełny przy 50 km/h); pod numerem okrążenia mapa trasy (`trackmap_<n>`) wokół auta w ramce
+  `messagebox`, z punktami głównymi (`map_cp`, następny świeci) i autami (`map_arrow`: gracz i przeciwnicy); strzałka kierunku zielona
+  w nawiasach z `overtaking.csi`; w lewym górnym rogu miejsce (`place1..6`) w wyścigu z przeciwnikami. Czas i numer
+  okrążenia metaliczne jak w oryginale, czas okrążenia miga pod czasem tylko po jego ukończeniu. Spoza
+  oryginału są tylko bramki obrysowane na trasie do debugowania (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
   zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono, pośrednia, na którą wskazuje strzałka,
   niebieska. Każde zaliczenie trafia też do logu
 - **przeciwnicy**: jak w oryginale, nie jeżdżą z fizyką, tylko odtwarzają przejazdy nagrane na każdej trasie
@@ -144,8 +147,8 @@ Jazda (kamera za autem):
 | W / ↑ | gaz |
 | S / ↓ | hamulec, po zatrzymaniu wsteczny |
 | A / ← , D / → | skręt w lewo / w prawo |
-| Spacja | skok |
-| Shift | dopalacz (zużywa turbo, ok. 3 s z pełnego zbiornika; procent w tytule okna) |
+| Spacja | skok (przewrócone auto: na koła) |
+| Shift | dopalacz (zużywa turbo, ok. 10 s z pełnego zbiornika) |
 | B | zablokuj koła (tylne, do poślizgu) |
 | T | postaw auto na koła w miejscu |
 | R | powrót do ostatniego głównego punktu kontrolnego (przed pierwszym: na start) |
@@ -171,8 +174,6 @@ Pozostałe:
 | kółko myszy | prędkość kamery |
 | F1–F10 | trasy: beach_1–4, country_1–4, urban_1–2 |
 | Esc | wyjście |
-
-Prędkość auta (km/h) jest też w tytule okna.
 
 ## Narzędzia
 
@@ -246,13 +247,42 @@ lib/Tempest     silnik (submoduł git)
 - `Settings/*.ini` to pliki suwaków narzędzia do strojenia: `Key "nazwa"`, `Values min max pozycja`, opcjonalnie
   `Mask float` + `FValues od do` (pozycja przeliczana liniowo na ten zakres) albo `Mask spline` (nazwa pliku `.bspl`).
   Obok leżą skompilowane `.crs` (nazwy XOR 0x25), ale ze starszymi wartościami; czytamy `.ini`.
-  Suwaki fizyki nie mają jednostek; przeliczenie na wielkości fizyczne jest naszym przybliżeniem (`physics/carparams.cpp`).
+  `RCCars.exe` przelicza każdy suwak liniowo z pozycji 1..100 (bez względu na zakres zapisany w pliku) na własny,
+  wpisany w kod zakres; tam, gdzie go znamy, `physics/carparams.cpp` robi to samo (zob. „Fizyka wg `RCCars.exe`”).
 - `Splines/*.bspl` z edytora krzywych: punkty kontrolne to elementy `5b/80` z trzema floatami `(0, x, y)`.
-  `splAccelBase<N>.bspl` to przyspieszenie (y, m/s²) od prędkości (x, czytane jako km/h): Overkill 9,6 → 0 przy
-  25 km/h, Buggy 9,6 → 0 przy 30, Hummer 8 → 0 przy 20. `Scripts/upgrades.ini` mnoży je przez współczynniki
-  4 poziomów ulepszeń (`BOOSTERS` przyspieszenie, `RESONATORS` prędkość maksymalna, `TIRES` przyczepność).
+  Silnik auta to `OVERKILL|BUGGY|HUMMER.bspl`: przyspieszenie (y, m/s²) od prędkości (x, km/h), Overkill 6 → 0 przy
+  32 km/h, Buggy 9 → 0 przy 38, Hummer 4 → 0 przy 30. `splAccelBase<N>.bspl`, `splAccelGrav<N>.bspl`,
+  `Height2Stiffness.bspl`, `AngleSteer2RearDrift.spl` i `Settings/Water.ini` zostały w danych z edytora; `RCCars.exe`
+  ich nie czyta.
 - Auto: osie X w lewo, Y w górę, Z do przodu; koła `WHEEL_FRONT_LEFT` itd. (Hummer ma 6 kół). Fizyka liczy w Bullecie
   w skali ×10 (z grawitacją ×10), bo Bullet nie lubi obiektów 0,4 m; na zewnątrz wszystko jest w metrach.
+- **Fizyka wg `RCCars.exe`** (odszyfrowany kod, tylko do analizy). Oryginał ma własny silnik fizyki: auto waży 1 kg,
+  grawitacja to 10 m/s², więc siły są przyspieszeniami. Suwak `s` (1..100) przechodzi w `od + (s-1)·(do-od)/99`:
+  - silnik (`engine<N>.ini`): bez dopalacza przyspieszenie = krzywa auta w punkcie `v·3,6 / (gaz · RESONATORS)`,
+    razy `RESONATORS *_SPL_OY`; powyżej `speedBaseMax + 0,1` km/h × `RESONATORS` silnik nie ciągnie. Z dopalaczem
+    krzywa jest rozciągnięta o `speedBoostMax / speedBaseMax`, ×1,2, a limit to `speedBoostMax + 0,1`. Kiedy silnik
+    ciągnie, dodaje też opór (niżej), więc na płaskim auto przyspiesza dokładnie wg krzywej. Wsteczny: 4 m/s²
+    (z dopalaczem 6) do 2,83 m/s, dalej malejąco do zera przy 3,33 m/s (12 km/h);
+  - opór (`resistance<N>.ini`): `a = coeffAirResistance·v² + coeffFrictionBearings` przeciw ruchowi, zakresy 0..0,1
+    i 0..10 (Overkill 0,032 i 0,51);
+  - turbo: zbiornik w jednostkach, pełny ma od 50 do 100 jednostek, zależnie od tempa ładowania
+    (`boostSpeedUp` 0,1..1,5 × `BOOSTERS`) na tle najwolniejszego (Buggy bez ulepszeń) i najszybszego (Hummer
+    z pełnymi). Na starcie jest pełny, ładuje się sam (`boostSpeedUp · BOOSTERS · 0,95` jedn./s), za każdy punkt
+    kontrolny +10, z wciśniętym dopalaczem schodzi `boostSpeedDown` (1..10, 5,45 jedn./s). Gdy się opróżni przy
+    wciśniętym klawiszu, dopalacz rusza znowu po 0,9 s i dopiero powyżej 10 jednostek. `BOOSTERS` nie zmienia
+    przyspieszenia, tylko ładowanie turbo;
+  - skręt: pozycja kierownicy rośnie w stronę wciśniętą o `4,5 - 0,5·v` (v w m/s, najmniej 1) na sekundę, wraca
+    (i przechodzi na drugą stronę) o 6 na sekundę; `steering<N>.bspl` zamienia ją na kąt kół (20° na jednostkę),
+    który rośnie do `AngleSteer` (0..100, 29,3°). Pełny skręt nie maleje z prędkością, tylko wolniej się go nabiera;
+  - skok (spacja, co najmniej 0,5 s od poprzedniego): +3 m/s wzdłuż osi „w górę” auta (Buggy 3,3) i obrót wokół
+    pionu ×1,5; auto przechylone o ponad 80° zamiast skoczyć staje na koła;
+  - głęboki piasek i woda (`tires<N>.ini`, 0..1): każde koło w głębokim piasku dokłada `coeffDeepSand·v²` przeciw
+    ruchowi w swoim punkcie, a w wodzie `coeffWater·v²`, od zera przy kole zanurzonym w 30% do całości przy 90%;
+  - R (co najmniej 1 s od poprzedniego) stawia auto na markerze ostatniego zaliczonego punktu, przodem w stronę
+    następnego markera trasy; przed pierwszym punktem na starcie;
+  - punkt kontrolny `cp_N` zalicza się, gdy auto gracza minie jego marker bliżej niż 1,6 m (auta AI: 2,88 m).
+    `width`/`height`/`expand` z markerów (domyślnie z folderu `Checkpoints`, inaczej 2/1/0,1) opisują w oryginale
+    korytarz trasy od markera do następnego, z którego liczy się postęp i miejsca w wyścigu.
 - Indeksy tekstur `GLTX` są lokalne dla węzła `MODL`: w `Car.sb` każde auto (i każdy LOD) numeruje tekstury od zera.
 - Zagnieżdżone markery (`cp_1` → `cp_1_1`, `cp_1_2` …) mają transformacje w przestrzeni świata, nie względem rodzica
   (w przeciwieństwie do siatek): kolejne podcheckpointy prowadzą od `cp_1` do `cp_2`.
@@ -310,6 +340,19 @@ lib/Tempest     silnik (submoduł git)
   `rcinfo race` przejeżdża wszystkie 10 tras po linii markerów (i drugi raz obok bramek pośrednich) i zalicza
   każde okrążenie, a `rcinfo gates` przejeżdża
   każdą z 235 bramek autem z fizyką (rusza kilka metrów przed nią) i wszystkie się zaliczają.
+- Zegary i mapa: `indicatorAngMin`/`indicatorAngMax` z `cockpit.ini` (−34° i 127° od góry, zgodnie z ruchem
+  wskazówek) to dokładnie początek i koniec żółtej skali `cockpit_sp1` i czerwonej `cockpit_sp2` wokół środka tarczy
+  (130; 126,6 z 256). Ze zrzutu oryginału: rurka wypełnia się na czerwono od dolnego końca (zero) w górę, nad
+  wartością jest żółta do tego, co auto może osiągnąć (zbiornik dopalacza, prędkość maksymalna z dopalaczem;
+  tam ciemna zatyczka z `cockpit_sp4`), dalej szara (szara rurka z `cockpit_sp2` obrócona o 184°); na wartości
+  srebrna obejma z `cockpit_sp4`. Strzałka kierunku w oryginale to bryła 3D `extru9` z `cockpit.sb` (materiały
+  green/red, `arrow.ini` to jej kamera); u nas na razie `coc_str_2` zabarwiona na zielono. Rozmiar
+  i miejsce zegarów zmierzone z obrazka kokpitu w opcjach (`opt_cock_all`; `opt_cock_[aclm]_*` pokazują części
+  kokpitu: miejsce i tabela, mapa, czat i turbo). Mapy `trackmap_1..10` (512x512) są obrócone dowolnie; która należy
+  do której trasy i jak leży na niej świat, dopasowaliśmy do pomarańczowych kropek (to `map_cp` w miejscach głównych
+  punktów `cp_N`) i do narysowanej trasy: beach_1..4 → 1, 6, 3, 10; country_1..4 → 8, 5, 2, 9; urban_1..2 → 7, 4
+  (tabela `TrackMaps` w `game/hud.cpp`; odchyłki do kilku texeli). `map.ini` podaje róg mapy (620, 79).
+  `cockpit.sb` to model świateł startowych (`light1..3`, `lightsframe`), ale jego tekstur nie ma w paczce.
 - Kokpit: `Settings/cockpit.ini` i `cockpit_time.ini` podają pozycje na ekranie 800x600 (np. `lapPosX` 713 → x 613,
   `timeTotalPosY` → y 6, `msgOffsetY` → komunikaty 142 px nad środkiem, `timeLapBlinkInSec` 4,2 s), `arrow.ini`
   strzałkę (`CX` 50 %, `CY` 87 %, pochylona o `AngleVert` 45°). `anim_cp.ini` (`Size` 146, `Shift` 128,
@@ -370,7 +413,7 @@ lib/Tempest     silnik (submoduł git)
    (`SPLN`/`ANIM`/`ASEQ`) i AI. Do tego `HHID` (widoczność/sektory)
 5. Dźwięk: odszyfrowane WAV z `Sound/`, muzyka MP3 z `Tracks/`
 6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
-   prędkościomierza i wskaźnika turbo z `cockpit_sp*`, świateł startowych z `cockpit.sb`, menu i zapisu rekordów)
+   świateł startowych z `cockpit.sb` (ich tekstur `lights`/`cockpit` nie ma w RCCars.pack), menu i zapisu rekordów)
 7. ~~Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`)~~
    (zrobione dla szybkiego wyścigu; brakuje zderzeń, które wytrącają przeciwnika z nagrania, mistrzostw z
    `championship.ini`, duchów z `GhostRecords`, twarzy kierowców i ich wyboru w menu)

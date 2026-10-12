@@ -171,6 +171,7 @@ Vehicle::Vehicle(PhysicsWorld& w, const CarGeometry& g, const CarParams& p, cons
     auto& info = vehicle->addWheel(toBt(conn)*S,down,axle,prm.suspRest*S,wh.radius*S,tuning,wh.front);
     info.m_rollInfluence = prm.rollInfluence;
     }
+  tank = prm.boostTank;
   reset(start);
   }
 
@@ -199,8 +200,6 @@ void Vehicle::reset(const Mat4& start) {
     vehicle->getWheelInfo(i).m_rotation = 0;
     }
   steer        = 0;
-  jumpCooldown = 0;
-  tank         = 1;
   under        = Surface::Default;
   sub          = 0;
   wet          = 0;
@@ -222,41 +221,80 @@ void Vehicle::recover() {
   reset(up);
   }
 
+void Vehicle::addBoost(float units) {
+  tank = std::clamp(tank+units,0.f,prm.boostTank);
+  }
+
 void Vehicle::update(const Input& in, float dt) {
   const float v      = speed();
-  const float top    = prm.topSpeed;
   const float massS  = prm.mass*S;    // force in scaled units = massS * acceleration in m/s^2
+  const btVector3 lv = body->getLinearVelocity();
+  const float     ls = float(lv.length())/S;
 
-  // steering: eased towards the input, less lock at speed
-  const float target = std::clamp(in.steer,-1.f,1.f);
-  const float rate   = (std::abs(target)<std::abs(steer) || target*steer<0) ? 6.f : 3.f;
-  steer += std::clamp(target-steer,-rate*dt,rate*dt);
-  const float k      = std::clamp(std::abs(v)/top,0.f,1.f);
-  const float angle  = steer*prm.steerAngle*(1.f + (prm.steerAtTop-1.f)*k)*3.14159265f/180.f;
+  // steering (RCCars.exe): the position runs towards the side held, slower the faster the car goes, until the
+  // wheels reach AngleSteer; back to the middle (and across to the other side) it runs at SteerBack
+  const float want = std::clamp(in.steer,-1.f,1.f);
+  const float lock = std::abs(want)*prm.steerAngle;
+  if(want==0 || want*steer<0) {
+    const float to = want==0 ? 0.f : (want>0 ? 1e6f : -1e6f);
+    steer += std::clamp(to-steer,-CarParams::SteerBack*dt,CarParams::SteerBack*dt);
+    }
+  else if(prm.steerCurve.at(std::abs(steer))<lock) {
+    const float step = CarParams::steerRate(ls)*dt;
+    float       s    = std::abs(steer)+step;
+    // stop where the curve reaches the lock instead of a step past it
+    for(int i=0; i<16 && prm.steerCurve.at(s)>lock; ++i)
+      s -= step/16.f;
+    steer = want>0 ? s : -s;
+    }
+  const float angle = (steer<0 ? -1.f : 1.f)*prm.steerCurve.at(std::abs(steer))*3.14159265f/180.f;
 
-  // engine and brakes; the acceleration spline is the net acceleration on flat ground, so the engine also
-  // pushes against air drag
-  const float drag   = prm.airDrag*v*v;
-  float accel = 0, brake = 0;
-  const bool boosting = in.boost && in.throttle>0 && tank>0;
-  if(boosting)
-    tank = std::max(tank-dt/prm.boostTime,0.f);
+  // turbo tank (RCCars.exe): refills by itself, drains while the key is held; once dry with the key held, the
+  // boost works again only BoostLockTime later and with BoostRestart units in the tank
+  boostTimer += dt;
+  boostOn = false;
+  if(!in.boost) {
+    boostLock = false;
+    }
+  else if(boostTimer>CarParams::BoostLockTime) {
+    if(!boostLock) {
+      if(tank<0.01f) {
+        boostLock  = true;
+        boostTimer = 0;
+        }
+      else
+        boostOn = true;
+      }
+    else if(tank>CarParams::BoostRestart) {
+      boostLock = false;
+      boostOn   = true;
+      }
+    }
+  if(boostOn)
+    tank = std::max(tank-prm.boostDrain*dt,0.f);
   else
-    tank = std::min(tank+dt/prm.boostRecharge,1.f);
+    tank = std::min(tank+prm.boostCharge*dt,prm.boostTank);
+
+  // engine and brakes (RCCars.exe, but for the brake): while the engine pulls it also cancels the resistance
+  const float resist = prm.airDrag*ls*ls + prm.rolling;
+  float accel = 0, brake = 0;
   if(in.throttle>0) {
     if(v<-0.5f)
       brake = prm.brakeDecel*in.throttle;
-    else
-      accel = (prm.acceleration(v,boosting)+drag)*in.throttle;
+    else if(float a = prm.acceleration(v,in.throttle,boostOn); a>0.001f)
+      accel = a + resist;
     }
   else if(in.throttle<0) {
-    if(v>0.5f)
+    if(v>0.5f) {
       brake = prm.brakeDecel*(-in.throttle);
-    else if(-v<top*prm.reverseSpeed)
-      accel = -(prm.acceleration(-v)*0.6f)*(-in.throttle);
-    }
-  else {
-    brake = prm.rolling;
+      }
+    else {
+      const float full = (boostOn ? 1.5f : 1.f)*prm.reverseAccel*(-in.throttle);
+      if(ls<prm.reverseFullSpeed)
+        accel = -full;
+      else if(ls<prm.reverseSpeed)
+        accel = -full*(prm.reverseSpeed-ls)/(prm.reverseSpeed-prm.reverseFullSpeed);
+      }
     }
 
   const int n = vehicle->getNumWheels();
@@ -271,20 +309,28 @@ void Vehicle::update(const Input& in, float dt) {
     vehicle->setSteeringValue(front ? angle : 0.f,i);
     }
 
-  // jump: an upward kick along the car's up axis, so on a slope it pushes off the surface
-  jumpCooldown = std::max(jumpCooldown-dt,0.f);
-  if(in.jump && jumpCooldown<=0 && wheelsOnGround()>=2) {
-    btVector3 up = body->getWorldTransform().getBasis().getColumn(1);
-    up = (up+btVector3(0,1,0)).normalized();
-    body->applyCentralImpulse(up*(prm.mass*prm.jumpSpeed*S));
-    jumpCooldown = 0.5f;
+  // jump (RCCars.exe): a kick along the car's up axis; tipped over by more than JumpFlipAngle it puts the car
+  // back on its wheels instead
+  jumpTimer += dt;
+  if(in.jump && jumpTimer>=CarParams::JumpCooldown) {
+    const btVector3 up = body->getWorldTransform().getBasis().getColumn(1);
+    if(up.y()<std::cos(CarParams::JumpFlipAngle*3.14159265f/180.f)) {
+      recover();
+      jumpTimer = 0;
+      }
+    else if(onGround()) {
+      body->setLinearVelocity(body->getLinearVelocity()+up*(prm.jumpSpeed*S));
+      btVector3 w = body->getAngularVelocity();
+      w.setY(w.y()*1.5f);
+      body->setAngularVelocity(w);
+      jumpTimer = 0;
+      }
     }
 
-  // air drag on the body
-  const btVector3 lv = body->getLinearVelocity();
-  const float     ls = float(lv.length());
-  if(ls>1e-3f)
-    body->applyCentralForce(-lv*(prm.mass*prm.airDrag*ls/S));
+  // air and bearings resistance on the body (fading in over the first 0.1 m/s so that it does not shake a car
+  // standing still)
+  if(ls>1e-4f)
+    body->applyCentralForce(-lv.normalized()*(prm.mass*S*resist*std::min(ls/0.1f,1.f)));
 
   surfaces(dt);
   }
@@ -296,21 +342,42 @@ void Vehicle::surfaces(float dt) {
   // wheels: the solid surface under each one touching the ground, and how deep each one is in water
   const Mat4 m = pose();
   size_t count[size_t(Surface::Water)+1] = {};
-  int    inSand = 0;
   float  wetSum = 0;
+  // per wheel: where it is held back (RCCars.exe: in water by depth, otherwise in deep sand) and how much
+  struct Drag { Vec3 at; float k = 0; };
+  Drag   drags[16];
+  int    dragCount = 0;
   for(int i=0; i<n; ++i) {
     auto&       info = vehicle->getWheelInfo(i);
     const float r    = info.m_wheelsRadius/S;
     // from the body's pose, not btWheelInfo::m_worldTransform: that one is stale until the next step after reset()
     const Vec3  hub  = m.point(wheelPose(size_t(i)).translation());
-    if(auto level = track.waterLevel(hub,0.5f))
-      wetSum += std::clamp((*level-(hub.y-r))/(2.f*r),0.f,1.f);
-    if(!info.m_raycastInfo.m_isInContact)
+    float       inWater = 0;  // how deep the wheel is, 0 .. 1 of its diameter
+    float       depth   = 0;  // m of the wheel under the surface, from its bottom
+    if(auto level = track.waterLevel(hub,0.5f)) {
+      depth   = *level-(hub.y-r);
+      inWater = std::clamp(depth/(2.f*r),0.f,1.f);
+      }
+    wetSum += inWater;
+    Drag d;
+    if(depth>0.3f*r) {
+      d.at = hub;
+      d.k  = prm.waterDrag*std::clamp((depth-0.3f*r)/(0.6f*r),0.f,1.f);
+      }
+    if(!info.m_raycastInfo.m_isInContact) {
+      if(d.k>0 && dragCount<int(std::size(drags)))
+        drags[dragCount++] = d;
       continue;
+      }
     const Vec3    at = fromBt(info.m_raycastInfo.m_contactPointWS)*(1.f/S);
     const Surface s  = track.surfaceBelow(at+Vec3{0,0.02f,0},0.05f);
     count[size_t(s)]++;
-    inSand += s==Surface::DeepSand ? 1 : 0;
+    if(d.k<=0 && s==Surface::DeepSand) {
+      d.at = at;
+      d.k  = prm.deepSandDrag;
+      }
+    if(d.k>0 && dragCount<int(std::size(drags)))
+      drags[dragCount++] = d;
     }
   const float wetNow = n>0 ? wetSum/float(n) : 0.f;
 
@@ -336,11 +403,15 @@ void Vehicle::surfaces(float dt) {
     body->setLinearVelocity(v);
     }
 
-  // deep sand and water hold the car back in proportion to its speed (a force on the scaled body: m * k * v)
-  const float sand = n>0 ? float(inSand)/float(n) : 0.f;
-  const float drag = prm.deepSandDrag*sand + prm.waterDrag*std::max(wetNow,subNow);
-  if(drag>0)
-    body->applyCentralForce(-h*(prm.mass*drag));
+  // deep sand and water hold every wheel in them back: k * v^2 against the motion of that point of the car
+  const float v2 = float(body->getLinearVelocity().length2())/(S*S);
+  for(int i=0; i<dragCount; ++i) {
+    const btVector3 rel = toBt(drags[i].at)*S - body->getCenterOfMassPosition();
+    btVector3       pv  = body->getVelocityInLocalPoint(rel);
+    if(pv.length2()<1e-8f)
+      continue;
+    body->applyForce(-pv.normalized()*(prm.mass*S*drags[i].k*v2),rel);
+    }
 
   // under water: everything slows down, falling and tumbling included
   if(subNow>0) {

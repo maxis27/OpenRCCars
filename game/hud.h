@@ -33,7 +33,7 @@ class Hud {
       float turbo     = 0;     // 0..1
       float direction = 0;     // the next checkpoint relative to the car's heading, radians, positive = left
       bool  paused    = false;
-      bool  gates     = true;  // the checkpoint gates drawn over the 3D view
+      bool  gates     = false; // the checkpoint gates drawn over the 3D view (debug)
       rc::Mat4 viewProj;       // the camera, for the gates and the checkpoint arrows
       };
 

@@ -53,7 +53,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   (`cp_ar_2_f1..3` zielona, a nad `cp_1`, gdzie kończy się okrążenie, czerwona `cp_ar_3_*`), z rozmiarem i odległościami
   z `Settings/anim_cp.ini`. Prędkość i turbo na dole ekranu na razie tekstem. Spoza
   oryginału: pod numerem okrążenia „Punkt n/m” (główne punkty zaliczone w tym okrążeniu), zielony „Punkt n/m” na
-  środku przy każdym zaliczeniu, a bramki obrysowane na trasie (klawisz G): następna główna zielona, kolejna żółta,
+  środku przy każdym zaliczeniu, a do debugowania bramki obrysowane na trasie (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
   zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono, pośrednia, na którą wskazuje strzałka,
   niebieska. Każde zaliczenie trafia też do logu
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
@@ -147,7 +147,7 @@ Pozostałe:
 |---|---|
 | V | kamera za autem ↔ kamera swobodna (auto wtedy stoi) |
 | K | nakładka kolizji (debug; turkusowa woda, fioletowy głęboki piasek) |
-| G | obrysy bramek punktów kontrolnych (domyślnie włączone) |
+| G | obrysy bramek punktów kontrolnych (debug, domyślnie wyłączone) |
 | N | przeskok do następnego głównego punktu kontrolnego (debug, do sprawdzania okrążeń i mety) |
 | W / S / A / D | ruch kamery swobodnej |
 | E, Spacja / Q, C | w górę / w dół |

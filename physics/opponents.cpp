@@ -113,6 +113,7 @@ Opponent::Opponent(PhysicsWorld& world, const CarGeometry& g, std::vector<CarPro
   body = std::make_unique<btRigidBody>(ci);
   body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_KINEMATIC_OBJECT);
   body->setActivationState(DISABLE_DEACTIVATION);
+  body->setUserIndex(PhysicsWorld::CarTag);
   restart();
   owner.bullet().addRigidBody(body.get());
   }

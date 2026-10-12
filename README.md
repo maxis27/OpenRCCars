@@ -271,6 +271,12 @@ lib/Tempest     silnik (submoduł git)
     kontrolny +10, z wciśniętym dopalaczem schodzi `boostSpeedDown` (1..10, 5,45 jedn./s). Gdy się opróżni przy
     wciśniętym klawiszu, dopalacz rusza znowu po 0,9 s i dopiero powyżej 10 jednostek. `BOOSTERS` nie zmienia
     przyspieszenia, tylko ładowanie turbo;
+  - „Łup!” i „Wielkie Łup!” (`msg_hits.csi`, przez 1 s, ważniejsze od „złego kierunku”): każde daje +5 jednostek
+    turbo. „Łup!” za dotknięcie rekwizytu ze `stone.sb` szybciej niż 7 km/h (najwyżej co 0,3 s). Po zetknięciu
+    z innym autem (najwyżej co 2 s) gra przez 0,5 s sumuje obrót auta w jego osiach: średnio ponad 3 rad/s wokół X,
+    5 wokół Z albo 7 w sumie to „Wielkie Łup!”, ponad 0,8 / 1 / 2 to „Łup!”. Ludzie, strażnik (od 10 km/h) i pies
+    (od 15 km/h) dają „Wielkie Łup!” (najwyżej co 2 s), jeszcze ich nie ma na torach; kraby, pająki, mewy i ruch
+    uliczny nic;
   - skręt: pozycja kierownicy rośnie w stronę wciśniętą o `4,5 - 0,5·v` (v w m/s, najmniej 1) na sekundę, wraca
     (i przechodzi na drugą stronę) o 6 na sekundę; `steering<N>.bspl` zamienia ją na kąt kół (20° na jednostkę),
     który rośnie do `AngleSteer` (0..100, 29,3°). Pełny skręt nie maleje z prędkością, tylko wolniej się go nabiera;

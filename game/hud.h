@@ -19,7 +19,7 @@ class Resources;
 
 // The race cockpit over the 3D view, drawn with the original's own pictures from Language/<language>/: the
 // countdown ("3", "2", "1", "Jazda!"), "okrążenie" with the lap number, "zły kierunek", "najlepsze okrążenie",
-// "meta", "pauza", and the times in the game's Smash font. Positions follow Settings/cockpit.ini and
+// "meta", "pauza", "Łup!", and the times in the game's Smash font. Positions follow Settings/cockpit.ini and
 // cockpit_time.ini (a 800x600 screen; elements on the right keep their distance from the right edge on wider
 // screens). The direction arrow is the cockpit's chevron (coc_str_2) turned towards the next checkpoint. Over the
 // next main checkpoint hangs the animated arrow cp_ar_* (Settings/anim_cp.ini).
@@ -53,6 +53,8 @@ class Hud {
     void setTrack(const std::string& name);
     // a race event: starts its message
     void event(rc::Race::Event e);
+    // the player's car hit something (RCCars.exe): "Łup!", or "Wielkie Łup!" when `great`, for a second
+    void hit(bool great) { hitAt = clock; hitGreat = great; }
     // `dt` seconds of real time (messages and blinking)
     void tick(float dt) { clock += dt; }
     // `frame` is the frame in flight (its vertex buffer is rewritten)
@@ -130,7 +132,7 @@ class Hud {
     Tempest::RenderPipeline          pso;
     Tempest::RenderPipeline          psoDepth;  // the same, tested against the scene's depth
     std::string                      lang;
-    Image                            msg321, msgGo, msgBest, msgWrong, msgPause, lapLabel;
+    Image                            msg321, msgGo, msgBest, msgWrong, msgPause, msgHits, lapLabel;
     const Tempest::Texture2d*        arrow = nullptr; // coc_str_2, 128x128
     // cp_ar_<2 green, 3 red: the lap's end>_f<1..3>, 256x256: arrows pointing down at the next checkpoint
     const Tempest::Texture2d*        cpArrow[2][3] = {};
@@ -155,6 +157,8 @@ class Hud {
     float                            clock      = 0;
     Message                          message    = Message::None;
     float                            messageAt  = 0;
+    float                            hitAt      = -100;
+    bool                             hitGreat   = false;
     float                            lapAt      = -100; // when the last lap was finished: its time blinks
     float                            flashAt    = -100; // when the last main checkpoint was passed
     int                              scrW = 0, scrH = 0;

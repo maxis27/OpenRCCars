@@ -118,8 +118,8 @@ class Hud {
     void   sprite(const Image& img, const Rect& src, float cx, float cy, float size, const Color& c);
     // `bottom`: the colour at the bottom of the letters, fading from `c` at their top
     float  text(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align = -1,
-                const Color* bottom = nullptr);
-    float  textWidth(const Font& f, std::string_view s, float size) const;
+                const Color* bottom = nullptr, float gap = 0);
+    float  textWidth(const Font& f, std::string_view s, float size, float gap = 0) const;
     // the gauges' numbers: white to grey, outlined
     void   metalText(const Font& f, std::string_view s, float x, float y, float size, int align);
     // text with a dark shadow under it

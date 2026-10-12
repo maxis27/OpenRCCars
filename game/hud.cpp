@@ -189,9 +189,10 @@ Hud::Image Hud::loadImage(Resources& res, std::string_view file, std::vector<uin
   return ret;
   }
 
-// Smash<size>.csi: 256x256, a grid of 10 columns and 9 rows (25.6 x 28.4 px) holding the characters of
-// Smash<size>.dat in order (A..Z a..z 0..9 and punctuation, no Polish letters, no space). The letters are
-// proportional: each glyph's width is measured from its opacity.
+// Smash<size>.csi: 256x256, a grid of 10 columns 25.6 px wide and rows 28 px high (the baselines step by exactly
+// 28 px, the last 4 px are unused) holding the characters of Smash<size>.dat in order (A..Z a..z 0..9 and
+// punctuation, no space). The letters are proportional: each glyph's width is measured from its opacity, and the
+// game sets them side by side with no gap (the 1 px shadow on their right separates them).
 void Hud::loadFont(Resources& res, std::string_view name, Font& f) {
   std::vector<uint8_t> rgba;
   f.img = loadImage(res,std::string(name)+".csi",&rgba);
@@ -210,7 +211,7 @@ void Hud::loadFont(Resources& res, std::string_view name, Font& f) {
     chars.pop_back();
   const size_t rows = std::max<size_t>(1,(chars.size()+9)/10);
   const float  cw   = float(f.img.w)/10.f;
-  f.cell = float(f.img.h)/float(rows);
+  f.cell = std::floor(float(f.img.h)/float(rows));
   for(size_t i=0; i<chars.size(); ++i) {
     const uint8_t ch = chars[i];
     const int x0 = int(std::ceil(float(i%10)*cw)),     x1 = std::min(f.img.w,int(std::floor(float(i%10+1)*cw)));
@@ -503,7 +504,7 @@ void Hud::gauge(bool right, float value, float reach, const std::string& number,
   const auto c = at(GaugeCX,GaugeCY);
   metalText(font,number,c[0],c[1]-44.f*scale,53,0);
   quad(*white,1,1,{0,0,1,1},c[0]-46.f*scale,c[1]+1.f*scale,92.f*scale,2.5f*scale,Color{1,1,1,0.9f});
-  shadowText(font,label,c[0],c[1]+8.f*scale,29,white4,0);
+  shadowText(font,label,c[0],c[1]+8.f*scale,28,white4,0);
   }
 
 void Hud::trackMap(const rc::Race& race, const Info& info) {
@@ -574,13 +575,13 @@ void Hud::trackMap(const rc::Race& race, const Info& info) {
   }
 
 void Hud::metalText(const Font& f, std::string_view s, float x, float y, float size, int align) {
-  // the original's numbers: white fading to grey downwards, outlined dark
+  // the original's numbers: white fading to grey downwards, outlined dark, the digits 2 texels apart
   const float d = std::max(1.f,size*0.035f*scale);
   const Color dark = {0.08f,0.06f,0.05f,0.9f};
   for(auto [ox,oy]:{std::pair{-d,0.f},{d,0.f},{0.f,-d},{0.f,d},{d,d}})
-    text(f,s,x+ox,y+oy,size,dark,align);
+    text(f,s,x+ox,y+oy,size,dark,align,nullptr,2);
   const Color top = {1,1,1,1}, bottom = {0.55f,0.55f,0.58f,1};
-  text(f,s,x,y,size,top,align,&bottom);
+  text(f,s,x,y,size,top,align,&bottom,2);
   }
 
 void Hud::shadowText(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align) {
@@ -608,7 +609,7 @@ void Hud::sprite(const Image& img, const Rect& src, float cx, float cy, float si
   quad(img.tex,img.w,img.h,src,cx-w*0.5f,cy-h*0.5f,w,h,c);
   }
 
-float Hud::textWidth(const Font& f, std::string_view s, float size) const {
+float Hud::textWidth(const Font& f, std::string_view s, float size, float gap) const {
   if(!f.img.loaded)
     return 0;
   const float k = size*scale/f.cell;
@@ -616,17 +617,17 @@ float Hud::textWidth(const Font& f, std::string_view s, float size) const {
   for(char ch:s) {
     const uint8_t c = uint8_t(ch);
     if(f.has[c])
-      w += (f.glyphs[c].u1-f.glyphs[c].u0+2.f)*k;
+      w += (f.glyphs[c].u1-f.glyphs[c].u0+gap)*k;
     }
   return w;
   }
 
 float Hud::text(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align,
-               const Color* bottom) {
+               const Color* bottom, float gap) {
   if(!f.img.loaded)
     return x;
   const float k = size*scale/f.cell;
-  const float w = textWidth(f,s,size);
+  const float w = textWidth(f,s,size,gap);
   if(align==0) x -= w*0.5f;
   if(align>0)  x -= w;
   for(char ch:s) {
@@ -636,7 +637,7 @@ float Hud::text(const Font& f, std::string_view s, float x, float y, float size,
     const Glyph& g = f.glyphs[cc];
     if(g.v1>g.v0)
       quad(f.img.tex,f.img.w,f.img.h,{g.u0,g.v0,g.u1,g.v1},x,y,(g.u1-g.u0)*k,(g.v1-g.v0)*k,c,0,1,bottom);
-    x += (g.u1-g.u0+2.f)*k;
+    x += (g.u1-g.u0+gap)*k;
     }
   return x;
   }

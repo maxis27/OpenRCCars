@@ -308,13 +308,14 @@ void Hud::checkpointArrow(const rc::Race& race, const rc::Mat4& vp) {
   const auto& route = race.checkpoints().route();
   if(route.size()<2 || race.phase()==rc::Race::Phase::Finished)
     return;
-  // red while driving the wrong way, green otherwise; the frames go 1 2 3 2 1 ..
-  const int      colour = race.wrongWay() ? 1 : 0;
+  // red over cp_1, where the lap ends; green over the other main checkpoints. The frames go 1 2 3 2 1 ..
+  const size_t   next   = race.checkpoints().next();
+  const int      colour = next+1==route.size() ? 1 : 0;
   const int      step   = int(clock/CpArrowFrame)%4;
   const auto*    tex    = cpArrow[colour][step==3 ? 1 : step];
   if(tex==nullptr)
     return;
-  const auto&    p  = route[race.checkpoints().next()];
+  const auto&    p  = route[next];
   const rc::Vec3 at = {p.position.x,std::max(p.position.y,p.bottom+0.5f)+CpArrowShift,p.position.z};
   auto project = [&](const rc::Vec3& v, float& sx, float& sy) {
     const float w = vp.m[3][0]*v.x+vp.m[3][1]*v.y+vp.m[3][2]*v.z+vp.m[3][3];

@@ -50,7 +50,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   z gry (`Language/Polish` albo `Language/English`: odliczanie, „okrążenie”, komunikaty, czcionka `Smash26`)
   w miejscach z `Settings/cockpit.ini`; strzałka (szewron `coc_str_2`) pokazuje następny punkt kontrolny
   i miga na czerwono, gdy jedziesz w złą stronę. Nad następnym głównym punktem wisi animowana strzałka z gry
-  (`cp_ar_2_f1..3`, zielona; czerwona `cp_ar_3_*` przy jeździe w złą stronę), z rozmiarem i odległościami
+  (`cp_ar_2_f1..3` zielona, a nad `cp_1`, gdzie kończy się okrążenie, czerwona `cp_ar_3_*`), z rozmiarem i odległościami
   z `Settings/anim_cp.ini`. Prędkość i turbo na dole ekranu na razie tekstem. Spoza
   oryginału: pod numerem okrążenia „Punkt n/m” (główne punkty zaliczone w tym okrążeniu), zielony „Punkt n/m” na
   środku przy każdym zaliczeniu, a bramki obrysowane na trasie (klawisz G): następna główna zielona, kolejna żółta,

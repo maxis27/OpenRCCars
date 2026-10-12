@@ -105,7 +105,7 @@ class Hud {
     std::string                      lang;
     Image                            msg321, msgGo, msgBest, msgWrong, msgPause, lapLabel;
     const Tempest::Texture2d*        arrow = nullptr; // coc_str_2, 128x128
-    // cp_ar_<2 green, 3 red>_f<1..3>, 256x256: arrows pointing down at the next checkpoint, three frames
+    // cp_ar_<2 green, 3 red: the lap's end>_f<1..3>, 256x256: arrows pointing down at the next checkpoint
     const Tempest::Texture2d*        cpArrow[2][3] = {};
     Font                             font;
     const Tempest::Texture2d*        white = nullptr;

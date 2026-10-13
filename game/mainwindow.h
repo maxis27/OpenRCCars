@@ -15,12 +15,14 @@
 #include "arrow.h"
 #include "camera.h"
 #include "hud.h"
+#include "physics/characters.h"
 #include "physics/checkpoints.h"
 #include "physics/opponents.h"
 #include "physics/race.h"
 #include "physics/vehicle.h"
 #include "resources.h"
 #include "sounds.h"
+#include "world/characters.h"
 #include "world/modelmesh.h"
 #include "world/level.h"
 #include "world/objects.h"
@@ -73,6 +75,8 @@ class MainWindow : public Tempest::Window {
     // declared after `level`: the physics world refers to the level's collision mesh
     std::unique_ptr<rc::PhysicsWorld> physics;
     std::unique_ptr<Objects>          objects; // props: bodies in `physics`
+    std::unique_ptr<rc::Characters>   characters; // people and animals: bodies in `physics`
+    std::unique_ptr<CharacterView>    characterView;
     std::unique_ptr<rc::Vehicle>      vehicle;
     std::unique_ptr<rc::Checkpoints>  checkpoints;
     std::unique_ptr<rc::Race>         race;

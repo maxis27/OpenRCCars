@@ -587,6 +587,32 @@ Mat4 Vehicle::pose() const {
   return fromBt(t)*Mat4::translate(com*-1.f);
   }
 
+Vec3 Vehicle::velocity() const {
+  return fromBt(body->getLinearVelocity())*(1.f/S);
+  }
+
+void Vehicle::push(const Vec3& dv) {
+  body->activate(true);
+  body->setLinearVelocity(body->getLinearVelocity()+toBt(dv)*S);
+  }
+
+void Vehicle::hold(const Mat4& at) {
+  const btTransform t = toBt(at*Mat4::translate(com));
+  body->setWorldTransform(t);
+  motion->setWorldTransform(t);
+  body->setInterpolationWorldTransform(t);
+  body->setInterpolationLinearVelocity(btVector3(0,0,0));
+  body->setInterpolationAngularVelocity(btVector3(0,0,0));
+  body->setLinearVelocity(btVector3(0,0,0));
+  body->setAngularVelocity(btVector3(0,0,0));
+  body->clearForces();
+  body->activate(true);
+  }
+
+const btCollisionObject* Vehicle::chassis() const {
+  return body.get();
+  }
+
 float Vehicle::speed() const {
   return float(vehicle->getCurrentSpeedKmHour())/3.6f/S;
   }

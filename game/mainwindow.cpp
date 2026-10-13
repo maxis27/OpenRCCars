@@ -28,6 +28,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name)
   hud      = std::make_unique<Hud>(device,res);
   arrow    = std::make_unique<DirectionArrow>(device,res);
   sounds   = std::make_unique<Sounds>(res);
+  characterView = std::make_unique<CharacterView>(device);
   loadCar(0);
   loadLevel(name);
   sounds->startMusic();
@@ -44,6 +45,7 @@ void MainWindow::loadLevel(const std::string& name) {
     auto next = std::make_unique<Level>(device,resources,name);
     vehicle.reset();
     opponents.reset();
+    characters.reset();
     objects.reset();
     physics.reset();
     race.reset();
@@ -107,6 +109,14 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
   if(physics==nullptr) {
     physics = std::make_unique<rc::PhysicsWorld>(level->collision());
     objects = std::make_unique<Objects>(device,resources,library,level->scene(),*physics);
+    try {
+      characters = std::make_unique<rc::Characters>(*physics,library,level->scene(),level->name(),
+                                                    [this](const std::string& f){ return resources.pack().read(f); });
+      Log::i("characters: ",characters->size());
+      }
+    catch(const std::exception& e) {
+      Log::e("characters: ",e.what());
+      }
     }
   if(opponents==nullptr)
     setupOpponents();
@@ -127,6 +137,8 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
     besideDone  = true;
     if(opponents)
       opponents->restart();
+    if(characters)
+      characters->restart();
     playerFinish = -1;
     paused       = false;
     }
@@ -364,6 +376,18 @@ void MainWindow::tick(float dt) {
       opponents->update(dt,!race->holdCar(),carPose.translation(),checkpoints->laps(),playerFinish>=0,race->time(),
                         race->laps());
     physics->step(dt);
+    // the people and animals, after the step: a person holding the car puts it in the hand
+    if(characters) {
+      std::vector<rc::Characters::Car> others;
+      for(size_t i=0; opponents && i<opponents->size(); ++i) {
+        const rc::Mat4 p = (*opponents)[i].pose();
+        others.push_back({p.translation(),p.vector({0,0,1})*(*opponents)[i].speed()});
+        }
+      if(characters->update(dt,vehicle.get(),others)) {
+        hud->hit(true);
+        Log::i("great hit (character) at ",Hud::formatTime(race->time()));
+        }
+      }
     carPose = vehicle->pose();
     const rc::Vec3 at = carPose.translation();
     const size_t   was = checkpoints->next();
@@ -458,6 +482,8 @@ void MainWindow::tickSounds(float dt) {
   const rc::Vec3 ear   = camera.position;
   const rc::Vec3 right = camera.right();
   sounds->tickAmbient(ear,right,dt);
+  if(characters)
+    sounds->tickCharacters(*characters,ear,right);
   for(size_t i=0; opponents && i<opponents->size() && i<aiSounds.size(); ++i) {
     const auto&    o  = (*opponents)[i];
     const rc::Vec3 to = o.pose().translation()-ear;
@@ -528,6 +554,8 @@ void MainWindow::render() {
         level->mesh().draw(enc,push,LevelMesh::Pass::Opaque);
       if(objects)
         objects->draw(enc,viewProj,push);
+      if(characters)
+        characterView->draw(enc,frameId,resources,*characters,push);
       if(car) {
         const auto parts = carPartPoses();
         car->draw(enc,viewProj,push,carPose,&parts);

@@ -11,7 +11,7 @@
 
 // Debug overlay of the track collision: translucent triangles with outlined edges, drawn over the level.
 //   green - ground (up to ~35 degrees), yellow - slopes, red - walls, blue - faces without a texture
-//   (invisible in the game, e.g. barriers that keep the car on the track).
+//   (invisible in the game, e.g. barriers that keep the car on the track), cyan - water, grey - waterfalls.
 class CollisionView {
   public:
     struct Vertex {

@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <optional>
-#include <unordered_map>
 #include <vector>
 
 #include "scene.h"
@@ -19,7 +18,8 @@ enum class Surface : uint8_t {
   WetSand,   // sand_wet, rubbish_sand_wet
   DeepSand,  // Sand_trample: "dunesand", loose sand that slows the car down
   Gravel,    // Sand_gravel, path_*, broken_stone
-  Water,     // texture "sea": seas, streams, pools and waterfalls; not solid, the car sinks into it
+  Water,     // texture "sea": seas, streams, pools and waterfalls; not solid, the car sinks into it (but not into a
+             // waterfall, see CollisionMesh::isWater)
   };
 
 Surface     surfaceOf(const SbTexture* texture);
@@ -80,22 +80,16 @@ class CollisionMesh {
     // the same for the sounds (SoundSurface), the solid ground only
     uint8_t                      soundBelow(const Vec3& from, float maxDepth) const;
     // height of the nearest water surface above `at`, or if there is none, below it; within `range` either way
-    // (shaped by shoreHeight)
     std::optional<float>         waterLevel(const Vec3& at, float range) const;
 
-    // The sea is a flat sheet that ends in mid-air where the beach is lower than the water (on beach_1 the
-    // surface is at 0 and the sand along the shore at -0.31). The original pulls the water down to the sand
-    // there (WaterLOD magnet/clampY sliders, code not readable); we bend it down over the last `shoreBand`
-    // metres to the height of the ground past the shore, never below the ground under it. `p` is a point on
-    // the water as the scene has it, the result the height of the water surface there.
-    float                        shoreHeight(const Vec3& p) const;
-    static constexpr float       shoreBand = 1.f;
-
-    // seas with WLOD settings are lowered by their "offset" instead (formats/water.h) and need no shore band
+    // seas with WLOD settings are lowered by their "offset" (formats/water.h)
     void                         setSeas(const Seas& seas);
     // height of the still water at `p`, a point on a water face of `mesh` as the scene has it: lowered by the
-    // sea's offset, or shoreHeight for seas without WLOD settings (waves left out)
+    // sea's offset (waves left out); streams and pools stay where the scene has them
     float                        waterSurface(uint32_t mesh, const Vec3& p) const;
+    // whether the car finds water in this triangle: RCCars.exe looks for it only in the seas and in the objects
+    // named *stream* or *pool* (0x51c240, list at 0x575710), not in the waterfalls (*wtr_fall*), which are only seen
+    bool                         isWater(const Triangle& t) const;
 
     // triangles listed in a cell; the same triangle shows up in every cell it touches
     template<class F>
@@ -115,13 +109,7 @@ class CollisionMesh {
     std::vector<uint32_t> cellStart; // cells+1 offsets into cellTris
     std::vector<uint32_t> cellTris;
     std::vector<float>    seaOffset; // per mesh, NaN: no WLOD settings
-
-    // the shore of the sea (points, as zero-length edges), bucketed in shoreCell x shoreCell squares
-    struct ShorePoint { float x, z, gap; }; // gap: how far the water is above the ground just past the shore
-    // the nearest shore point within maxDistance and the distance to it
-    const ShorePoint*     nearestShore(float x, float z, float maxDistance, float& distance) const;
-    static constexpr float shoreCell = 2.f;
-    std::unordered_map<uint64_t,std::vector<ShorePoint>> shore;
+    std::vector<bool>     waterfall; // per mesh
   };
 
 }

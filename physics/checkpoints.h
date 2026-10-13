@@ -81,6 +81,8 @@ class Checkpoints {
     // point (model space Y = carBottom) on the ground; the start pose until the first one is passed. The arrow
     // starts again from there.
     Mat4                      respawn(float carBottom);
+    // on route()[i], facing route()[i+1], with the model's lowest point (Y = carBottom) on the ground
+    Mat4                      poseAt(size_t i, float carBottom) const;
 
   private:
     const CollisionMesh& coll;

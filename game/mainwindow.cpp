@@ -90,6 +90,7 @@ void MainWindow::setupOpponents() {
     Log::e("opponents: ",e.what());
     return;
     }
+  opponents->setTrack(level->scene());
   for(size_t i=0; i<opponents->size(); ++i) {
     auto& o   = (*opponents)[i];
     auto& m   = aiMeshes[{o.car,o.skin}];

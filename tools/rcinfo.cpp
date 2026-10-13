@@ -820,11 +820,13 @@ static int cmdAi(const fs::path& game, const fs::path& track, rc::PackFile& pack
   auto scene    = rc::SbScene::load(readFile(game/track));
   auto carScene = rc::SbScene::load(readFile(game/"RCCarsDB/Car.sb"));
   rc::CollisionMesh  coll(scene);
+  const std::string  name = track.stem().string();
+  coll.setSeas(rc::Seas::load(scene,pack,name));
   rc::Checkpoints    cps(scene,coll);
   rc::PhysicsWorld   world(coll);
-  const std::string  name = track.stem().string();
   rc::Opponents ai(world,[&pack](const std::string& f){ return pack.read(f); },carScene,name,cps,
                    rc::Opponents::Level(level),[&pack](int32_t c){ return rc::CarParams::load(pack,c); });
+  ai.setTrack(scene);
   std::printf("%s: AIRace%d, %zu opponents (%s), %.0f m a lap\n",name.c_str(),rc::aiRaceNumber(name),ai.size(),
               rc::Opponents::levelName(rc::Opponents::Level(level)),cps.lapLength());
   rc::Mat4 grid;
@@ -855,7 +857,7 @@ static int cmdAi(const fs::path& game, const fs::path& track, rc::PackFile& pack
   const float dt = 1.f/60.f;
   float t = 0;
   size_t done = 0;
-  std::vector<size_t> lapsSeen(ai.size(),0);
+  std::vector<size_t> lapsSeen(ai.size(),0), backs(ai.size(),0);
   while(done<ai.size() && t<150.f*float(laps)) {
     t += dt;
     ai.update(dt,true,grid.translation(),0,true,t,laps);
@@ -863,6 +865,11 @@ static int cmdAi(const fs::path& game, const fs::path& track, rc::PackFile& pack
     for(size_t i=0; i<ai.size(); ++i) {
       if(ai[i].finishTime>=0)
         ++done;
+      if(ai[i].putBacks!=backs[i]) {
+        backs[i] = ai[i].putBacks;
+        const auto p = ai[i].pose().translation();
+        std::printf("  %7.2f %-10s put back on the track at (%.2f %.2f %.2f)\n",t,ai[i].name.c_str(),p.x,p.y,p.z);
+        }
       if(ai[i].laps()!=lapsSeen[i]) {
         lapsSeen[i] = ai[i].laps();
         std::printf("  %7.2f %-10s lap %zu, %.0f m along the route\n",t,ai[i].name.c_str(),lapsSeen[i],ai[i].progress());
@@ -951,13 +958,15 @@ static int cmdRam(const fs::path& game, const fs::path& track, rc::PackFile& pac
   auto scene    = rc::SbScene::load(readFile(game/track));
   auto carScene = rc::SbScene::load(readFile(game/"RCCarsDB/Car.sb"));
   rc::CollisionMesh  coll(scene);
+  const std::string  name  = track.stem().string();
+  coll.setSeas(rc::Seas::load(scene,pack,name));
   rc::Checkpoints    cps(scene,coll);
   rc::PhysicsWorld   world(coll);
   auto               props = placeProps(game,scene,world);
-  const std::string  name  = track.stem().string();
   auto params = [&pack](int32_t c){ return rc::CarParams::load(pack,c); };
   rc::Opponents ai(world,[&pack](const std::string& f){ return pack.read(f); },carScene,name,cps,
                    rc::Opponents::Level::Normal,params);
+  ai.setTrack(scene);
   rc::Mat4 grid;
   if(ai.size()==0 || !ai.playerStart(grid)) {
     std::printf("no opponents\n");
@@ -1100,6 +1109,39 @@ static int cmdDrown(const fs::path& game, const fs::path& track, rc::PackFile& p
         std::printf("water %.2f m deep at (%.1f %.1f %.1f): %s after %.2f s, %.2f m away, %.2f m under\n",depth,x,
                     *ground,z,veh.drowned() ? "drowned" : "still not drowned",t,
                     std::hypot(end.x-x,end.z-z),*surface-end.y);
+        // an opponent 20 s into the race, knocked off and dropped there
+        if(depths[i]<1.f || cps.empty())
+          continue;
+        rc::PhysicsWorld aw(coll);
+        rc::Opponents    ai(aw,[&pack](const std::string& f){ return pack.read(f); },cars,track.stem().string(),cps,
+                            rc::Opponents::Level::Easy,[&pack](int32_t c){ return rc::CarParams::load(pack,c); });
+        ai.setTrack(scene);
+        if(ai.size()==0)
+          continue;
+        const rc::Vec3 player = cps.route()[0].position;
+        float          ta     = 0;
+        for(; ta<20.f; ta+=dt) {
+          ai.update(dt,true,player,0,true,ta,3);
+          aw.step(dt);
+          }
+        auto& o = ai[0];
+        o.knock();
+        o.vehicle()->reset(at);
+        const float from = ta;
+        for(; ta<from+5.f && o.putBacks==0; ta+=dt) {
+          ai.update(dt,true,player,0,true,ta,3);
+          aw.step(dt);
+          }
+        const rc::Vec3 back = o.pose().translation();
+        std::printf("  opponent %s: %s after %.2f s, at (%.1f %.1f %.1f), %.0f m along the route\n",o.name.c_str(),
+                    o.putBacks>0 ? "put back on the track" : "still in the water",ta-from,back.x,back.y,back.z,
+                    o.progress());
+        const float put = ta;
+        for(; ta<put+30.f && o.knocked(); ta+=dt) {
+          ai.update(dt,true,player,0,true,ta,3);
+          aw.step(dt);
+          }
+        std::printf("  %s %.1f s later\n",o.knocked() ? "still off its recording" : "back on its recording",ta-put);
         }
       }
   return 0;

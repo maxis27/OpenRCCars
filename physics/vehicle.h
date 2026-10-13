@@ -153,6 +153,9 @@ class Vehicle {
     float                      submerged() const { return sub; }
     // under water for a while: the original puts the car back on the track (last checkpoint)
     bool                       drowned() const { return underWater>prm.drownTime; }
+    // how fast a car with its origin at `origin` drowns (RCCars.exe 0x508a10): 0 out of the water, 1 under it,
+    // 4 deep under it; drowned once the time multiplied by it passes CarParams::drownTime
+    static float               drownRate(const CollisionMesh& track, const Vec3& origin, const CarParams& prm);
     bool                       onGround() const;
     size_t                     wheelsOnGround() const;
 

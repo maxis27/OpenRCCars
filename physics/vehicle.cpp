@@ -546,7 +546,8 @@ void Vehicle::surfaces(float dt) {
 
   wet        = wetNow;
   sub        = subNow;
-  underWater = sub>=1.f ? underWater+dt : 0.f;
+  const float drown = drownRate(track,m.translation(),prm);
+  underWater = drown>0 ? underWater+drown*dt : 0.f;
   if(wet>0 || sub>0) {
     under = Surface::Water;
     }
@@ -559,6 +560,15 @@ void Vehicle::surfaces(float dt) {
         under = Surface(i);
         }
     }
+  }
+
+float Vehicle::drownRate(const CollisionMesh& track, const Vec3& origin, const CarParams& prm) {
+  // a point just above the origin under the surface, the deeper the faster
+  const Vec3 probe   = origin+Vec3{0,prm.drownHeight,0};
+  const auto surface = track.waterLevel(probe,10.f);
+  if(!surface || *surface<=probe.y)
+    return 0;
+  return probe.y<*surface-prm.drownDeep ? 4.f : 1.f;
   }
 
 Mat4 Vehicle::pose() const {

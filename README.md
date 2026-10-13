@@ -36,9 +36,13 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   głęboki piasek (`Sand_trample`), żwir i reszta. Jak w danych oryginału, jazdę zmieniają tylko głęboki piasek i woda
   (`Settings/tires<N>.ini`: `coeffDeepSand`, `coeffWater`; Hummer na dużych kołach mniej traci w wodzie); pozostałe
   nawierzchnie różnią się w oryginale tylko kurzem spod kół. Woda (tekstura `sea`: morze, strumienie, kałuże;
-  wodospady są tylko do oglądania) nie jest twarda: auto brodzi w płytkiej wodzie i zwalnia, w głębokiej tonie, a po 1 s całkiem pod wodą (po dach, antena się nie liczy)
-  wraca do ostatniego punktu kontrolnego, jak w instrukcji („jeśli utoniesz w morzu”). Tam też wraca po klawiszu R
-  i po wypadnięciu poza trasę.
+  wodospady są tylko do oglądania) nie jest twarda: auto brodzi w płytkiej wodzie i zwalnia, w głębokiej tonie i
+  wraca do ostatniego punktu kontrolnego, jak w instrukcji („jeśli utoniesz w morzu”). Jak w `RCCars.exe`
+  (0x508a10): liczy się punkt 0,2 m nad początkiem układu auta (u nas ~0,22 m nad spodem kół, przy dachu na 0,29 m),
+  auto tonie po 2 s z tym punktem pod wodą, po 0,5 s, gdy jest głębiej niż 0,5 m pod powierzchnią; wynurzenie zeruje
+  licznik. Tam też wraca po klawiszu R, po wyjechaniu poza pudło kolizji trasy (w bok albo 0,1 m pod jego dno,
+  0x508160) i po chwili w strefie `car_reset_volume_*` (beach_2, beach_3, country_2, country_4; czas `FilterTime` ze
+  skryptu strefy, od 10 ms do 3 s; 0x509690).
 - **wyścig**: odliczanie 3, 2, 1, „Jazda!” z dźwiękami startu `cp_start` i `prestart` (auto stoi do startu), 3, 5
   albo 7 okrążeń, czas całkowity i czas okrążenia, najlepsze okrążenie, „zły kierunek”, meta z tabelą czasów i
   „jeszcze raz”.
@@ -80,6 +84,10 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   nagrania i jedzie w jego kierunku (do 10°), a po 5 s wraca od razu, jeśli gracz go nie widzi (u nas: dalej niż
   50 m albo za graczem, zgadnięte). Powrót płynnie przechodzi w nagranie przez sekundę. Przy zderzeniu wolniejsze
   auto (przy podobnej prędkości przeciwnik) dostaje impuls lekko w górę, bo gra liczy jego środek 10 cm wyżej.
+  Przeciwników obowiązują te same zasady powrotu na trasę co gracza (utonięcie, pudło kolizji, strefy
+  `car_reset_volume_*`), a wypchnięty z nagrania wraca od razu po wjechaniu w dowolną strefę (0x4fe3f0). Trafia na
+  ostatni minięty główny punkt kontrolny (przed pierwszym na swoje miejsce na starcie) i stamtąd autopilot prowadzi
+  go z powrotem na nagranie (0x508b50).
   Kokpit pokazuje miejsce obrazkiem z gry
   (`place1..6.csi`: „1szy” … „6ty”), a meta tabelę wyników, w którą wpadają czasy kolejnych kierowców
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
@@ -220,6 +228,7 @@ rcinfo <folder_gry> gates RCCarsDB/beach_1.sb [auto 1-3]  # każdy główny punk
 rcinfo <folder_gry> ai RCCarsDB/beach_1.sb [poziom 1-3] [okrążenia]  # przeciwnicy: nagrania, ich pętle i wyścig bez gracza
 rcinfo <folder_gry> fx                            # ustawienia efektów, ile cząsteczek, śladów i kilwatera daje auto na każdej nawierzchni
 rcinfo <folder_gry> ram RCCarsDB/beach_1.sb [przeciwnik] [s] [side]  # gracz wjeżdża w przeciwnika: wypadnięcie z nagrania, powrót, „Łup!”
+rcinfo <folder_gry> drown RCCarsDB/beach_1.sb [auto 1-3]  # strefy powrotu, pudło kolizji, czas tonięcia na kilku głębokościach (też przeciwnika)
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
 rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
 rcshot <folder_gry> beach_1 shot.png [w h] [x y z yaw pitch]   # render offscreen, z autem i kamerą za nim
@@ -553,8 +562,8 @@ lib/Tempest     silnik (submoduł git)
 3. ~~Fizyka jazdy: Bullet `btRaycastVehicle` + parametry z ustawień gry~~ (zrobione; do dostrojenia na wyczucie
    względem oryginału; kolizje kul z `cdt*.ini` nieużyte)
    - ~~nawierzchnie i woda~~ (zrobione: głęboki piasek i woda spowalniają, w głębokiej wodzie auto tonie i wraca do
-     ostatniego punktu kontrolnego); ~~kurz i bryzgi spod kół, ślady opon, kilwater, spaliny, brudzenie auta~~
-     (zrobione); brakuje stref `car_reset_volume_*` („dziury”)
+     ostatniego punktu kontrolnego, strefy `car_reset_volume_*`); ~~kurz i bryzgi spod kół, ślady opon, kilwater,
+     spaliny, brudzenie auta~~ (zrobione)
 4. Węzły `INST` (instancje obiektów): ~~rekwizyty~~ (zrobione: bryły sztywne z parametrami ze skryptów; brakuje
    wiatru dla kłębków i dźwięków uderzeń `SNCH`); ~~postacie i zwierzęta~~ (zrobione; brakuje efektu strzału
    strażnika, śladów stóp i rozgniecenia kraba); ruch uliczny czeka. Do tego `HHID` (widoczność/sektory)

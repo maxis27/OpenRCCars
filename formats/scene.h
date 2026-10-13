@@ -132,12 +132,14 @@ struct SbMarker {
   };
 
 // EVOL: named volume (trigger), e.g. "water_box", "car_shortcut", "car_reset_volume_*".
-//   0x03 name, 0xd0 u32 shape, 0xd4 shape data (floats, world space). All volumes in the tracks are shape 2, a
-//   vertical prism: y min, y max, then the corners of its outline (x, z).
+//   0x03 name, 0xd0 u32 shape, 0xd4 shape data (floats, world space), SCRI child: its script (car_reset_volume_*:
+//   Section Keys "Params" FilterTime(int) = <ms> End). All volumes in the tracks are shape 2, a vertical prism:
+//   y min, y max, then the corners of its outline (x, z).
 struct SbVolume {
   std::string        name;
   uint32_t           shape = 0;
   std::vector<float> data;
+  std::string        script;
 
   // inside the prism (shape 2); false for other shapes
   bool contains(const Vec3& p) const;

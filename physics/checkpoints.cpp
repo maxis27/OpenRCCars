@@ -148,8 +148,12 @@ Mat4 Checkpoints::respawn(float carBottom) {
   hasLast = false;
   if(!passed || points.size()<2)
     return startPose;
-  const Vec3 at   = points[lastMain].position;
-  Vec3       dir  = points[lastMain+1].position-at;
+  return poseAt(lastMain,carBottom);
+  }
+
+Mat4 Checkpoints::poseAt(size_t i, float carBottom) const {
+  const Vec3 at   = points[i].position;
+  Vec3       dir  = points[std::min(i+1,points.size()-1)].position-at;
   dir.y = 0;
   const float yaw = (std::abs(dir.x)+std::abs(dir.z)>1e-3f) ? std::atan2(dir.x,dir.z)*180.f/3.14159265f : 0.f;
   Mat4 pose = Mat4::translate(at)*Mat4::rotate(1,yaw);

@@ -372,6 +372,8 @@ class Loader {
         if(ch.id==0xd4)
           for(size_t i=0; i+4<=ch.size(); i+=4)
             v.data.push_back(ch.f32(i));
+        if(ch.is("SCRI"))
+          v.script = scriptText(ch);
         }
       scene.volumes.push_back(std::move(v));
       }
@@ -411,18 +413,25 @@ class Loader {
       scene.instances.push_back(std::move(in));
       }
 
-    void script(const Chunk& c) {
-      SbScript s;
-      s.model = model;
-      for(auto& ch:c.children()) {
-        if(ch.id==0x03 && ch.type!=0x92) s.name = std::string(ch.str());
+    static std::string scriptText(const Chunk& c) {
+      std::string text;
+      for(auto& ch:c.children())
         // u32 length, then the text
         if(ch.id==0x7e && ch.size()>=4) {
           const size_t n = std::min<size_t>(ch.u32(),ch.size()-4);
-          s.text.assign(reinterpret_cast<const char*>(ch.data()+4),n);
-          while(!s.text.empty() && s.text.back()=='\0')
-            s.text.pop_back();
+          text.assign(reinterpret_cast<const char*>(ch.data()+4),n);
+          while(!text.empty() && text.back()=='\0')
+            text.pop_back();
           }
+      return text;
+      }
+
+    void script(const Chunk& c) {
+      SbScript s;
+      s.model = model;
+      s.text  = scriptText(c);
+      for(auto& ch:c.children()) {
+        if(ch.id==0x03 && ch.type!=0x92) s.name = std::string(ch.str());
         }
       scene.scripts.push_back(std::move(s));
       }

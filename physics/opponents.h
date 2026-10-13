@@ -11,6 +11,7 @@
 #include "cargeometry.h"
 #include "carparams.h"
 #include "checkpoints.h"
+#include "resetvolumes.h"
 #include "vehicle.h"
 
 class btBoxShape;
@@ -35,6 +36,8 @@ class RouteTracker {
     // the car at `car` with `laps` laps done; returns progress()
     float  update(const Vec3& car, size_t laps);
     float  progress() const { return value; }
+    // the car is between route()[segment()] and the point after it
+    size_t segment() const { return seg; }
 
   private:
     // how far ahead along the route the car may be found at once
@@ -62,6 +65,9 @@ class RouteTracker {
 // When another car comes at it, it is knocked off the recording (knock(), RCCars.exe 0x533990 -> 0x4fd9d0): from
 // then on it is a car like the player's (Vehicle, with its own CarParams), driven by the game's autopilot back
 // onto the recording (0x4fdb50 .. 0x4fe490, see drive()), and replays again once it is there.
+// The game puts its cars back on the track as it does the player's (0x508160, see trackRules()): out of the
+// collision box, drowned or in a reset volume. The car goes to the last main checkpoint it has passed (its grid
+// slot before the first one), knocked off and driving back onto its recording from there (0x508b50).
 class Opponent {
   public:
     // `laps`: the recording and its variants, at least one; `params` drive the car once it is knocked off
@@ -91,6 +97,14 @@ class Opponent {
     Vec3                 localSpin() const;
     // a car came at it (any contact with a car resets this)
     void                 touched() { sinceTouch = 0; }
+    // the track's collision box and reset volumes (Opponents::setTrack); none: the car is never put back
+    void                 setTrack(const Vec3& boxMin, const Vec3& boxMax, const ResetVolumes& volumes);
+    // RCCars.exe 0x508160 after every update() of the race: out of the collision box (sideways, or 0.1 m under
+    // it), drowned (Vehicle::drownRate), longer than FilterTime in a reset volume, or knocked off and in any reset
+    // volume (0x4fe3f0): put back on the track. True if it was
+    bool                 trackRules(float dt);
+    // back on the track at the last main checkpoint passed
+    void                 putBack();
 
     Mat4                 pose() const;
     // model space pose of geometry().wheels[i]: spinning with the speed, the front ones turned into the curve
@@ -118,6 +132,7 @@ class Opponent {
     std::string          name;
     int32_t              car = 0;           // 0 Overkill, 1 Buggy, 2 Hummer
     int32_t              skin = 0;          // AIPlayer<n> Skin
+    size_t               putBacks = 0;      // times put back on the track
 
   private:
     // the autopilot of a knocked car
@@ -128,6 +143,7 @@ class Opponent {
     Vec3                                  framePoint(size_t i) const;
 
     PhysicsWorld&                         owner;
+    const Checkpoints&                    checkpoints;
     CarGeometry                           geom;
     CarParams                             prm;
     std::vector<CarProfile>               profiles;
@@ -162,6 +178,12 @@ class Opponent {
     // back on the recording: the knocked car's pose relative to the recording's fades away (0x503190)
     Mat4                                  resumeOffset;
     float                                 resumeFade = 0;
+
+    // putting it back on the track
+    bool                                  hasTrack   = false;
+    Vec3                                  boxMin, boxMax;
+    ResetVolumes                          resets;
+    float                                 drownTimer = 0;
   };
 
 // The field of a race: the opponents of the track for a difficulty, and the standings with the player.
@@ -178,6 +200,8 @@ class Opponents {
               const Checkpoints& route, Level level, const Params& params = {});
     ~Opponents();
 
+    // the track's collision box and reset volumes, for putting the cars back on the track (Opponent::trackRules)
+    void                 setTrack(const SbScene& track);
     // the player's grid slot when racing against them (PlayerPath, the recording of the player's start)
     bool                 playerStart(Mat4& pose) const;
     // everyone back on the grid

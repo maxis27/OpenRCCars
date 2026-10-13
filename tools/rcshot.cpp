@@ -87,6 +87,8 @@ int main(int argc, const char** argv) {
           if(jump!=nullptr && !jumped && t>=float(std::atof(jump)))
             in.jump = jumped = true;
           veh.update(in,1.f/60.f);
+          if(veh.hit()!=rc::Vehicle::Hit::None)
+            Log::i(veh.hit()==rc::Vehicle::Hit::Great ? "great hit" : "hit"," at ",t," s, ",veh.boostTank()," turbo");
           world.step(1.f/60.f);
           }
         carPose = veh.pose();

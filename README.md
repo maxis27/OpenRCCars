@@ -39,8 +39,9 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   wodospady) nie jest twarda: auto brodzi w płytkiej wodzie i zwalnia, w głębokiej tonie, a po 1 s całkiem pod wodą (po dach, antena się nie liczy)
   wraca do ostatniego punktu kontrolnego, jak w instrukcji („jeśli utoniesz w morzu”). Tam też wraca po klawiszu R
   i po wypadnięciu poza trasę.
-- **wyścig**: odliczanie 3, 2, 1, „Jazda!” (auto stoi do startu), 3, 5 albo 7 okrążeń, czas całkowity i czas
-  okrążenia, najlepsze okrążenie, „zły kierunek”, meta z tabelą czasów i „jeszcze raz”.
+- **wyścig**: odliczanie 3, 2, 1, „Jazda!” z dźwiękami startu `cp_start` i `prestart` (auto stoi do startu), 3, 5
+  albo 7 okrążeń, czas całkowity i czas okrążenia, najlepsze okrążenie, „zły kierunek”, meta z tabelą czasów i
+  „jeszcze raz”.
   Liczą się główne punkty kontrolne `cp_N` (na beach_1 cztery, każdy z kolorowym graffiti na ziemi): okrążenie to
   przejechanie ich wszystkich po kolei, jak w instrukcji, a R wraca na ostatni zaliczony. Jak w RCCars.exe punkt
   zalicza się, gdy auto minie jego marker bliżej niż 1,6 m (liczone w 3D), i sprawdzany jest tylko następny w
@@ -48,12 +49,13 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   punktu do 15 m od niego albo podjedzie bliżej niż 4 m od boku jego korytarza). Tak jak w oryginale na country_3
   da się zaliczyć `cp_3` wcześnie: stoi 2,2 m od drogi przy wjeździe w pętlę, którą trasa objeżdża dwa razy. Kokpit rysujemy obrazkami
   z gry (`Language/Polish` albo `Language/English`: odliczanie, „okrążenie”, komunikaty, czcionka `Smash26`; czas, numer okrążenia i liczby na zegarach metalicznymi cyframi `cock_num`, które oryginał trzyma w samym `RCCars.sb`)
-  w miejscach z `Settings/cockpit.ini`; strzałka (szewron `coc_str_2`) pokazuje następny punkt kontrolny
-  i miga na czerwono, gdy jedziesz w złą stronę. Nad następnym głównym punktem wisi animowana strzałka z gry
+  w miejscach z `Settings/cockpit.ini`; strzałka kierunku to jak w oryginale bryła 3D `Arrow` z `cockpit.sb`
+  (dwa szewrony), która obraca się w stronę dalszej drogi, zmienia kolor z zielonego przez żółty na czerwony, gdy
+  zbliżasz się do następnego punktu, jest czerwona i miga przy jeździe w złą stronę. Nad następnym głównym punktem wisi animowana strzałka z gry
   (`cp_ar_2_f1..3` zielona, a nad `cp_1`, gdzie kończy się okrążenie, czerwona `cp_ar_3_*`), z rozmiarem i odległościami
   z `Settings/anim_cp.ini`. Na dole zegary z gry (`cockpit_sp1`/`cockpit_sp2`/`cockpit_sp4`): dopalacz po lewej,
   prędkość po prawej (pełny przy 50 km/h); pod numerem okrążenia mapa trasy (`trackmap_<n>`) wokół auta w ramce
-  `messagebox`, z punktami głównymi (`map_cp`, następny świeci) i autami (`map_arrow`: gracz i przeciwnicy); strzałka kierunku zielona
+  `messagebox`, z punktami głównymi (`map_cp`, następny świeci) i autami (`map_arrow`: gracz i przeciwnicy); strzałka kierunku
   w nawiasach z `overtaking.csi`; w lewym górnym rogu miejsce (`place1..6`) w wyścigu z przeciwnikami. Czas i numer
   okrążenia metaliczne jak w oryginale, czas okrążenia miga pod czasem tylko po jego ukończeniu. Spoza
   oryginału są tylko kule zaliczania punktów (1,6 m) obrysowane na trasie do debugowania (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
@@ -271,6 +273,12 @@ lib/Tempest     silnik (submoduł git)
     kontrolny +10, z wciśniętym dopalaczem schodzi `boostSpeedDown` (1..10, 5,45 jedn./s). Gdy się opróżni przy
     wciśniętym klawiszu, dopalacz rusza znowu po 0,9 s i dopiero powyżej 10 jednostek. `BOOSTERS` nie zmienia
     przyspieszenia, tylko ładowanie turbo;
+  - „Łup!” i „Wielkie Łup!” (`msg_hits.csi`, przez 1 s, ważniejsze od „złego kierunku”): każde daje +5 jednostek
+    turbo. „Łup!” za dotknięcie rekwizytu ze `stone.sb` szybciej niż 7 km/h (najwyżej co 0,3 s). Po zetknięciu
+    z innym autem (najwyżej co 2 s) gra przez 0,5 s sumuje obrót auta w jego osiach: średnio ponad 3 rad/s wokół X,
+    5 wokół Z albo 7 w sumie to „Wielkie Łup!”, ponad 0,8 / 1 / 2 to „Łup!”. Ludzie, strażnik (od 10 km/h) i pies
+    (od 15 km/h) dają „Wielkie Łup!” (najwyżej co 2 s), jeszcze ich nie ma na torach; kraby, pająki, mewy i ruch
+    uliczny nic;
   - skręt: pozycja kierownicy rośnie w stronę wciśniętą o `4,5 - 0,5·v` (v w m/s, najmniej 1) na sekundę, wraca
     (i przechodzi na drugą stronę) o 6 na sekundę; `steering<N>.bspl` zamienia ją na kąt kół (20° na jednostkę),
     który rośnie do `AngleSteer` (0..100, 29,3°). Pełny skręt nie maleje z prędkością, tylko wolniej się go nabiera;
@@ -343,8 +351,7 @@ lib/Tempest     silnik (submoduł git)
   (130; 126,6 z 256). Ze zrzutu oryginału: rurka wypełnia się na czerwono od dolnego końca (zero) w górę, nad
   wartością jest żółta do tego, co auto może osiągnąć (zbiornik dopalacza, prędkość maksymalna z dopalaczem;
   tam ciemna zatyczka z `cockpit_sp4`), dalej szara (szara rurka z `cockpit_sp2` obrócona o 184°); na wartości
-  srebrna obejma z `cockpit_sp4`. Strzałka kierunku w oryginale to bryła 3D `extru9` z `cockpit.sb` (materiały
-  green/red, `arrow.ini` to jej kamera); u nas na razie `coc_str_2` zabarwiona na zielono. Rozmiar
+  srebrna obejma z `cockpit_sp4`. Rozmiar
   i miejsce zegarów zmierzone z obrazka kokpitu w opcjach (`opt_cock_all`; `opt_cock_[aclm]_*` pokazują części
   kokpitu: miejsce i tabela, mapa, czat i turbo). Mapy `trackmap_1..10` (512x512) są obrócone dowolnie; która należy
   do której trasy i jak leży na niej świat, dopasowaliśmy do pomarańczowych kropek (to `map_cp` w miejscach głównych
@@ -352,8 +359,7 @@ lib/Tempest     silnik (submoduł git)
   (tabela `TrackMaps` w `game/hud.cpp`; odchyłki do kilku texeli). `map.ini` podaje róg mapy (620, 79).
   `cockpit.sb` to model świateł startowych (`light1..3`, `lightsframe`), ale jego tekstur nie ma w paczce.
 - Kokpit: `Settings/cockpit.ini` i `cockpit_time.ini` podają pozycje na ekranie 800x600 (np. `lapPosX` 713 → x 613,
-  `timeTotalPosY` → y 6, `msgOffsetY` → komunikaty 142 px nad środkiem, `timeLapBlinkInSec` 4,2 s), `arrow.ini`
-  strzałkę (`CX` 50 %, `CY` 87 %, pochylona o `AngleVert` 45°). `anim_cp.ini` (`Size` 146, `Shift` 128,
+  `timeTotalPosY` → y 6, `msgOffsetY` → komunikaty 142 px nad środkiem, `timeLapBlinkInSec` 4,2 s). `anim_cp.ini` (`Size` 146, `Shift` 128,
   `MinDist` 237, `MaxDist` 900, `BlinkDelta` 10): `Shift` to texele obrazka wysokiego na 256, więc jest podniesiony
   o połowę wysokości i cień narysowany u jego dołu leży na ziemi pod markerem; resztę czytamy jako centymetry
   i setne sekundy: strzałka ma 1,46 m, znika bliżej niż 2,37 m od kamery, dalej niż 9 m trzyma rozmiar na ekranie
@@ -362,6 +368,27 @@ lib/Tempest     silnik (submoduł git)
   Czcionka `Smash20/26.csi` to siatka 10 kolumn × 9 wierszy (25,6 × 28,4 px) ze znakami w kolejności z `Smash*.dat`;
   szerokość liter mierzymy z kanału alfa. Teksty w `Language/Game/*.tbl` są zaszyfrowane, więc napisy tabeli
   wyników są na razie wpisane w kod. Liczbę okrążeń (3, 5 lub 7) wybiera się w oryginale w menu.
+- Odliczanie to skrypty w `RCCars.sb` (`IRCS`): `RaceEntry` ma `1.0 Show3`, `2.0 Show2`, `3.0 Show1`, `4.0 StartRace`
+  (sekunda bez niczego, potem cyfry), `RaceAgain` („jeszcze raz”) to samo bez tej sekundy, start po 3 s. Polecenie
+  `Show3` w `RCCars.exe` (0x4e2060 → 0x52a6a0) gra dźwięk 2 kanału `Checkpoint` (`cp`, `cp_beside`, `cp_start`,
+  `cp_reset`, `cp_wrongway`), czyli `cp_start.wav`, i kanał `Prestart` (`prestart.wav`, 9 s) naraz. Dźwięki są w
+  archiwum w `Sound\*.wav` jako zwykłe PCM 16 bit. Światła startowe z `cockpit.sb` (`lightsframe`, `light1..12`)
+  oryginał pomija: wczytuje ten plik jako model `Arrow` tylko dla strzałki `extru9`, a tekstur świateł nie ma w archiwum.
+- Strzałka kierunku (`RCCars.exe` 0x4af3c9, 0x4b0fa0, 0x4b1360, 0x4e8f00): model `Arrow` z `cockpit.sb` to dwa
+  szewrony (`extru9` z bokami `extru9_2_body` i 0,324 m za nim `extru9_3` z `extru9_1_body`), wszystko z teksturą
+  `coc_str_2`, rysowane bez światła i bez przezroczystości (boki biorą srebrny pasek z dolnej, przezroczystej części
+  tekstury). Gra szuka `extru9` i `extru9_3` i nadaje im kolor ARGB z v = 512·k: czerwony min(512−v, 255), zielony
+  min(v, 235), bez niebieskiego, czyli k = 1 zielony, 0,5 żółty, 0 czerwony. k dąży (1 na sekundę) do drogi, jaka
+  została do następnego głównego punktu, podzielonej przez drogę od poprzedniego do niego; w złą stronę do 0.
+  Kamera z `Settings/arrow.ini` (zastępuje `Arrow_cam` z `RCCars.sb`): `NearPlane` 10 mm, pole widzenia `AngleVert`
+  45° w poziomie i w pionie, kwadrat `Len` 17 % szerokości i wysokości ekranu ze środkiem w `CX` 50 %, `CY` 87 %,
+  kamera w (0; (`pos_y`−200)/100; (`pos_z`−200)/100) = (0; 1,12; 1) patrzy na (0; cos 39°; sin 39°), gdzie 39° to
+  `dir` − 90. Model obraca się wokół osi pionowej najwyżej o 90° na sekundę (10 razy szybciej, kolor też, zaraz po
+  zaliczeniu punktu, dopóki nie wskaże nowego kierunku z dokładnością do 1°). Miga (0,25 s widać, 0,25 s nie) przy
+  jeździe w złą stronę i gdy auto było już bliżej niż 5 m od następnego punktu, ale go nie zaliczyło. Kierunek
+  w oryginale to kierunek korytarza trasy, na którym jest auto (albo prosto na punkt poza korytarzami), a zła
+  strona to 6 s jazdy przeciw niemu; u nas strzałka wskazuje pośredni punkt `cp_N_M`, a zła strona zostaje z
+  `rc::Race`.
 - `CarProfiles/<trasa>/<nazwa>.dat` (nagrania przeciwników) mają ten sam format elementów co sceny: nagłówek
   `0x60` (m.in. `g` = 136, długość klatki, i teksty „Time path FULL: 68.185939”, „CYCLE: 65.022942”), `0x63`
   (liczba klatek, czas), `0x64` klatki, `0x65` lista zdarzeń (nieużywana). Klatka (ok. 100 na sekundę) to pełny
@@ -409,9 +436,10 @@ lib/Tempest     silnik (submoduł git)
 4. Węzły `INST` (instancje obiektów): ~~rekwizyty~~ (zrobione: bryły sztywne z parametrami ze skryptów; brakuje
    wiatru dla kłębków i dźwięków uderzeń `SNCH`); postacie, zwierzęta i ruch uliczny czekają na animacje
    (`SPLN`/`ANIM`/`ASEQ`) i AI. Do tego `HHID` (widoczność/sektory)
-5. Dźwięk: odszyfrowane WAV z `Sound/`, muzyka MP3 z `Tracks/`
+5. Dźwięk: WAV z `Sound\` w archiwum (na razie tylko dźwięki odliczania, przez OpenAL Soft z Tempest), muzyka MP3
+   z `Tracks/`
 6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
-   świateł startowych z `cockpit.sb` (ich tekstur `lights`/`cockpit` nie ma w RCCars.pack), menu i zapisu rekordów)
+   menu i zapisu rekordów)
 7. ~~Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`)~~
    (zrobione dla szybkiego wyścigu; brakuje zderzeń, które wytrącają przeciwnika z nagrania, mistrzostw z
    `championship.ini`, duchów z `GhostRecords`, twarzy kierowców i ich wyboru w menu)

@@ -12,6 +12,7 @@
 #include <map>
 #include <memory>
 
+#include "arrow.h"
 #include "camera.h"
 #include "hud.h"
 #include "physics/checkpoints.h"
@@ -19,6 +20,7 @@
 #include "physics/race.h"
 #include "physics/vehicle.h"
 #include "resources.h"
+#include "sounds.h"
 #include "world/modelmesh.h"
 #include "world/level.h"
 #include "world/objects.h"
@@ -44,11 +46,15 @@ class MainWindow : public Tempest::Window {
     void loadLevel(const std::string& name);
     void loadCar(size_t id);
     void respawnCar();    // back to the last checkpoint passed (R, drowned, off the track)
-    void setupPhysics(bool restartRace = true); // the car on the start line and the race from the countdown
+    // the car on the start line and the race from the countdown; `again`: "Jeszcze raz", no delay before "3"
+    void setupPhysics(bool restartRace = true, bool again = false);
     void setupOpponents();                      // the opponents of the track for aiLevel
     std::vector<rc::Mat4> carPartPoses() const;
     std::vector<rc::Mat4> opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const;
     Hud::Info             hudInfo() const;
+    // the way on for the arrow: the point it shows, relative to the car's heading, radians, positive = left
+    float                 wayDirection() const;
+    DirectionArrow::Input arrowInput() const;
 
     Tempest::Device&        device;
     Resources&              resources;
@@ -77,6 +83,8 @@ class MainWindow : public Tempest::Window {
     bool                    paused   = false;
     rc::Vec3                lastCarPos;     // for the car's velocity
     std::unique_ptr<Hud>    hud;
+    std::unique_ptr<DirectionArrow> arrow;
+    std::unique_ptr<Sounds> sounds;
     bool                    jumpPressed = false;
     float                   upsideDown = 0; // seconds on the roof or side, then the car is put back
     Camera                  camera;

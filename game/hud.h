@@ -19,9 +19,9 @@ class Resources;
 
 // The race cockpit over the 3D view, drawn with the original's own pictures from Language/<language>/: the
 // countdown ("3", "2", "1", "Jazda!"), "okrążenie" with the lap number, "zły kierunek", "najlepsze okrążenie",
-// "meta", "pauza", and the times in the game's Smash font. Positions follow Settings/cockpit.ini and
+// "meta", "pauza", "Łup!", and the times in the game's Smash font. Positions follow Settings/cockpit.ini and
 // cockpit_time.ini (a 800x600 screen; elements on the right keep their distance from the right edge on wider
-// screens). The direction arrow is the cockpit's chevron (coc_str_2) turned towards the next checkpoint. Over the
+// screens). The direction arrow between the brackets is a 3D model drawn by DirectionArrow (game/arrow.h). Over the
 // next main checkpoint hangs the animated arrow cp_ar_* (Settings/anim_cp.ini).
 // At the bottom the original's two gauges (cockpit_sp1, cockpit_sp2): turbo on the left, the speed on the right; at the
 // top right under the lap the track map (trackmap_<n>, map_cp, map_arrow), at the top left the place (place<n>.csi)
@@ -37,7 +37,6 @@ class Hud {
       float turbo     = 0;     // 0..1 of the tank
       float turboMax  = 1;     // the tank's size, 0..1 of the gauge (the original: 50..100 units of 100)
       float speedMax  = 0;     // km/h the car can reach (with turbo)
-      float direction = 0;     // the next checkpoint relative to the car's heading, radians, positive = left
       int   place     = 0;     // 1.. the place in the race, 0: not shown (no opponents)
       rc::Vec3 carPos, carForward;            // the player's car, for the map
       struct Car { rc::Vec3 pos, forward; };
@@ -54,6 +53,8 @@ class Hud {
     void setTrack(const std::string& name);
     // a race event: starts its message
     void event(rc::Race::Event e);
+    // the player's car hit something (RCCars.exe): "Łup!", or "Wielkie Łup!" when `great`, for a second
+    void hit(bool great) { hitAt = clock; hitGreat = great; }
     // `dt` seconds of real time (messages and blinking)
     void tick(float dt) { clock += dt; }
     // `frame` is the frame in flight (its vertex buffer is rewritten)
@@ -135,8 +136,7 @@ class Hud {
     Tempest::RenderPipeline          pso;
     Tempest::RenderPipeline          psoDepth;  // the same, tested against the scene's depth
     std::string                      lang;
-    Image                            msg321, msgGo, msgBest, msgWrong, msgPause, lapLabel;
-    const Tempest::Texture2d*        arrow = nullptr; // coc_str_2, 128x128
+    Image                            msg321, msgGo, msgBest, msgWrong, msgPause, msgHits, lapLabel;
     // cp_ar_<2 green, 3 red: the lap's end>_f<1..3>, 256x256: arrows pointing down at the next checkpoint
     const Tempest::Texture2d*        cpArrow[2][3] = {};
     Font                             font;
@@ -162,6 +162,8 @@ class Hud {
     float                            clock      = 0;
     Message                          message    = Message::None;
     float                            messageAt  = 0;
+    float                            hitAt      = -100;
+    bool                             hitGreat   = false;
     float                            lapAt      = -100; // when the last lap was finished: its time blinks
     float                            flashAt    = -100; // when the last main checkpoint was passed
     int                              scrW = 0, scrH = 0;

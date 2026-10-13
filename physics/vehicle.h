@@ -44,6 +44,8 @@ class PhysicsWorld {
 
     // btCollisionObject::getUserIndex() of props (Prop), the only bodies suspension rays hit besides the track
     static constexpr int     PropTag = 1;
+    // the same of the opponents' cars (Opponent)
+    static constexpr int     CarTag  = 2;
     struct PropHit {
       btRigidBody* body = nullptr;
       Vec3         point, normal;
@@ -94,6 +96,11 @@ class Vehicle {
     // call once per frame before PhysicsWorld::step
     void                       update(const Input& in, float dt);
 
+    // RCCars.exe's "Łup!" / "Wielkie Łup!" (msg_hits.csi): what the car hit since the last update, see Vehicle::hits.
+    // Every hit has already added 5 units to the turbo tank.
+    enum class Hit : uint8_t { None, Hit, Great };
+    Hit                        hit() const { return lastHit; }
+
     // model -> world
     Mat4                       pose()  const;
     // forward speed, m/s (negative when reversing)
@@ -124,6 +131,8 @@ class Vehicle {
 
     // surface under the wheels, water: slows the car down, tracks drowning
     void                                  surfaces(float dt);
+    // the contacts of the last physics steps -> lastHit
+    void                                  hits(float dt);
 
     PhysicsWorld&                         owner;
     CarGeometry                           geom;
@@ -139,6 +148,13 @@ class Vehicle {
     float                                 sub   = 0;
     float                                 wet   = 0;          // share of the wheels in water, 0..1
     float                                 underWater = 0;     // s fully under water
+
+    Hit                                   lastHit   = Hit::None;
+    bool                                  wheelProp = false;  // a suspension ray stood on a prop
+    float                                 sinceProp = 1e3f;   // s since the last hit on a prop
+    float                                 sinceCar  = 1e3f;   // s since the last contact with another car
+    float                                 shakeLeft = 0;      // s left of the window after a car contact
+    Vec3                                  shake;              // the window's rotation so far, model axes, rad
 
     std::unique_ptr<btBoxShape>           box;
     std::unique_ptr<btCompoundShape>      shape;

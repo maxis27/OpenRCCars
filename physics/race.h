@@ -14,28 +14,33 @@ class Race {
   public:
     enum class Phase { Countdown, Racing, Finished };
 
-    // what happened during an update(), for the messages on the screen
-    enum class Event { None, Go, Checkpoint, Lap, BestLap, Finish };
+    // what happened during an update(), for the messages and sounds: Count when "3" shows up
+    enum class Event { None, Count, Go, Checkpoint, Lap, BestLap, Finish };
 
-    // "3", "2", "1" a second each, then "Jazda!" (Language/*/msg_321_s_f.csi)
-    static constexpr float CountdownTime = 3.f;
+    // "3", "2", "1" a second each, then "Jazda!" (Language/*/msg_321_s_f.csi), as RCCars.sb scripts RaceEntry
+    // ("1.0 Show3, 2.0 Show2, 3.0 Show1, 4.0 StartRace") and RaceAgain (the same from 0 to 3.0): a race entered
+    // waits a second before "3", one started again does not
+    static constexpr float CountTime  = 3.f;
+    static constexpr float EntryDelay = 1.f;
     // the original offers 3, 5 or 7 laps (manual: "Liczba okrążeń")
     static constexpr int   DefaultLaps   = 3;
 
     Race(Checkpoints& route, int laps = DefaultLaps);
 
-    // from the countdown again, the car standing at `start`
-    void   restart(const Mat4& start);
+    // from the countdown again, the car standing at `start`; `again`: "Jeszcze raz", without the entry delay
+    void   restart(const Mat4& start, bool again = false);
     // `dt` seconds of game time with the car at `car` moving at `velocity` (m/s)
     Event  update(float dt, const Vec3& car, const Vec3& velocity);
 
     Phase  phase()     const { return state; }
     // the car must stand still: before the start
     bool   holdCar()   const { return state==Phase::Countdown; }
-    // seconds until the start, CountdownTime .. 0
-    float  countdown() const { return std::max(0.f,CountdownTime-clock); }
+    // seconds until the start, startTime() .. 0; the numbers show from CountTime down
+    float  countdown() const { return std::max(0.f,startAt-clock); }
+    // seconds from restart() to the start
+    float  startTime() const { return startAt; }
     // seconds since the start (stops at the finish)
-    float  time()      const { return std::max(0.f,clock-CountdownTime); }
+    float  time()      const { return std::max(0.f,clock-startAt); }
     // seconds into the current lap
     float  lapTime()   const { return time()-lapStart; }
     // the lap being driven, 1 .. laps(); laps() after the finish
@@ -56,6 +61,7 @@ class Race {
     Phase              state    = Phase::Countdown;
     int                lapCount = DefaultLaps;
     float              clock    = 0;   // since restart(), the countdown included
+    float              startAt  = EntryDelay+CountTime;
     float              lapStart = 0;   // time() when the current lap began
     std::vector<float> times;
     bool               wrong    = false;

@@ -14,6 +14,7 @@
 
 #include "arrow.h"
 #include "camera.h"
+#include "effects.h"
 #include "hud.h"
 #include "physics/checkpoints.h"
 #include "physics/opponents.h"
@@ -86,6 +87,7 @@ class MainWindow : public Tempest::Window {
     rc::Vec3                lastCarPos;     // for the car's velocity
     std::unique_ptr<Hud>    hud;
     std::unique_ptr<DirectionArrow> arrow;
+    std::unique_ptr<Effects>        effects;    // dust and spray of the cars
     std::unique_ptr<Sounds> sounds;
     std::unique_ptr<rc::CarSound>   carSound;   // the player's engine
     std::vector<rc::AiCarSound>     aiSounds;   // one per opponent

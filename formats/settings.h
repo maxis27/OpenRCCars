@@ -26,6 +26,10 @@ class SliderFile {
 
     SliderFile() = default;
     static SliderFile parse(std::string_view text);
+    // the compiled form (Settings\*.crs): [u16 tag][u32 end] records, 0x0220 opens a key, 0x4021 its name
+    // (bytes XOR 0x25), 0x3023/0x3024/0x3025 min/max/value. Some settings ship only like this (surf_*.crs,
+    // water_splash.crs, water_spray.crs, wtr_trace.crs).
+    static SliderFile parseCrs(const std::vector<uint8_t>& data);
 
     const Slider* find(std::string_view key) const;
     // slider position as stored (FValues ignored), or `def` if the key is missing
@@ -70,6 +74,25 @@ class Spline {
 
   private:
     std::vector<Point> pts;
+  };
+
+// Splines\*.spl (text) of the effects (dust_int.spl, dust_speed.spl, wspr_int.spl ...): the number of segments,
+// then per segment its start point, two handles and its end point, as "x y" lines. RCCars.exe evaluates such
+// curves as Hermite segments between the key points (0x40f830); the slopes are taken here from the handles: the
+// start handle gives the slope leaving a key, the end handle the slope arriving at the next one. Outside the keys
+// the curve keeps its end values.
+class CurveSpline {
+  public:
+    struct Key { float x = 0, y = 0, in = 0, out = 0; };
+
+    CurveSpline() = default;
+    static CurveSpline parse(std::string_view text);
+
+    bool  empty() const { return keys.empty(); }
+    float at(float x) const;
+
+  private:
+    std::vector<Key> keys;
   };
 
 }

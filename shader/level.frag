@@ -28,6 +28,16 @@ void main() {
     color.rgb = mix(c2.rgb, color.rgb, m);
     }
 
+  if((push.flags & F_DIRT)!=0u) {
+    // the dust the car picked up (RCCars.exe 0x531c20, 0x507dc0): its dirt_car textures, painted like the car,
+    // laid over it by their opacity; from the clean car to the first one, then from the first to the second
+    float t  = push.time;
+    vec4  hi = texture(texBase2, inUvBase);
+    vec4  lo = t<1.0 ? vec4(hi.rgb, 0.0) : texture(texMask, inUvBase);
+    vec4  d  = mix(lo, hi, clamp(t<1.0 ? t : t-1.0, 0.0, 1.0));
+    color.rgb = mix(color.rgb, d.rgb, d.a);
+    }
+
   if((push.flags & F_WAVES)!=0u) {
     // the sea after RCCars.exe 0x51c000 / 0x5240c0, see formats/water.h
     float edge = inUvMask.x;

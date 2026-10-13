@@ -90,5 +90,14 @@ CarGeometry rc::carGeometry(const SbScene& sb, std::string_view model) {
     w.left   = name.find("LEFT")!=std::string::npos;
     g.wheels.push_back(w);
     }
+  for(int n=1; n<=4; ++n) {
+    const std::string name = "booster_"+std::to_string(n)+"_end";
+    auto it = std::find_if(sb.meshes.begin(),sb.meshes.end(),[&](const SbMesh& m){ return m.model==modelId && m.name==name; });
+    if(it==sb.meshes.end()) {
+      g.exhausts.clear();
+      break;
+      }
+    g.exhausts.push_back({it->world.translation(),it->world.vector({0,0,1}).normalized()});
+    }
   return g;
   }

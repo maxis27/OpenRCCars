@@ -6,6 +6,7 @@
 
 #include "resources.h"
 #include "formats/settings.h"
+#include "physics/characters.h"
 
 using namespace Tempest;
 
@@ -89,6 +90,37 @@ void Sounds::setTrack(const rc::SbScene& scene) {
 
 void Sounds::tickAmbient(const rc::Vec3& ear, const rc::Vec3& right, float dt) {
   ambient.update(ear,right,dt);
+  }
+
+void Sounds::tickCharacters(const rc::Characters& chars, const rc::Vec3& ear, const rc::Vec3& right) {
+  std::map<std::string,int> seen;
+  for(auto* a:chars.actors()) {
+    const auto key = std::make_pair(a->model->name,seen[a->model->name]++);
+    auto it = actorChannels.find(key);
+    if(it==actorChannels.end()) {
+      if(a->sound.empty())
+        continue;
+      const bool people = a->kind==rc::Characters::Kind::Person || a->kind==rc::Characters::Kind::Guard;
+      auto&      lib    = people ? peopleLib : animalLib;
+      if(lib==nullptr) {
+        std::vector<uint8_t> sb;
+        try {
+          sb = res.readFile(people ? "RCCarsDB/people.sb" : "RCCarsDB/AIChars.sb");
+          }
+        catch(const std::exception& e) {
+          Log::e("character sounds: ",e.what());
+          }
+        lib = std::make_unique<rc::SoundLibrary>([this](const std::string& f){ return res.pack().read(f); },sb);
+        }
+      it = actorChannels.emplace(key,rc::BankChannel(mix,*lib,a->model->name)).first;
+      }
+    auto&          ch = it->second;
+    const rc::Vec3 to = a->world.translation()-ear;
+    const float    d  = to.length();
+    ch.setPlace(d,d>1e-3f ? rc::Vec3::dot(to,right)/d : 0.f);
+    if(!a->sound.empty())
+      ch.play(a->sound);
+    }
   }
 
 void Sounds::startMusic() {

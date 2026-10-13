@@ -93,14 +93,24 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
   baloniki, łuski, toczące się kłębki) stoją tam, gdzie kładzie je trasa (od 8 do 17 na trasie), i są bryłami
   sztywnymi: auto je potrąca, przewraca i pcha, a koła po nich przejeżdżają. Masa, sprężystość, tarcie, kształt
-  (kula, walec albo otoczka wypukła modelu) i środek masy pochodzą ze skryptu `SCRI` każdego modelu. Postacie,
-  zwierzęta i ruch uliczny (`people.sb`, `AIChars.sb`, `Roadcar.sb`) jeszcze się nie pojawiają: w oryginale chodzą
-  i jeżdżą po ścieżkach z animacjami, a ich siatki stoją w pozie spoczynkowej (część w pozie „T”), kilka na jednym punkcie startowym
+  (kula, walec albo otoczka wypukła modelu) i środek masy pochodzą ze skryptu `SCRI` każdego modelu. Ruch uliczny
+  (`Roadcar.sb`) jeszcze się nie pojawia
+- **ludzie i zwierzęta** (`people.sb`, `AIChars.sb`) zachowują się jak w `RCCars.exe`: plażowicze chodzą po
+  nagranych ścieżkach (`Profiles/<nazwa>.dat`), kopią auto albo podnoszą je i rzucają; strażnicy obracają się do
+  gracza, celują i kopią; mewy chodzą i odlatują z krzykiem, gdy ktoś podejdzie; kraby wychodzą z dziur i uciekają
+  bokiem do morza; pająki biegają między dziurami, uciekają przed autem i giną pod kołami; psy gonią auto i
+  szczekają; sępy krążą nad country_2. Potrącenie człowieka, strażnika albo psa to „Wielkie Łup!” i ich głos.
+  Animacje szkieletowe są liczone na CPU
 - **efekty spod kół**: kurz na piasku, mokrym piasku, głębokim piasku i żwirze oraz bryzgi wody, gdy koło tnie
   lustro wody, jak w `RCCars.exe`: ustawienia z `Settings/car_dustx.ini`, `surf_*.crs` i `water_spray.crs`, krzywe
   intensywności z `Splines/dust_int.spl`, `dust_speed.spl`, `wspr_int.spl`, tekstury `dust` i `particle`. Auto gracza
   kurzy wszystkimi kołami, przeciwnicy tylko tylnymi i z krócej żyjącym kurzem. Oba efekty są w oryginale
   delikatne: kurz to półprzezroczyste kłęby rosnące przez sekundę, bryzgi to kilkupikselowe krople
+- **ślady opon, kilwater, spaliny i brud**, też według `RCCars.exe`: koła zostawiają na piasku, mokrym piasku,
+  udeptanym piasku, żwirze i drewnie ślady z bieżnikiem (`car_trace.ini`, tekstury `t_halfdry_tire2_N`), za kołami
+  i karoserią w wodzie ciągnie się kilwater i piana (`wtr_trace.crs`, `whr_horse.ini`), z końcówki dopalacza lecą
+  spaliny z dużym ciemnym kłębem przy włączeniu turbo (`exhausted_gas.ini`, `eg_int.spl`), a kurz spod kół
+  powoli brudzi karoserię auta gracza, woda ją zmywa (tekstury `dirt_car*`)
 - **narzędzia**: `rcinfo` (inspekcja/eksport danych i jazda testowa, bez GPU) i `rcshot` (render offscreen do PNG)
 
 ![Auto na starcie (beach_1)](docs/car_beach_1.jpg)
@@ -115,6 +125,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 ![Przeciwnicy: start, wyścig, meta (beach_1)](docs/opponents_beach_1.jpg)
 
 ![Efekty: kurz za przeciwnikami na starcie, bryzgi spod kół w morzu (beach_1)](docs/effects_beach_1.jpg)
+
+![Ślady opon na piasku, kilwater i piana w morzu, brud na karoserii: czysta, w połowie, najbrudniejsza (beach_1)](docs/effects2_beach_1.jpg)
 
 ![Rekwizyty: pachołek (beach_2), butelki (urban_1), kłębek przy werandzie (country_3), czajnik (country_1)](docs/objects.jpg)
 
@@ -214,7 +226,7 @@ rcinfo <folder_gry> objects RCCarsDB/beach_1.sb   # obiekty na trasie (INST): mo
 rcinfo <folder_gry> race RCCarsDB/beach_1.sb [okrążenia]  # punkty kontrolne i test logiki wyścigu (bez fizyki)
 rcinfo <folder_gry> gates RCCarsDB/beach_1.sb [auto 1-3]  # każdy główny punkt kontrolny zaliczony autem z fizyką
 rcinfo <folder_gry> ai RCCarsDB/beach_1.sb [poziom 1-3] [okrążenia]  # przeciwnicy: nagrania, ich pętle i wyścig bez gracza
-rcinfo <folder_gry> fx                            # ustawienia kurzu i bryzgów, ile cząsteczek daje auto na każdej nawierzchni
+rcinfo <folder_gry> fx                            # ustawienia efektów, ile cząsteczek, śladów i kilwatera daje auto na każdej nawierzchni
 rcinfo <folder_gry> ram RCCarsDB/beach_1.sb [przeciwnik] [s] [side]  # gracz wjeżdża w przeciwnika: wypadnięcie z nagrania, powrót, „Łup!”
 rcinfo <folder_gry> drown RCCarsDB/beach_1.sb [auto 1-3]  # strefy powrotu, pudło kolizji, czas tonięcia na kilku głębokościach (też przeciwnika)
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
@@ -242,6 +254,8 @@ formats/        formaty danych, czyste C++ bez zależności
   settings.*    pliki suwaków Settings/*.ini i *.crs, Scripts/upgrades.ini, krzywe .bspl i .spl
   objects.*     modele obiektów z INST: w którym pliku leżą (stone.sb, people.sb, AIChars.sb, Roadcar.sb)
   carprofile.*  nagrane przejazdy przeciwników (CarProfiles/*.dat), Scripts/ailayouts.ini
+  skeleton.*    szkielet modelu .sb: kości, sekwencje ASEQ, poza w chwili animacji
+  actorpath.*   ścieżki postaci (Profiles/<nazwa>.dat) i lotu sępów (Profiles/vlt_*.gpf)
 physics/        fizyka jazdy (Bullet, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
@@ -249,10 +263,14 @@ physics/        fizyka jazdy (Bullet, bez GPU)
   checkpoints.* punkty kontrolne w kolejności, zaliczanie (1,6 m), postęp auta, powrót do ostatniego punktu
   race.*        wyścig: odliczanie, okrążenia, czasy, zły kierunek, meta
   props.*       rekwizyty: parametry ze skryptu SCRI, kształt, bryła sztywna
+  characters.*  ludzie i zwierzęta: zachowanie każdego rodzaju, kopnięcia i rzuty autem, „Wielkie Łup!”
   opponents.*   przeciwnicy: odtwarzanie nagrań w tempie z gumką, okrążenia, kolejność w wyścigu
 fx/             efekty cząsteczkowe, bez GPU
   particles.*   emiter i cząsteczki jak system cząsteczek RCCars.exe
-  careffects.*  kurz spod kół i bryzgi wody: ustawienia, emisja, ruch, sprite'y do narysowania
+  careffects.*  efekty auta: ustawienia, kurz, bryzgi, spaliny, brud; sprite'y i czworokąty do narysowania
+  tracks.*      ślady opon: pierścień punktów na koło, łączenie w pasy, zanikanie
+  wake.*        kilwater i piana na wodzie wokół kół i karoserii
+  marks.h       czworokąty leżące w świecie (ślady, kilwater, piana)
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
   camera.*      kamera swobodna
@@ -309,8 +327,7 @@ lib/Tempest     silnik (submoduł git)
     w przeciwnika (oba auta co najmniej 2 s od poprzedniego) gra przez 0,5 s sumuje obrót **przeciwnika** w jego
     osiach (0x5334b0): średnio ponad 3 rad/s wokół X, 5 wokół Z albo 7 w sumie to „Wielkie Łup!”, ponad 0,8 / 1 / 2
     to „Łup!”, czyli liczy się, jak mocno gracz nim rzucił. Ludzie, strażnik (od 10 km/h) i pies
-    (od 15 km/h) dają „Wielkie Łup!” (najwyżej co 2 s), jeszcze ich nie ma na torach; kraby, pająki, mewy i ruch
-    uliczny nic;
+    (od 15 km/h) dają „Wielkie Łup!” (najwyżej co 2 s); kraby, pająki, mewy i ruch uliczny nic;
   - skręt: pozycja kierownicy rośnie w stronę wciśniętą o `4,5 - 0,5·v` (v w m/s, najmniej 1) na sekundę, wraca
     (i przechodzi na drugą stronę) o 6 na sekundę; `steering<N>.bspl` zamienia ją na kąt kół (20° na jednostkę),
     który rośnie do `AngleSteer` (0..100, 29,3°). Pełny skręt nie maleje z prędkością, tylko wolniej się go nabiera;
@@ -453,6 +470,26 @@ lib/Tempest     silnik (submoduł git)
   (pachołek ma węzeł główny w (3,88; 0,10; −3,84), piłka 0,12 m nad ziemią w swoim środku). Liczone od węzła
   głównego środki mas ze skryptów wypadają tam, gdzie powinny: 0 dla piłek i puszek to ich środek, 0,03 dla
   pachołka to tuż nad ciężką podstawą. Bez tego pachołki stały kilka metrów od swojego miejsca, czasem za krawędzią trasy.
+- **Postacie** (`people.sb`, `AIChars.sb`): każdy rodzaj to osobna klasa gry (`PEOP` 0x50fda0, `GUAM` 0x51a3d0,
+  `GULL` 0x512360, `CRAB` 0x513880, `SPDR` 0x514d40, `DOG$` 0x5188f0, `VULT` 0x51af80) z ustawieniami w
+  `Settings/People.ini`, `seagull.ini`, `spider.ini`, `dog.ini`, `guard.ini`, `vulture.ini`. Skrypt `INST`
+  podaje znaczniki i bryły (`visibilityVolume`, `guardVolume`, `attackVolume`, `inhabitVolume`, `landhole1`/
+  `seahole1`, `hole1..N`, `flightDir`) oraz `clother` (podmiana tekstur, np. `man_1`→`man1_1`). Siatki są
+  związane ze szkieletem w pozie z elementu `0x38` węzła (pozycja, obrót w stopniach, skala; ręce w bok), a nie
+  w pozie `0x0b`; `ANIM` węzła ma dla każdej sekwencji pozę spoczynkową i kanały `SPLN` (`ROTX` … w stopniach).
+  Ludzie: ścieżka `.dat` to rekordy co drugi (0, 2, 4 …), są tylko do 50 m od gracza; auto bliżej niż 0,8 m od
+  stóp (albo szybsze niż 15 km/h do 4 m przed nimi, w kącie 25°) dostaje kopniaka (`Pendal`, 4 m/s od nich i
+  7 m/s w górę) albo raz na pięć, gdy jest 2,2 m miejsca, zostaje podniesione i rzucone (`Brosok`). Mewa odlatuje,
+  gdy auto, człowiek albo pies podejdzie na 4 m (`seagull_vzliot`). Krab rusza z punktu między `landhole1`
+  a `seahole1` bokiem do auta i ginie pod kołami. Pająk biega 0,25 m/s, ucieka (1,65 m/s) przed autem bliżej niż
+  1,8 m. Pies (do 25 m od domu) goni punkt przed autem w stożku 45° i atakuje przez 1,5 s (`dog_attack`).
+  Zderzenia aut z postaciami liczy własny moduł gry (0x534d00: pary klas i ich funkcje): ciało człowieka i
+  strażnika to trzy kule po 0,2 m jedna nad drugą (0x511e30), a auto zatrzymuje się na nich jak na przeszkodzie
+  (0x4f0730, impuls bez odbicia). Potrącenie liczy prędkość auta sprzed zderzenia. Pies dodatkowo odpycha auto
+  przy każdym dotknięciu o 0,5 m/s w bok i 0,12 m/s w górę (0x4f3470). Każde z tych zderzeń, także auta
+  przeciwnika, wytrąca to auto z nagrania (0x4fd9d0): przeciwnik, który potrąci człowieka, psa albo rozjedzie kraba,
+  jedzie dalej sam.
+  Sępy lecą po `Profiles/vlt_<trasa>_<1|2>.gpf` (nagłówek 0x28 bajtów, potem pozycja, przód i góra na klucz).
 - `SCRI` modelu w `stone.sb` (tekst `u32 długość` + treść w formacie `Section Keys`): `Geom` `type` (1 kula,
   2 walec, 3 stożek, 4 butelka, 5 wiadro, 6 łuska, 7 czajnik, 8 balonik), `shiftCenterMassOY` (środek masy nad
   węzłem głównym, m); `Params` `mass` (kg), `coeffHookNorm` (odbicie: 0,7 piłki, 0,3 reszta), `coeffFrict`;
@@ -475,15 +512,48 @@ lib/Tempest     silnik (submoduł git)
   `dust_speed(m/s)` procent prędkości auta, zwalnia w poziomie (`SpeedAtt`), obraca się coraz szybciej i rośnie w
   ciągu sekundy do `DynamicScale` (tył) albo `DynamicScaleForw` (przód) razy (0x52e180). Przy buksowaniu
   (`WheelSpinThresh`) kurz leci do tyłu z prędkością obwodu koła; nasz Bullet nie ma poślizgu kół, więc ta gałąź
-  czeka na nową fizykę. W oryginale kurz brudzi też auto (tekstury `dirt_car*`), tego jeszcze nie ma.
+  czeka na nową fizykę.
 - **Bryzgi** (`WATER_SPRAY`, 0x527e20, 0x527f70, 0x528220, 0x528780): gdy lustro wody przecina koło, a auto jedzie
   szybciej niż 15 km/h; ilość to `wspr_int(km/h) × cięciwa / promień`. Krople lecą na zewnątrz i w górę pod kątem
   `AngleIncidence`, połowa w drugą stronę i trzy razy krócej, płyną z autem (`SpeedDecay`), drgają
   (`OscillationLen`) i maleją do połowy w 0,7 s.
-- Rozpoznane, jeszcze nieprzeniesione: ślady opon (`car_trace`, tekstury `t_halfdry_tire2_N`, 0x52f050), kilwater na
-  wodzie (`wtr_trace`, `whr_horse`, tylko gracz, 0x528ce0, 0x526020), spaliny (`exhausted_gas`, 0x530180), pluski w
-  stałych miejscach tras (markery `water_splash_N` na beach_1, beach_3, country_3; 0x5272f0), fale
-  `Water_Wave_New` i `BURST_MNG`.
+- **Ślady opon** (`car_trace`, 0x52f050–0x5300d0): każde koło (u przeciwników tylko tylne) ma pierścień punktów,
+  32 dla przednich i 48 dla tylnych kół (u przeciwników połowa); pełny nadpisuje najstarszy. Punkt powstaje, gdy
+  auto jedzie co najmniej 1 km/h, a koło dotyka ziemi poza wodą; siła śladu zależy od dźwiękowej nawierzchni
+  (0x534fc0): piasek 0,7, mokry piasek 1, udeptany 0,3, żwir i drewno 0,6, inne bez śladu; przednie koła połowa.
+  Punkt leży 1 cm nad ziemią, a krawędzie pasa są o 5 cm × szerokość opony (0,95/1,07/1,25/1,35, tablica
+  0x5738c8, wybiera ją kupiona opona; u nas poziom ulepszenia) w bok od kierunku jazdy. Dopóki auto jedzie prosto
+  po jednym trójkącie ziemi, ostatni punkt przesuwa się dalej (test 0x52fb60), inaczej dochodzi nowy; zmiana
+  kierunku przód/tył przerywa pas. `car_trace.ini` ma dwa klucze `maxLen` i żadnego `maxHeight`, więc gra czyta
+  `maxHeight` = 0 i prawie każda klatka dokłada punkt: ślad ma długość pierścienia (przy 60 klatkach na sekundę
+  kilka metrów). Pierwszy punkt pasa i koniec pasa są przezroczyste, ostatnia ćwierć życia (60 s) zanika.
+  Rysowane do 20 m od kamery (0x52fd00) jako tekstura × siła + szarość (1 − siła)/2, mnożona przez to, co pod
+  spodem, dwa razy (u nas mieszanie `DstColor`/`SrcColor`, wywnioskowane): przy sile 0 ziemia się nie zmienia.
+  Kolejne czworokąty jednego auta są podnoszone o 2e-5 m.
+- **Kilwater** (`wtr_trace`, 0x528ce0, 0x528ed0, tylko auta graczy): jeden czworokąt na wodzie za każdym tylnym
+  kołem i za karoserią, tworzony co klatkę, gdy lustro wody przecina koło (albo połowę wysokości karoserii) i
+  auto jedzie co najmniej 1 km/h. Sięga `ForwZ` do przodu i `BackZ` do tyłu (razy 0,25 + 0,025 × km/h do 30 km/h),
+  `ForwX`/`BackX` w bok; tekstura przewija się o `wtr_text(km/h)` procent na sekundę, a jej rozciągnięcie losuje
+  się z `AnimDUVMin..Max` przy wejściu do wody. Przezroczystość `ForwA`/`BackA` maleje, gdy koło wychodzi z wody
+  albo w nią zapada. Ustawienia `*Body` czyta, ale używa tylko dla koła o numerze -1, którego gra nie podaje.
+- **Piana** (`whr_horse`, 0x526020, 0x5262e0): czworokąt leżący na wodzie wokół każdego koła (długość `ForwZ` ×
+  cięciwa, jaką woda wycina z koła, szerokość `ForwX` × szerokość opony) i wokół karoserii, sprawdzanej ćwierć jej
+  wysokości niżej (`ForwZBody`, `ForwXBody`, tekstura powtórzona 4 razy). Tekstura skacze co `AnimDelay` s; obie
+  wodne warstwy mają drugą teksturę (`*_alpha`) jako maskę przezroczystości.
+- **Spaliny** (`exhausted_gas`, 0x530180, 0x5303c0, 0x5306d0, tylko auta graczy): z węzła `booster_N_end` modelu
+  (N = kupiony dopalacz, 0x50c0e0, 0x50bcc0), tekstura `dust`, do 100 kłębów. Ilość to `eg_int(km/h)` × 0,75 przy
+  gazie, × 1,5 na turbo (powyżej 5 km/h), a włączenie turbo powyżej 10 km/h daje na `ExplodeTime` s
+  `2 × eg_int(50)` kłębów, trzy razy dłużej żyjących, prawie przezroczystych (`ExplodeAlpha`); kolor ciemnieje wtedy
+  512/s do `ExplodeColor` i wraca 256/s. Kłąb dostaje `Speed` wzdłuż rury plus prędkość auta, zwalnia (`SpeedAtt`)
+  i rośnie bez końca o `DynamicScale` − 1 na sekundę (0x530330). Gałąź buksowania (`WheelSpin`) czeka na poślizg
+  kół w fizyce. Flagę, która odpala kłąb (0x577c), uznajemy za włączenie turbo (wywnioskowane).
+- **Brud** (0x52e320, 0x531c20, 0x507dc0, 0x531450): każde koło, które kurzy, dokłada do licznika auta
+  `ilość kurzu × 0,1` na sekundę (do 3000), każde koło w wodzie zmywa 350 na sekundę. Licznik wybiera między
+  czystym autem a teksturami `dirt_car<auto>_1` i `_2` (auta 2 i 3 mają osobne `a`/`b` dla dwóch tekstur
+  karoserii `car_askin*` i `car_bskin*`) i miesza sąsiednie; brud kładzie się na lakier według swojej
+  przezroczystości. Tylko auta graczy.
+- Rozpoznane, jeszcze nieprzeniesione: pluski w stałych miejscach tras (markery `water_splash_N` na beach_1,
+  beach_3, country_3; 0x5272f0), fale `Water_Wave_New` i `BURST_MNG`.
 
 ## Dalsze kroki
 
@@ -492,16 +562,16 @@ lib/Tempest     silnik (submoduł git)
 3. ~~Fizyka jazdy: Bullet `btRaycastVehicle` + parametry z ustawień gry~~ (zrobione; do dostrojenia na wyczucie
    względem oryginału; kolizje kul z `cdt*.ini` nieużyte)
    - ~~nawierzchnie i woda~~ (zrobione: głęboki piasek i woda spowalniają, w głębokiej wodzie auto tonie i wraca do
-     ostatniego punktu kontrolnego, strefy `car_reset_volume_*`); ~~kurz i bryzgi spod kół~~ (zrobione); brakuje
-     śladów opon, kilwatera, spalin i brudzenia auta
+     ostatniego punktu kontrolnego, strefy `car_reset_volume_*`); ~~kurz i bryzgi spod kół, ślady opon, kilwater,
+     spaliny, brudzenie auta~~ (zrobione)
 4. Węzły `INST` (instancje obiektów): ~~rekwizyty~~ (zrobione: bryły sztywne z parametrami ze skryptów; brakuje
-   wiatru dla kłębków i dźwięków uderzeń `SNCH`); postacie, zwierzęta i ruch uliczny czekają na animacje
-   (`SPLN`/`ANIM`/`ASEQ`) i AI. Do tego `HHID` (widoczność/sektory)
+   wiatru dla kłębków i dźwięków uderzeń `SNCH`); ~~postacie i zwierzęta~~ (zrobione; brakuje efektu strzału
+   strażnika, śladów stóp i rozgniecenia kraba); ruch uliczny czeka. Do tego `HHID` (widoczność/sektory)
 5. ~~Dźwięk~~ (zrobione według `RCCars.exe`: kanały `SNCH` z `RCCars.sb` i `Sound\*.wav` z archiwum we własnym
    mikserze, silnik gracza i rywali, punkty kontrolne, turbo, hamulec, lot i lądowanie, toczenie się po
    nawierzchniach, uderzenia i otarcia, buksowanie, fale przy brzegu `water_splash_N`, wodospady `WATER_FALL_N`,
-   muzyka MP3 z `Tracks/` w kolejności z `Autoexec.gm`; brakuje szumu morza `water`, dźwięków postaci i ruchu
-   ulicznego)
+   muzyka MP3 z `Tracks/` w kolejności z `Autoexec.gm`, głosy ludzi, mew i psów; brakuje szumu morza `water`
+   i ruchu ulicznego)
 6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
    menu i zapisu rekordów)
 7. ~~Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`)~~

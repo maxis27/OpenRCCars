@@ -589,8 +589,26 @@ Vec3 Vehicle::localSpin() const {
   return fromBt(body->getWorldTransform().getBasis().transpose()*body->getAngularVelocity());
   }
 
-void Vehicle::push(const Vec3& impulse, const Vec3& at) {
+void Vehicle::applyImpulse(const Vec3& impulse, const Vec3& at) {
   body->applyImpulse(toBt(impulse)*S,toBt(at)*S-body->getCenterOfMassPosition());
+  }
+
+void Vehicle::addVelocity(const Vec3& dv) {
+  body->activate(true);
+  body->setLinearVelocity(body->getLinearVelocity()+toBt(dv)*S);
+  }
+
+void Vehicle::hold(const Mat4& at) {
+  const btTransform t = toBt(at*Mat4::translate(com));
+  body->setWorldTransform(t);
+  motion->setWorldTransform(t);
+  body->setInterpolationWorldTransform(t);
+  body->setInterpolationLinearVelocity(btVector3(0,0,0));
+  body->setInterpolationAngularVelocity(btVector3(0,0,0));
+  body->setLinearVelocity(btVector3(0,0,0));
+  body->setAngularVelocity(btVector3(0,0,0));
+  body->clearForces();
+  body->activate(true);
   }
 
 float Vehicle::speed() const {

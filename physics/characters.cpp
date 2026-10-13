@@ -40,6 +40,8 @@ constexpr float ThrowForward   = 7.f;      // m/s
 constexpr float TurnToCar      = 2.f*Pi;   // rad/s (360 degrees)
 constexpr float PathTurn       = Pi;       // rad/s (180 degrees), the heading towards the path's direction
 constexpr float HurtSpeed      = 15.f;     // km/h: a car faster than this hurts a person or a dog
+constexpr float DogPushOut     = 0.5f;     // m/s: a dog touched pushes the car off itself ..
+constexpr float DogPushUp      = 0.12f;    // .. and up
 constexpr float GuardHitSpeed  = 10.f;     // km/h: hitting a guard
 constexpr float HitPause       = 2.f;      // s between two "Wielkie Łup!" for the same kind
 constexpr float HitBoost       = 5.f;      // turbo units for one
@@ -954,6 +956,13 @@ void Characters::dog(State& s, float dt, Vehicle* player) {
     }
   s.actor.visible = true;
 
+  // any touch pushes the car off the dog: 0.5 m/s away from it and 0.12 m/s up (0x5349d0 -> 0x4f3470)
+  if(hitBy(s,player,-1.f)) {
+    Vec3 away = player->pose().translation()-s.pos;
+    away.y = 0;
+    away = horiz(away)>1e-4f ? away*(1.f/horiz(away)) : Vec3{};
+    player->addVelocity(away*DogPushOut+Vec3{0,DogPushUp,0});
+    }
   if(hitBy(s,player,HurtSpeed)) {
     if(sinceDog>HitPause) {
       sinceDog = 0;

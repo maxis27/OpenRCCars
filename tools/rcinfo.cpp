@@ -20,6 +20,7 @@
 #include "formats/collision.h"
 #include "formats/objects.h"
 #include "formats/water.h"
+#include "physics/characters.h"
 #include "physics/checkpoints.h"
 #include "physics/opponents.h"
 #include "physics/race.h"
@@ -876,6 +877,165 @@ static int cmdAi(const fs::path& game, const fs::path& track, rc::PackFile& pack
   return bad>0 ? 4 : 0;
   }
 
+static const char* characterKind(rc::Characters::Kind k) {
+  switch(k) {
+    case rc::Characters::Kind::Person:  return "person";
+    case rc::Characters::Kind::Guard:   return "guard";
+    case rc::Characters::Kind::Seagull: return "seagull";
+    case rc::Characters::Kind::Crab:    return "crab";
+    case rc::Characters::Kind::Spider:  return "spider";
+    case rc::Characters::Kind::Dog:     return "dog";
+    case rc::Characters::Kind::Vulture: return "vulture";
+    }
+  return "?";
+  }
+
+// people and animals of a track: what they are, then for each one a car (Car1) driving at it from 3 m away (or
+// from 2.5 m at `kmh`) for a few seconds, with what happens: animations, "Wielkie Łup!", sounds, kicks and throws
+static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile& pack, const std::string& only,
+                    float kmh) {
+  auto scene = rc::SbScene::load(readFile(game/"RCCarsDB"/(track+".sb")));
+  auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
+  rc::ObjectLibrary lib([&](const std::string& p){ return readFile(game/p); });
+  rc::CollisionMesh coll(scene);
+  auto reader = [&pack](const std::string& f){ return pack.read(f); };
+  const auto geom = rc::carGeometry(cars,"Car1");
+  const auto prm  = rc::CarParams::load(pack,1,0);
+
+  {
+    rc::PhysicsWorld world(coll);
+    rc::Characters   chars(world,lib,scene,track,reader);
+    std::printf("%zu characters\n",chars.size());
+    for(auto* a:chars.actors()) {
+      const rc::Vec3 at = a->world.translation();
+      std::printf("  %-8s %-24s %-10s at %7.2f %6.2f %7.2f",characterKind(a->kind),a->name.c_str(),a->model->name.c_str(),
+                  at.x,at.y,at.z);
+      for(auto& q:a->skeleton->sequences())
+        std::printf(" %s(%.2fs)",q.name.c_str(),q.duration);
+      for(auto& t:a->textures)
+        std::printf(" [%s->%s]",t.first.c_str(),t.second.c_str());
+      std::printf("\n");
+      }
+  }
+
+  int failures = 0;
+  for(size_t i=0;; ++i) {
+    rc::PhysicsWorld world(coll);
+    rc::Characters   chars(world,lib,scene,track,reader);
+    if(i>=chars.size())
+      break;
+    rc::Characters::Actor* a = chars.actors()[i];
+    if(!only.empty() && a->name!=only && a->model->name!=only)
+      continue;
+    if(a->kind==rc::Characters::Kind::Vulture) {
+      // round the path
+      rc::Vec3 lo = {1e9f,1e9f,1e9f}, hi = {-1e9f,-1e9f,-1e9f};
+      for(int f=0; f<60*60; ++f) {
+        chars.update(1.f/60.f,nullptr);
+        const rc::Vec3 p = a->world.translation();
+        lo = {std::min(lo.x,p.x),std::min(lo.y,p.y),std::min(lo.z,p.z)};
+        hi = {std::max(hi.x,p.x),std::max(hi.y,p.y),std::max(hi.z,p.z)};
+        }
+      std::printf("%s: a minute of flight within x %.1f..%.1f y %.1f..%.1f z %.1f..%.1f\n",a->name.c_str(),
+                  lo.x,hi.x,lo.y,hi.y,lo.z,hi.z);
+      continue;
+      }
+    // a car far away first, so the character settles (walks its path, stays hidden ...)
+    rc::Mat4 park = rc::Mat4::translate({0,-500,0});
+    rc::Vehicle car(world,geom,prm,park);
+    for(int f=0; f<30; ++f)
+      chars.update(1.f/60.f,nullptr);
+    // where it shows up once the car is near: the car 3 m in front of it, facing it
+    rc::Vec3 target = a->world.translation();
+    for(int f=0; f<120 && !a->visible; ++f) {
+      const rc::Vec3 f3 = a->world.vector({0,0,1});
+      rc::Vec3 from = target+rc::Vec3{f3.x,0,f3.z}.normalized()*3.f;
+      car.reset(rc::Mat4::translate(from+rc::Vec3{0,0.3f,0}));
+      world.step(1.f/60.f);
+      chars.update(1.f/60.f,&car);
+      target = a->world.translation();
+      }
+    if(!a->visible) {
+      std::printf("%s (%s): never shows up with the car near\n",a->name.c_str(),a->model->name.c_str());
+      continue;
+      }
+    {
+      const rc::Vec3 f3 = a->world.vector({0,0,1});
+      rc::Vec3 from = target+rc::Vec3{f3.x,0,f3.z}.normalized()*3.f;
+      if(auto h = coll.groundHeight(from+rc::Vec3{0,1.f,0}))
+        from.y = *h-geom.min.y;
+      const rc::Vec3 to = target-from;
+      car.reset(rc::Mat4::translate(from)*rc::Mat4::rotate(1,std::atan2(to.x,to.z)*180.f/3.14159265f));
+      // with a speed: from 2.5 m away, already that fast (negative: an opponent instead, the player stays put)
+      if(kmh>0) {
+        rc::Vec3 far = target-to.normalized()*2.5f;
+        if(auto h = coll.groundHeight(far+rc::Vec3{0,1.f,0}))
+          far.y = *h-geom.min.y;
+        const rc::Vec3 dir = (target-far).normalized();
+        car.place(rc::Mat4::translate(far)*rc::Mat4::rotate(1,std::atan2(dir.x,dir.z)*180.f/3.14159265f),
+                  rc::Vec3{dir.x,0,dir.z}.normalized()*(kmh/3.6f),{});
+        }
+    }
+    std::printf("%s (%s) at %.2f %.2f %.2f, %s drives at it:\n",a->name.c_str(),a->model->name.c_str(),
+                target.x,target.y,target.z,kmh<0 ? "an opponent" : "the car");
+    std::vector<rc::Characters::Car> others;
+    rc::Vec3 otherDir;
+    if(kmh<0) {
+      const rc::Vec3 side = car.pose().vector({1,0,0});
+      otherDir = rc::Vec3{-side.x,0,-side.z}.normalized();
+      others.push_back({target+rc::Vec3{0,0.1f,0}-otherDir*2.5f,otherDir*(-kmh/3.6f)});
+      }
+    bool knocked = false;
+    int32_t lastSeq = -2;
+    bool    lastVis = true, hits = false;
+    float   maxUp = 0;
+    for(int f=0; f<60*5; ++f) {
+      const float t = float(f)/60.f;
+      rc::Vehicle::Input in;
+      const rc::Vec3 to = a->world.translation()-car.pose().translation();
+      const rc::Vec3 fw = car.pose().vector({0,0,1});
+      float ang = std::atan2(to.x,to.z)-std::atan2(fw.x,fw.z);
+      while(ang> 3.14159265f) ang -= 6.2831853f;
+      while(ang<-3.14159265f) ang += 6.2831853f;
+      in.throttle = kmh<0 ? 0.f : 1.f;
+      in.steer    = kmh<0 ? 0.f : std::clamp(ang*2.f,-1.f,1.f);
+      car.update(in,1.f/60.f);
+      world.step(1.f/60.f);
+      for(auto& o:others)
+        o.pos += o.velocity*(1.f/60.f);
+      if(chars.update(1.f/60.f,&car,others)) {
+        std::printf("  %5.2f Wielkie Lup! (car %.1f km/h)\n",t,car.velocity().length()*3.6f);
+        hits = true;
+        }
+      if(!knocked && !others.empty() && others[0].hit) {
+        std::printf("  %5.2f the opponent ran into it: knocked off its recording\n",t);
+        knocked = true;
+        }
+      if(a->seq!=lastSeq) {
+        std::printf("  %5.2f %s\n",t,a->seq>=0 ? a->skeleton->sequences()[size_t(a->seq)].name.c_str() : "-");
+        lastSeq = a->seq;
+        }
+      if(a->visible!=lastVis) {
+        std::printf("  %5.2f %s\n",t,a->visible ? "back" : "gone");
+        lastVis = a->visible;
+        }
+      if(!a->sound.empty())
+        std::printf("  %5.2f sound %s\n",t,a->sound.c_str());
+      if(kmh>0 && f%5==0 && f<60)
+        std::printf("  %5.2f car %.1f km/h, %.2f m from it\n",t,car.velocity().length()*3.6f,
+                    (a->world.translation()-car.pose().translation()).length());
+      const float up = car.velocity().y;
+      if(up>maxUp+1.f) {
+        std::printf("  %5.2f the car goes up at %.1f m/s\n",t,up);
+        maxUp = up;
+        }
+      }
+    const rc::Vec3 p = a->world.translation();
+    std::printf("  ends at %.2f %.2f %.2f%s\n",p.x,p.y,p.z,hits ? "" : ", no hit");
+    }
+  return failures;
+  }
+
 // the settings of the cars' dust and spray, and how many particles a car makes on each surface and in water
 static int cmdFx(rc::PackFile& pack) {
   const auto set = rc::fx::EffectSettings::load([&pack](const std::string& f){ return pack.read(f); });
@@ -1057,7 +1217,7 @@ static int cmdRam(const fs::path& game, const fs::path& track, rc::PackFile& pac
 
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates|ai|fx|ram ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates|ai|fx|ram|chars ...\n");
     return 1;
     }
   try {
@@ -1099,6 +1259,8 @@ int main(int argc, char** argv) {
       }
     if(cmd=="sb" && argc>3)
       return cmdSb(game/argv[3],pack);
+    if(cmd=="chars" && argc>3)
+      return cmdChars(game,argv[3],pack,argc>4 ? argv[4] : "",argc>5 ? float(std::atof(argv[5])) : 0.f);
     if(cmd=="ai" && argc>3)
       return cmdAi(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 2,argc>5 ? std::atoi(argv[5]) : 3);
     if(cmd=="ram" && argc>3)

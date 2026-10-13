@@ -738,7 +738,7 @@ Vehicle::Hit Opponents::collide(Vehicle& pl, float dt) {
       // the share of an equal-mass push (restitution 0.1) that the lifted centre turns upwards
       const float j  = up.params().mass*closing*0.55f;
       const Vec3  dl = d+Vec3{0,Lift,0};
-      up.push(Vec3{0,j*Lift/std::max(dl.length(),0.05f),0},(up.centre()+by.centre())*0.5f);
+      up.applyImpulse(Vec3{0,j*Lift/std::max(dl.length(),0.05f),0},(up.centre()+by.centre())*0.5f);
       }
     o.shakeLeft = ShakeTime;
     o.shake     = Vec3{};

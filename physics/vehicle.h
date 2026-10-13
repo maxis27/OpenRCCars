@@ -48,6 +48,8 @@ class PhysicsWorld {
     static constexpr int     PropTag = 1;
     // the same of the cars (Vehicle, Opponent)
     static constexpr int     CarTag  = 2;
+    // the same of people, guards and dogs (Characters)
+    static constexpr int     CharacterTag = 3;
     struct PropHit {
       btRigidBody* body = nullptr;
       Vec3         point, normal;
@@ -134,9 +136,14 @@ class Vehicle {
     Vec3                       velocity()  const;
     Vec3                       localSpin() const;
     // an impulse (kg m/s) at the world point `at`
-    void                       push(const Vec3& impulse, const Vec3& at);
+    void                       applyImpulse(const Vec3& impulse, const Vec3& at);
     // the Bullet body, tagged PhysicsWorld::CarTag
     btRigidBody&               chassis() { return *body; }
+    const btRigidBody&         chassis() const { return *body; }
+    // adds `dv` (m/s, world) to the velocity: a kick (people.sb characters)
+    void                       addVelocity(const Vec3& dv);
+    // carried by someone (a person's hand): put at `pose` (model -> world), at rest; addVelocity() throws it afterwards
+    void                       hold(const Mat4& pose);
     // forward speed, m/s (negative when reversing)
     float                      speed() const;
     // turbo tank, 0..1 of a full one

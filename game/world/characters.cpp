@@ -13,6 +13,49 @@ CharacterView::CharacterView(Device& device)
 
 CharacterView::~CharacterView() = default;
 
+// The meshes carry only face normals (0x1a repeats 0x27 at every corner), which shades the low-poly bodies flat.
+// Corners get the average normal of the faces around their position that bend less than 60 degrees from their own
+// face, so bodies are smooth and sharp edges (a gun, a crab's shell) stay sharp.
+static std::vector<std::vector<rc::Vec3>> smoothNormals(const rc::SbMesh& mesh) {
+  auto faceNormal = [&](const rc::SbFace& f) {
+    rc::Vec3 n = {0,0,0};
+    for(size_t i=1; i+1<f.pos.size(); ++i) {
+      if(std::max({f.pos[0],f.pos[i],f.pos[i+1]})>=mesh.positions.size())
+        continue;
+      const rc::Vec3 a = mesh.positions[f.pos[0]], b = mesh.positions[f.pos[i]], c = mesh.positions[f.pos[i+1]];
+      n = n+rc::Vec3::cross(b-a,c-a);   // area-weighted
+      }
+    // the winding is not always consistent: follow the file's normal
+    const rc::Vec3 file = f.normals.empty() ? n : f.normals[0];
+    return rc::Vec3::dot(n,file)<0 ? n*-1.f : n;
+    };
+  std::vector<rc::Vec3> faceN(mesh.faces.size());
+  std::vector<std::vector<size_t>> around(mesh.positions.size());
+  for(size_t i=0; i<mesh.faces.size(); ++i) {
+    faceN[i] = faceNormal(mesh.faces[i]);
+    for(auto p:mesh.faces[i].pos)
+      if(p<around.size())
+        around[p].push_back(i);
+    }
+  const float crease = 0.5f;    // cos 60
+  std::vector<std::vector<rc::Vec3>> out(mesh.faces.size());
+  for(size_t i=0; i<mesh.faces.size(); ++i) {
+    const rc::SbFace& f   = mesh.faces[i];
+    const rc::Vec3    own = faceN[i].normalized();
+    out[i].resize(f.pos.size());
+    for(size_t c=0; c<f.pos.size(); ++c) {
+      rc::Vec3 n = {0,0,0};
+      if(f.pos[c]<around.size())
+        for(auto j:around[f.pos[c]])
+          if(rc::Vec3::dot(faceN[j].normalized(),own)>=crease)
+            n = n+faceN[j];
+      const float len = n.length();
+      out[i][c] = len>1e-8f ? n*(1.f/len) : (c<f.normals.size() ? f.normals[c] : rc::Vec3{0,1,0});
+      }
+    }
+  return out;
+  }
+
 const CharacterView::Model& CharacterView::model(const rc::Skeleton& sk) {
   auto& m = models[&sk];
   if(m!=nullptr)
@@ -28,8 +71,11 @@ const CharacterView::Model& CharacterView::model(const rc::Skeleton& sk) {
     const bool     skinned  = mesh.skin.size()==mesh.positions.size();
     const int32_t  self     = sk.boneOfMesh(bone.mesh);
     const bool     mirrored = mesh.world.determinant3()<0;
-    for(auto& f:mesh.faces) {
-      const auto* base = f.layer(rc::LayerTag::Base);
+    const auto     smooth   = smoothNormals(mesh);
+    size_t         fi       = 0;
+    for(; fi<mesh.faces.size(); ++fi) {
+      const rc::SbFace& f    = mesh.faces[fi];
+      const auto*       base = f.layer(rc::LayerTag::Base);
       if(f.pos.size()<3 || base==nullptr)
         continue;
       const auto* tex = sb.texture(base->texture,sk.model());
@@ -38,7 +84,7 @@ const CharacterView::Model& CharacterView::model(const rc::Skeleton& sk) {
         Model::Corner v;
         const uint32_t pi = f.pos[c];
         rc::Vec3 p = pi<mesh.positions.size() ? mesh.positions[pi] : rc::Vec3{};
-        rc::Vec3 n = c<f.normals.size() ? f.normals[c] : rc::Vec3{0,1,0};
+        rc::Vec3 n = smooth[fi][c];
         v.bone = self;
         if(skinned) {
           // bound in the file's pose of the model: the skin's bones move it from there

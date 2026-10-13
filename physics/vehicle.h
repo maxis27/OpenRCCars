@@ -136,7 +136,7 @@ class Vehicle {
     Vec3                       velocity()  const;
     Vec3                       localSpin() const;
     // an impulse (kg m/s) at the world point `at`
-    void                       push(const Vec3& impulse, const Vec3& at);
+    void                       applyImpulse(const Vec3& impulse, const Vec3& at);
     // the Bullet body, tagged PhysicsWorld::CarTag
     btRigidBody&               chassis() { return *body; }
     const btRigidBody&         chassis() const { return *body; }

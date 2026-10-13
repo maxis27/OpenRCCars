@@ -579,7 +579,7 @@ Vec3 Vehicle::localSpin() const {
   return fromBt(body->getWorldTransform().getBasis().transpose()*body->getAngularVelocity());
   }
 
-void Vehicle::push(const Vec3& impulse, const Vec3& at) {
+void Vehicle::applyImpulse(const Vec3& impulse, const Vec3& at) {
   body->applyImpulse(toBt(impulse)*S,toBt(at)*S-body->getCenterOfMassPosition());
   }
 

@@ -43,6 +43,7 @@ struct Particle {
   float angle  = 0;      // degrees
   float twist  = 0;
   float rgb[3] = {1,1,1};
+  float alpha  = 1;      // exhaust: the turbo's puff is fainter
   Vec3  base, wobble;    // water spray: the position without its shaking, and the shaking's axis
 
   float age() const { return life-left; }

@@ -115,6 +115,19 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
         b.tex  = &r->tex;
         b.mode = r->alpha;
         }
+      // car_askin<car><skin>, car_bskin<car><skin>: dirt_car1_<n>, dirt_car<car>_<n>a / _<n>b (0x531450)
+      if(name.size()==11 && (name.rfind("car_askin",0)==0 || name.rfind("car_bskin",0)==0)) {
+        const char car = name[9];
+        for(int n=0; n<2; ++n) {
+          std::string d = std::string("dirt_car")+car+"_"+char('1'+n);
+          if(car!='1')
+            d += name[4];
+          if(auto r = res.texture(d))
+            b.dirt[n] = &r->tex;
+          }
+        if(b.dirt[0]==nullptr || b.dirt[1]==nullptr)
+          b.dirt[0] = b.dirt[1] = nullptr;
+        }
       }
     if(b.tex==nullptr)
       b.tex = &res.white();
@@ -164,11 +177,16 @@ void ModelMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
       }
     LevelMesh::Push& pp = push[b.part];
     pp.flags = (b.mode==rc::AlphaMode::Cutout) ? uint32_t(LevelMesh::F_Cutout) : 0u;
+    const bool dirty = dirt>0 && b.dirt[0]!=nullptr;
+    if(dirty) {
+      pp.flags |= LevelMesh::F_Dirt;
+      pp.time   = dirt;
+      }
     enc.setPushData(pp);
     enc.setBinding(0,*b.tex);
     enc.setBinding(1,*b.tex);
-    enc.setBinding(2,*b.tex);
-    enc.setBinding(3,*b.tex);
+    enc.setBinding(2,dirty ? *b.dirt[0] : *b.tex);
+    enc.setBinding(3,dirty ? *b.dirt[dirt<1 ? 0 : 1] : *b.tex);
     enc.setBinding(4,pso.noWater);
     enc.draw(vbo,b.first,b.count);
     }

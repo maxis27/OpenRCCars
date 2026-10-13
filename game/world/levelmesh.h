@@ -65,6 +65,7 @@ class LevelMesh {
       F_Water    = 16,
       F_Waves    = 32, // water with WLOD waves (formats/water.h), uvMask.x = distance to the edge of the sea
       F_Tess     = 64, // drawn with ScenePipelines::water: the tessellation moves the vertices
+      F_Dirt     = 128, // ModelMesh: the car's dirt over its paint, `time` = how dirty
       };
 
     struct Push {

@@ -37,6 +37,10 @@ class ModelMesh {
                                   const LevelMesh::Push& frame, const rc::Mat4& world,
                                   const std::vector<rc::Mat4>* partPoses = nullptr) const;
 
+    // how dirty the car is, 0 clean .. 2 (Effects::dirt): its paint (car_askin<car>*, car_bskin<car>*) gets the
+    // dirt_car<car>_1/_2 textures (with a/b for the two paints of cars 2 and 3) laid over it
+    void                     setDirt(float level) { dirt = level; }
+
     const std::string&       name()    const { return modelName; }
     const std::vector<Part>& parts()   const { return partList; }
     rc::Vec3                 bboxMin() const { return bbox[0]; }
@@ -49,6 +53,7 @@ class ModelMesh {
       size_t                    count = 0;
       const Tempest::Texture2d* tex   = nullptr;
       rc::AlphaMode             mode  = rc::AlphaMode::Opaque;
+      const Tempest::Texture2d* dirt[2] = {};
       };
 
     std::string                           modelName;
@@ -57,4 +62,5 @@ class ModelMesh {
     Tempest::VertexBuffer<LevelMesh::Vertex> vbo;
     ScenePipelines                        pso;
     rc::Vec3                              bbox[2];
+    float                                 dirt = 0;
   };

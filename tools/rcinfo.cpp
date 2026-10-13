@@ -355,6 +355,9 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   for(auto& w:geom.wheels)
     std::printf("  %-18s hub (%.3f %.3f %.3f) radius %.3f width %.3f\n",w.name.c_str(),
                 w.center.x,w.center.y,w.center.z,w.radius,w.width);
+  for(size_t i=0; i<geom.exhausts.size(); ++i)
+    std::printf("  exhaust %zu (%.3f %.3f %.3f) dir (%.2f %.2f %.2f)\n",i+1,geom.exhausts[i].pos.x,geom.exhausts[i].pos.y,
+                geom.exhausts[i].pos.z,geom.exhausts[i].dir.x,geom.exhausts[i].dir.y,geom.exhausts[i].dir.z);
   std::printf("boost: top %.1f km/h, accel %.1f m/s^2 at 0, tank %.0f units (+%.2f/s, -%.2f/s while boosting)\n",
               prm.boostTopSpeed*3.6f,prm.acceleration(0,1,true),prm.boostTank,prm.boostCharge,prm.boostDrain);
   std::printf("params: top %.1f km/h, accel %.1f m/s^2 at 0, steer %.1f deg, spring %.0f/s^2 damp %.1f/%.1f rest %.3f m,"
@@ -890,50 +893,84 @@ static int cmdFx(rc::PackFile& pack) {
   std::printf("spray: DX %.2f rgba %.0f %.0f %.0f %.0f life %.2f+-%.2f angle %.0f+-%.0f span %.0f vel %.2f+-%.2f scale %.2f/%.2fs\n",
               w.dx,w.rgba[0],w.rgba[1],w.rgba[2],w.rgba[3],w.life,w.lifeDisp,w.angle,w.angleDisp,w.angleSpan,w.velLen,
               w.velLenDisp,w.scale,w.timeScale);
+  const auto& e = set.exhaust;
+  std::printf("exhaust: DX %.2f DY %.2f scale %.2f+-%.2f grow %.2f/s speed %.2f att %.2f gravity %.2f life %.2f+-%.2f"
+              " explode %.2f s grey %.2f alpha %.2f spin %.2f\n",e.dx,e.dy,e.scaleX,e.scaleXDisp,e.grow,e.speed,e.speedAtt,
+              e.gravityY,e.life,e.lifeDisp,e.explodeTime,e.explodeColor,e.explodeAlpha,e.wheelSpin);
+  for(float kmh:{5.f,15.f,30.f,50.f})
+    std::printf("  %3.0f km/h: %.1f puffs/s\n",kmh,e.intensity.at(kmh));
+  const auto& t = set.tracks;
+  std::printf("tracks: life %.0f s, max length %.2f m, %.2f texture repeats/m, max bend %.3f m\n",t.timeLife,t.maxLen,
+              t.scaleCoeff,t.maxHeight);
+  const auto& k = set.wake;
+  std::printf("wake: forward %.2f x %.2f, back %.2f x %.2f m, alpha %.0f/%.0f, stretch %.2f..%.2f at %.2f/s, runs %.1f%%/s"
+              " at 30 km/h\n",k.forwZ,k.forwX,k.backZ,k.backX,k.forwA,k.backA,k.animMin,k.animMax,k.animSpeed,
+              k.speed.empty() ? 0.f : k.speed.at(30));
+  const auto& f = set.foam;
+  std::printf("foam: wheel %.2f x %.2f, body %.2f x %.2f m, alpha %.0f, %.3f m over the water, steps every %.2f s\n",
+              f.forwZ,f.forwX,f.forwZBody,f.forwXBody,f.forwA,f.normalOffset,f.animDelay);
 
   // a car going straight at 30 km/h for 2 s: on sand, then with its wheels half in water
-  auto run = [&](rc::Surface surface, bool water) {
+  struct Counts { size_t dust = 0, spray = 0, tracks = 0, wake = 0, foam = 0; float dirt = 0; };
+  auto run = [&](rc::Surface surface, uint8_t sound, bool water) {
     rc::fx::CarEffects fx(set,true);
     rc::fx::Random     rnd;
     rc::fx::CarState   car;
-    car.velocity = {0,0,30.f/3.6f};
-    car.gas      = true;
+    car.velocity   = {0,0,30.f/3.6f};
+    car.gas        = true;
+    car.bodyHeight = 0.2f;
     for(int i=0; i<4; ++i) {
       rc::fx::CarState::Wheel wh;
       wh.front  = i<2;
       wh.left   = i%2==0;
       wh.radius = 0.05f;
+      wh.slot   = i;
       car.wheels.push_back(wh);
       }
-    std::vector<rc::fx::Billboard> out;
     for(int f=0; f<120; ++f) {
       const float z = car.velocity.z*float(f)/60.f;
       car.pose = rc::Mat4::translate({0,0,z});
+      car.body = {0,0.1f,z};
+      car.bodyWater.reset();
+      if(water)
+        car.bodyWater = 0.05f;
       for(size_t i=0; i<4; ++i) {
         auto& wh = car.wheels[i];
         wh.hub      = {wh.left ? 0.1f : -0.1f,0.05f,z+(wh.front ? 0.15f : -0.15f)};
         wh.contact  = {wh.hub.x,0,wh.hub.z};
         wh.onGround = true;
         wh.surface  = surface;
+        wh.sound    = sound;
+        wh.triangle = uint32_t(z/0.5f);  // a triangle every 50 cm
         wh.water.reset();
         if(water)
           wh.water = 0.05f;
         }
       fx.update(car,car.pose.translation()+rc::Vec3{0,1,-2},1.f/60.f,rnd);
       }
+    std::vector<rc::fx::Billboard> out;
     fx.collect(out);
-    size_t dust = 0;
+    Counts c;
     for(auto& b:out)
-      dust += b.texture==rc::fx::Billboard::Dust ? 1 : 0;
-    return std::pair<size_t,size_t>(dust,out.size()-dust);
+      (b.texture==rc::fx::Billboard::Dust ? c.dust : c.spray)++;
+    std::vector<rc::fx::Mark> marks;
+    fx.collect(marks,car.pose.translation());
+    for(auto& m:marks)
+      (m.kind==rc::fx::Mark::Track ? c.tracks : m.kind==rc::fx::Mark::Wake ? c.wake : c.foam)++;
+    c.dirt = fx.dirt();
+    return c;
     };
   for(auto s:{rc::Surface::Default,rc::Surface::Sand,rc::Surface::DeepSand,rc::Surface::Gravel}) {
-    auto [dust,spray] = run(s,false);
-    std::printf("30 km/h on %-8s: %zu dust, %zu spray\n",rc::surfaceName(s),dust,spray);
+    const uint8_t snd = s==rc::Surface::Sand ? rc::SoundSurface::Sand : s==rc::Surface::DeepSand ? rc::SoundSurface::Trampled :
+                        s==rc::Surface::Gravel ? rc::SoundSurface::Gravel : rc::SoundSurface::None;
+    auto c = run(s,snd,false);
+    std::printf("30 km/h on %-8s: %zu dust and smoke, %zu spray, %zu track quads, dirt %.3f\n",rc::surfaceName(s),c.dust,
+                c.spray,c.tracks,c.dirt);
     }
-  auto [dust,spray] = run(rc::Surface::Sand,true);
-  std::printf("30 km/h in water: %zu dust, %zu spray\n",dust,spray);
-  return spray>0 ? 0 : 4;
+  auto c = run(rc::Surface::Sand,rc::SoundSurface::Sand,true);
+  std::printf("30 km/h in water: %zu dust and smoke, %zu spray, %zu track quads, %zu wake, %zu foam\n",c.dust,c.spray,
+              c.tracks,c.wake,c.foam);
+  return c.spray>0 && c.wake>0 && c.foam>0 ? 0 : 4;
   }
 
 // the player driving into an opponent from the start of a race: knocked off its recording, driven back to it,

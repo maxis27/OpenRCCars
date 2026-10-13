@@ -14,22 +14,39 @@ using namespace Tempest;
 
 namespace {
 
-// the car's wheels for the effects: hubs from the model's wheel poses
+// the car's wheels for the effects: hubs from the model's wheel poses, numbered as RCCars.exe does
 template<class Car>
-rc::fx::CarState carState(const Car& car, const rc::Mat4& pose, const rc::Vec3& velocity) {
+rc::fx::CarState carState(const Car& car, const rc::Mat4& pose, const rc::Vec3& velocity, int upgrade) {
   rc::fx::CarState s;
   s.pose     = pose;
   s.velocity = velocity;
-  const auto& wheels = car.geometry().wheels;
+  s.upgrade  = upgrade;
+  const auto& g      = car.geometry();
+  const auto& wheels = g.wheels;
   for(size_t i=0; i<wheels.size(); ++i) {
     rc::fx::CarState::Wheel w;
-    w.hub    = pose.point(car.wheelPose(i).translation());
+    const rc::Mat4 wp = car.wheelPose(i);
+    w.hub    = pose.point(wp.translation());
+    w.axle   = pose.vector(wp.vector({1,0,0})).normalized();
     w.radius = wheels[i].radius;
     w.front  = wheels[i].front;
     w.left   = wheels[i].left;
+    const int pair = w.front ? 0 : wheels[i].name.find("MIDDLE")!=std::string::npos ? 4 : 2;
+    w.slot   = pair+(w.left ? 0 : 1);
     s.wheels.push_back(w);
     }
+  s.body       = pose.point((g.bodyMin+g.bodyMax)*0.5f);
+  s.bodyHeight = g.bodyMax.y-g.bodyMin.y;
+  if(!g.exhausts.empty()) {
+    const auto& e = g.exhausts[size_t(std::clamp(upgrade,0,int(g.exhausts.size())-1))];
+    s.exhaust = rc::fx::CarState::Exhaust{pose.point(e.pos),pose.vector(e.dir)};
+    }
   return s;
+  }
+
+const Tempest::Texture2d* find(Resources& res, const std::string& name) {
+  auto t = res.texture(name);
+  return t!=nullptr ? &t->tex : &res.white();
   }
 
 }
@@ -64,12 +81,39 @@ Effects::Effects(Device& device, Resources& res)
   st.setBlendSource(RenderState::BlendMode::SrcAlpha);
   st.setBlendDest  (RenderState::BlendMode::OneMinusSrcAlpha);
   pso = device.pipeline(Topology::Triangles,st,vert,frag);
+
+  // tracks, wake and foam: quads in the world
+  for(int i=0; i<4; ++i)
+    tyre[i] = find(res,"t_halfdry_tire2_"+std::to_string(i+1));
+  wake[0] = find(res,"wtr_trace");
+  wake[1] = find(res,"wtr_trace_alpha");
+  foam[0] = find(res,"whr_horse");
+  foam[1] = find(res,"whr_horse_alpha");
+  sh   = AppShader::get("marks.vert.sprv");
+  vert = device.shader(sh.data,sh.len);
+  sh   = AppShader::get("marks.frag.sprv");
+  frag = device.shader(sh.data,sh.len);
+  psoWake = device.pipeline(Topology::Triangles,st,vert,frag);
+  // the tracks darken or lighten what is under them: twice the source times the destination
+  st.setBlendSource(RenderState::BlendMode::DstColor);
+  st.setBlendDest  (RenderState::BlendMode::SrcColor);
+  psoTrack = device.pipeline(Topology::Triangles,st,vert,frag);
   }
 
-void Effects::clear() {
+void Effects::clear(bool keep) {
   if(player)
-    player->clear();
+    player->clear(keep);
+  if(keep) {
+    for(auto& o:opponents)
+      if(o.fx)
+        o.fx->clear(true);
+    return;
+    }
   opponents.clear();
+  }
+
+float Effects::dirt() const {
+  return player ? player->dirt() : 0.f;
   }
 
 void Effects::tick(float dt, const rc::Vehicle& car, const rc::Opponents* ai, const rc::CollisionMesh& track,
@@ -78,9 +122,10 @@ void Effects::tick(float dt, const rc::Vehicle& car, const rc::Opponents* ai, co
     return;
   if(player==nullptr)
     player = std::make_unique<rc::fx::CarEffects>(settings,true);
-  auto state = carState(car,car.pose(),car.velocity());
+  auto state = carState(car,car.pose(),car.velocity(),car.params().upgrade);
   state.gas   = gas;
   state.brake = brake;
+  state.boost = car.boosting();
   state.sense(track);
   player->update(state,camera,dt,rnd);
 
@@ -106,14 +151,77 @@ void Effects::tick(float dt, const rc::Vehicle& car, const rc::Opponents* ai, co
       }
     fx.last   = at;
     fx.placed = true;
-    auto s = carState(o,pose,vel);
+    auto s = carState(o,pose,vel,0);
     s.gas = vel.length()>0.5f;
     s.sense(track);
     fx.fx->update(s,camera,dt,rnd);
     }
   }
 
+void Effects::drawTracks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Mat4& vp, const rc::Vec3& eye) {
+  drawMarks(enc,frame,vp,eye,true);
+  }
+
+void Effects::drawMarks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Mat4& vp, const rc::Vec3& eye, bool tracks) {
+  marks.clear();
+  if(player)
+    player->collect(marks,eye);
+  for(auto& o:opponents)
+    if(o.fx)
+      o.fx->collect(marks,eye);
+  marks.erase(std::remove_if(marks.begin(),marks.end(),[tracks](const rc::fx::Mark& m){
+    return (m.kind==rc::fx::Mark::Track)!=tracks;
+    }),marks.end());
+  markVerts.clear();
+  if(marks.empty())
+    return;
+  // the wake before the foam (0x531ab0); each kind and texture in a run of its own
+  std::stable_sort(marks.begin(),marks.end(),[](const rc::fx::Mark& a, const rc::fx::Mark& b){
+    return a.kind<b.kind || (a.kind==b.kind && a.kind==rc::fx::Mark::Track && a.texture<b.texture);
+    });
+  struct Range { rc::fx::Mark::Kind kind; uint8_t texture; size_t first, count; };
+  std::vector<Range> ranges;
+  for(auto& m:marks) {
+    if(ranges.empty() || ranges.back().kind!=m.kind || ranges.back().texture!=m.texture)
+      ranges.push_back({m.kind,m.texture,markVerts.size(),0});
+    for(int i:{0,1,2,0,2,3}) {
+      const auto& v = m.v[i];
+      MarkVertex r;
+      r.pos[0] = v.pos.x; r.pos[1] = v.pos.y; r.pos[2] = v.pos.z;
+      r.uv[0]  = v.uv[0]; r.uv[1]  = v.uv[1];
+      r.uv2[0] = v.uv2[0]; r.uv2[1] = v.uv2[1];
+      for(int c=0; c<4; ++c)
+        r.color[c] = v.rgba[c];
+      markVerts.push_back(r);
+      }
+    ranges.back().count += 6;
+    }
+  auto& vbuf = markVbo[tracks ? 1 : 0][frame%2];
+  vbuf = device.vbo(BufferHeap::Upload,markVerts);
+  struct Push {
+    float    viewProj[16];
+    uint32_t mode;
+    } push = {};
+  vp.toColumnMajor(push.viewProj);
+  const auto repeat = Sampler::bilinear(ClampMode::Repeat);
+  for(auto& r:ranges) {
+    const Texture2d* t[2] = {tyre[0],tyre[0]};
+    switch(r.kind) {
+      case rc::fx::Mark::Track: t[0] = t[1] = tyre[std::min<size_t>(r.texture,3)]; break;
+      case rc::fx::Mark::Wake:  t[0] = wake[0]; t[1] = wake[1]; break;
+      case rc::fx::Mark::Foam:  t[0] = foam[0]; t[1] = foam[1]; break;
+      }
+    push.mode = r.kind==rc::fx::Mark::Track ? 0u : 1u;
+    enc.setPipeline(r.kind==rc::fx::Mark::Track ? psoTrack : psoWake);
+    enc.setPushData(push);
+    enc.setBinding(0,*t[0],repeat);
+    enc.setBinding(1,*t[1],Sampler::bilinear(ClampMode::ClampToEdge));
+    enc.draw(vbuf,r.first,r.count);
+    }
+  }
+
 void Effects::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const rc::Mat4& vp, const rc::Vec3& eye) {
+  drawMarks(enc,frame,vp,eye,false);
   sprites.clear();
   if(player)
     player->collect(sprites);

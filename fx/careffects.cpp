@@ -106,6 +106,56 @@ EffectSettings EffectSettings::load(const Reader& read) {
   spray.oscillation = val(w,"OscillationLen",100);
   spray.speedDecay  = val(w,"SpeedDecay",100);
   spray.intensity   = curve(read,"wspr_int");
+
+  const auto e = sliders(read,"exhausted_gas");
+  auto& ex = s.exhaust;
+  ex.gravityY     = val(e,"GravityY",-100);
+  ex.dx           = val(e,"DX",10);
+  ex.dy           = val(e,"DY",10);
+  ex.twist        = val(e,"TwistSpeed",100);
+  ex.scaleX       = val(e,"ScaleX",100);
+  ex.scaleXDisp   = val(e,"ScaleXDisp",100);
+  ex.scaleY       = val(e,"ScaleY",100);
+  ex.scaleYDisp   = val(e,"ScaleYDisp",100);
+  ex.grow         = val(e,"DynamicScale",100);
+  ex.speed        = val(e,"Speed",100);
+  ex.speedAtt     = val(e,"SpeedAtt",100);
+  ex.life         = val(e,"TimeLife",100);
+  ex.lifeDisp     = val(e,"TimeLifeDisp",100);
+  ex.explodeTime  = val(e,"ExplodeTime",100);
+  ex.explodeColor = val(e,"ExplodeColor",100);
+  ex.explodeAlpha = val(e,"ExplodeAlpha",100);
+  ex.wheelSpin    = val(e,"WheelSpin",100);
+  ex.intensity    = curve(read,"eg_int");
+
+  const auto t = sliders(read,"car_trace");
+  s.tracks.timeLife   = val(t,"timeLife",1);
+  s.tracks.maxLen     = val(t,"maxLen",100);
+  s.tracks.scaleCoeff = val(t,"scaleCoeff",100);
+  s.tracks.maxHeight  = val(t,"maxHeight",1000);
+
+  const auto k = sliders(read,"wtr_trace");
+  auto& wk = s.wake;
+  wk.forwZ     = val(k,"ForwZ",100);
+  wk.backZ     = val(k,"BackZ",100);
+  wk.forwX     = val(k,"ForwX",100);
+  wk.backX     = val(k,"BackX",100);
+  wk.forwA     = float(int(val(k,"ForwA",1)) & 0xff);
+  wk.backA     = float(int(val(k,"BackA",1)) & 0xff);
+  wk.animSpeed = val(k,"AnimDUVSpeed",100);
+  wk.animMin   = val(k,"AnimDUVMin",100);
+  wk.animMax   = val(k,"AnimDUVMax",100);
+  wk.speed     = curve(read,"wtr_text");
+
+  const auto h = sliders(read,"whr_horse");
+  auto& fo = s.foam;
+  fo.forwZ        = val(h,"ForwZ",100);
+  fo.forwX        = val(h,"ForwX",100);
+  fo.forwZBody    = val(h,"ForwZBody",100);
+  fo.forwXBody    = val(h,"ForwXBody",100);
+  fo.forwA        = float(int(val(h,"ForwA",1)) & 0xff);
+  fo.normalOffset = val(h,"NormalOffset",1000);
+  fo.animDelay    = val(h,"AnimDelay",100);
   return s;
   }
 
@@ -115,25 +165,45 @@ void CarState::sense(const CollisionMesh& track) {
     const float tolerance = 0.03f;
     w.onGround = false;
     w.water    = track.waterLevel(w.hub,0.5f);
-    if(auto g = track.groundHeight(w.hub+Vec3{0,w.radius,0},2.f*w.radius+tolerance)) {
-      if(*g>=w.hub.y-w.radius-tolerance) {
+    if(auto g = track.raycast(w.hub+Vec3{0,w.radius,0},Vec3{0,-1,0},2.f*w.radius+tolerance)) {
+      if(g->point.y>=w.hub.y-w.radius-tolerance) {
         w.onGround = true;
-        w.contact  = Vec3{w.hub.x,*g,w.hub.z};
+        w.contact  = Vec3{w.hub.x,g->point.y,w.hub.z};
+        w.normal   = g->normal.y<0 ? g->normal*-1.f : g->normal;
+        w.triangle = g->triangle;
+        w.sound    = track.triangles()[g->triangle].sound;
         w.surface  = track.surfaceBelow(w.contact+Vec3{0,0.02f,0},0.05f);
         }
       }
     }
+  bodyWater = track.waterLevel(body,std::max(bodyHeight,0.5f));
   }
 
 CarEffects::CarEffects(const EffectSettings& settings, bool player)
-  : set(settings), player(player) {
+  : set(settings), player(player), tracks(settings.tracks,player), wake(settings.wake,settings.foam) {
   }
 
-void CarEffects::clear() {
+void CarEffects::clear(bool keep) {
   for(auto& w:wheels) {
     w.dust.clear();
     w.spray.clear();
     }
+  exhaust.clear();
+  explode  = 0;
+  boostWas = false;
+  grey     = 255;
+  wake.clear();
+  if(keep) {
+    tracks.cut();
+    return;
+    }
+  tracks.clear();
+  dirtAmount = 0;
+  }
+
+float CarEffects::dirt() const {
+  // 0x531c20: dirt_car<n>_1 and _2 over the clean car, by thirds of 3000 .. here halves, there being two textures
+  return std::clamp(std::min(dirtAmount,2999.f)*2.f/3000.f,0.f,2.f);
   }
 
 void CarEffects::update(const CarState& car, const Vec3& camera, float dt, Random& rnd) {
@@ -148,6 +218,8 @@ void CarEffects::update(const CarState& car, const Vec3& camera, float dt, Rando
     dust (fx,i,car,camera,dt,rnd);
     spray(fx,car.wheels[i],car,dt,rnd);
     }
+  smoke(car,dt,rnd);
+  marks(car,dt,rnd);
   }
 
 void CarEffects::dust(WheelFx& fx, size_t i, const CarState& car, const Vec3& camera, float dt, Random& rnd) {
@@ -168,8 +240,13 @@ void CarEffects::dust(WheelFx& fx, size_t i, const CarState& car, const Vec3& ca
 
   // then the wheel (0x52e320): dust where it touches dry ground, not in water, and only near the camera
   fx.rate = 0;
-  if(!w.onGround || (w.water && *w.water>w.hub.y-w.radius))
+  if(!w.onGround)
     return;
+  if(w.water && *w.water>w.hub.y-w.radius) {
+    // the water washes the dirt off (0x52e320)
+    dirtAmount = std::max(dirtAmount-350.f*dt,0.f);
+    return;
+    }
   if((camera-w.contact).length()>=12.f)
     return;
   const auto& surf = d.surfaces[size_t(w.surface)];
@@ -211,6 +288,10 @@ void CarEffects::dust(WheelFx& fx, size_t i, const CarState& car, const Vec3& ca
     fx.rate = d.intensity.at(speed)*k*0.66667f;
   fx.rate *= surf.intScale;
   fx.alpha = surf.rgba[3];
+  // and the dust settles on the car (0x52e320: a tenth of the particles a second, 0.6 with a flag at 0x14ef0f8 we
+  // have not seen set)
+  if(dirtAmount<3000.f)
+    dirtAmount += fx.rate*0.1f*dt;
   fx.dust.moveTo(at);
 
   // new particles along the way the wheel went (0x52ee80: one when it stands still), as 0x52e810 sets them up
@@ -305,6 +386,170 @@ void CarEffects::spray(WheelFx& fx, const CarState::Wheel& w, const CarState& ca
   fx.spray.endFrame();
   }
 
+void CarEffects::smoke(const CarState& car, float dt, Random& rnd) {
+  const auto& e = set.exhaust;
+
+  // the puffs move like the dust (0x530800)
+  const float att = std::pow(e.speedAtt,dt);
+  for(auto& p:exhaust.particles()) {
+    const float a = std::abs(p.angle*std::pow(std::abs(p.twist),dt));
+    p.angle  = p.twist<0 ? -a : a;
+    p.pos    = p.pos + p.vel*dt;
+    p.vel.x *= att;
+    p.vel.z *= att;
+    p.vel.y += e.gravityY*dt;
+    }
+  exhaust.age(dt);
+  // only the players' cars smoke (0x531650), from the end of the booster bought (0x50bcc0)
+  if(!player || !car.exhaust)
+    return;
+
+  // 0x5303c0: how much smoke. The turbo coming on above 10 km/h makes a big dark puff for ExplodeTime; a spinning
+  // rear wheel smokes (our car has no wheel spin), the turbo above 5 km/h more, the gas less
+  float x = car.velocity.length()*3.6f;
+  puff = boostSmoke = false;
+  bool spin = false;
+  if(explode<=0) {
+    if(!boostWas && car.boost && x>10.f)
+      explode = e.explodeTime;
+    else {
+      float slip = 0;
+      for(auto& w:car.wheels)
+        if(w.slot==2 || w.slot==3)
+          slip = std::max(slip,w.slip);
+      if((car.gas || car.brake) && slip>e.wheelSpin) {
+        x    = 2.f*std::abs(slip);
+        spin = true;
+        }
+      else if(car.boost && x>5.f)
+        boostSmoke = true;
+      }
+    boostWas = car.boost;
+    }
+  else {
+    x = 50;
+    explode -= dt;
+    }
+  float rate = 0;
+  if(!e.intensity.empty()) {
+    const float n = e.intensity.at(x);
+    if(explode>0)
+      rate = 2.f*n;
+    else if(spin)
+      rate = n;
+    else if(x>0.25f) {
+      if(boostSmoke)
+        rate = n*1.5f;
+      else if(car.gas)
+        rate = n*0.75f;
+      }
+    }
+  puff = explode>0;
+  // the puff darkens the smoke at 512 a second down to ExplodeColor, after it it clears up at 256 a second
+  if(puff)
+    grey = std::max(grey-dt*512.f,e.explodeColor*255.f);
+  else
+    grey = std::min(grey+dt*256.f,255.f);
+
+  // 0x5306d0: the new puffs
+  exhaust.moveTo(car.exhaust->pos);
+  const size_t n = exhaust.count(rate,dt);
+  for(size_t j=0; j<n; ++j) {
+    Particle* p = exhaust.spawn(car.exhaust->pos);
+    if(p==nullptr)
+      break;
+    p->life = e.life+rnd.sym()*e.lifeDisp;
+    if(puff) {
+      p->life *= 3.f;
+      p->alpha = e.explodeAlpha;
+      }
+    else if(spin)
+      p->life *= 2.5f;
+    else if(boostSmoke)
+      p->life *= 1.5f;
+    p->left   = p->life;
+    p->angle  = rnd.unit()*180.f;
+    p->twist  = rnd.chance(50) ? -e.twist : e.twist;
+    p->vel    = car.exhaust->dir*e.speed+car.velocity;
+    p->scaleX = e.scaleX+rnd.sym()*e.scaleXDisp;
+    p->scaleY = e.scaleY+rnd.sym()*e.scaleYDisp;
+    for(float& c:p->rgb)
+      c = grey/255.f;
+    }
+  exhaust.endFrame();
+  }
+
+void CarEffects::marks(const CarState& car, float dt, Random& rnd) {
+  const Vec3 forward = car.pose.vector({0,0,1});
+
+  // the tyre tracks of RCCars.exe's wheels 0..3
+  std::array<TyreTracks::Wheel,4> tw;
+  for(auto& w:car.wheels) {
+    if(w.slot<0 || w.slot>=4)
+      continue;
+    auto& t = tw[size_t(w.slot)];
+    // in the water: the water line within a wheel's radius over the hub, or the hub under water (0x531df0)
+    const bool wet = w.water && w.hub.y-*w.water<w.radius;
+    t.touching = w.onGround && !wet;
+    t.contact  = w.contact;
+    t.normal   = w.normal;
+    t.triangle = w.triangle;
+    t.sound    = w.sound;
+    }
+  tracks.update(tw,car.velocity,forward,car.upgrade,dt);
+
+  if(!player)
+    return;
+  // the wake and the foam: what the water is like at each wheel and at the body (0x531df0)
+  Wake::Car wc;
+  wc.velocity = car.velocity;
+  wc.right    = car.pose.vector({1,0,0});
+  wc.up       = car.pose.vector({0,1,0});
+  wc.forward  = forward;
+  wc.tyre     = car.upgrade;
+  auto probe = [](const Vec3& at, const std::optional<float>& water, float limit) {
+    Wake::Probe p;
+    p.pos   = at;
+    p.limit = limit;
+    if(water) {
+      p.waterY  = *water;
+      p.depth   = at.y-*water;
+      p.inWater = p.depth<limit;
+      }
+    return p;
+    };
+  std::vector<const CarState::Wheel*> bySlot;
+  for(auto& w:car.wheels)
+    if(w.slot>=0) {
+      if(bySlot.size()<=size_t(w.slot))
+        bySlot.resize(size_t(w.slot)+1,nullptr);
+      bySlot[size_t(w.slot)] = &w;
+      }
+  for(auto* w:bySlot) {
+    if(w==nullptr) {
+      wc.wheels.push_back(Wake::Probe{});
+      continue;
+      }
+    Wake::Probe p = probe(w->hub,w->water,w->radius);
+    p.axle    = w->axle;
+    p.heading = Vec3::cross(w->axle,wc.up).normalized();
+    wc.wheels.push_back(p);
+    }
+  wc.body     = probe(car.body,car.bodyWater,car.bodyHeight*0.5f);
+  // the same a quarter of the body's height lower, under water only within that quarter
+  wc.bodyDeep = wc.body;
+  wc.bodyDeep.limit  = wc.body.limit*0.5f;
+  wc.bodyDeep.depth -= wc.bodyDeep.limit;
+  wc.bodyDeep.inWater = wc.body.inWater && std::abs(wc.bodyDeep.depth)<wc.bodyDeep.limit;
+  wake.update(wc,dt,rnd);
+  }
+
+void CarEffects::collect(std::vector<Mark>& out, const Vec3& camera) const {
+  tracks.collect(out,camera);
+  if(player)
+    wake.collect(out);
+  }
+
 void CarEffects::collect(std::vector<Billboard>& out) const {
   // dust: sized by distance like everything else; RCCars.exe gives the sprite DX x scale / depth pixels on a 640
   // wide screen with a horizontal field of view of 80 degrees (0x459260, 0x405f70), which is this many metres
@@ -340,5 +585,19 @@ void CarEffects::collect(std::vector<Billboard>& out) const {
       b.rgba[3] = set.spray.rgba[3]/255.f*(p.life>0 ? std::max(p.left,0.f)/p.life : 0.f);
       out.push_back(b);
       }
+    }
+  // exhaust: the dust's texture (0x530180), growing by DynamicScale - 1 its size a second (0x530330)
+  for(auto& p:exhaust.particles()) {
+    const float g = (set.exhaust.grow-1.f)*p.age()+1.f;
+    Billboard b;
+    b.pos     = p.pos;
+    b.halfW   = p.scaleX*set.exhaust.dx*g*metres;
+    b.halfH   = p.scaleY*set.exhaust.dy*g*metres;
+    b.angle   = p.angle*Pi/180.f;
+    b.texture = Billboard::Dust;
+    for(int c=0; c<3; ++c)
+      b.rgba[c] = p.rgb[c];
+    b.rgba[3] = p.alpha*(p.life>0 ? std::max(p.left,0.f)/p.life : 0.f);
+    out.push_back(b);
     }
   }

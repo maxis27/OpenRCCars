@@ -36,6 +36,9 @@ CollisionView::CollisionView(Device& device, const rc::CollisionMesh& coll, cons
     for(int i=0; i<3; ++i) {
       Vertex v = {};
       v.pos[0] = p[i]->x; v.pos[1] = p[i]->y; v.pos[2] = p[i]->z;
+      // the sea is drawn lowered (WLOD offset, shore bend): show it where the car meets it, not at the scene's height
+      if(t.surface==rc::Surface::Water)
+        v.pos[1] = coll.waterSurface(t.mesh,*p[i]);
       v.bary[i] = 1.f;
       for(int k=0; k<4; ++k)
         v.color[k] = c[k];

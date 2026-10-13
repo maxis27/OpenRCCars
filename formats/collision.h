@@ -93,6 +93,9 @@ class CollisionMesh {
 
     // seas with WLOD settings are lowered by their "offset" instead (formats/water.h) and need no shore band
     void                         setSeas(const Seas& seas);
+    // height of the still water at `p`, a point on a water face of `mesh` as the scene has it: lowered by the
+    // sea's offset, or shoreHeight for seas without WLOD settings (waves left out)
+    float                        waterSurface(uint32_t mesh, const Vec3& p) const;
 
     // triangles listed in a cell; the same triangle shows up in every cell it touches
     template<class F>

@@ -88,20 +88,25 @@ class Hud {
       std::array<Glyph,256>  glyphs = {};
       std::array<bool,256>   has    = {};
       float                  cell   = 0;
+      bool                   hard   = true;  // all-or-nothing opacity (Smash): edges smoothed when enlarged
       };
     struct Draw {
       const Tempest::Texture2d* tex = nullptr;
       size_t                    first = 0, count = 0;
       bool                      depth = false;  // hidden behind the scene (sprites in the 3D view)
+      float                     sharpen = 0;    // >0: the opacity's edge narrowed this many times (text)
       };
     enum class Message { None, Go, BestLap, Finish };
     using Color = std::array<float,4>;
 
     Image  loadImage(Resources& res, std::string_view file, std::vector<uint8_t>* rgba = nullptr);
     void   loadFont(Resources& res, std::string_view name, Font& f);
+    void   loadNumbers(Resources& res);
 
-    // layout: 800x600 units -> pixels; `right` keeps the distance from the right edge
+    // layout: 800x600 units -> pixels, centred on wide screens; `right` keeps the distance from the right edge
     float  px(float x, bool right = false) const { return right ? float(scrW)-(800.f-x)*scale : offsetX+x*scale; }
+    // keeps the distance from the left edge, for what the original puts in the left corners
+    float  pl(float x) const { return x*scale; }
     float  py(float y) const { return y*scale; }
 
     // a quadrilateral given by its four corners on the screen, in order
@@ -124,7 +129,8 @@ class Hud {
                 const Color* bottom = nullptr, float gap = 0);
     float  textWidth(const Font& f, std::string_view s, float size, float gap = 0) const;
     // the gauges' numbers: white to grey, outlined
-    void   metalText(const Font& f, std::string_view s, float x, float y, float size, int align, float gap = 2);
+    // the cockpit's numbers (time, lap, gauges) in cock_num, 1:1; `y` is the top of its 64 high cells
+    void   numberText(std::string_view s, float x, float y, int align);
     // text with a dark shadow under it
 
     Tempest::Device&                 device;
@@ -136,6 +142,7 @@ class Hud {
     // cp_ar_<2 green, 3 red: the lap's end>_f<1..3>, 256x256: arrows pointing down at the next checkpoint
     const Tempest::Texture2d*        cpArrow[2][3] = {};
     Font                             font;
+    Font                             numbers;  // cock_num from RCCars.sb
     Image                            place[6];
     const Tempest::Texture2d*        gaugeBase = nullptr; // cockpit_sp1: the dial with its yellow scale
     const Tempest::Texture2d*        gaugeFill = nullptr; // cockpit_sp2: the same tube in red, a grey one opposite
@@ -150,6 +157,7 @@ class Hud {
     const Tempest::Texture2d*        white = nullptr;
 
     std::vector<Vertex>              verts;
+    float                            sharpen = 0;   // for the quads being added: see Draw::sharpen
     std::vector<Draw>                draws;
     Tempest::VertexBuffer<Vertex>    vbo[2];
 

@@ -103,8 +103,10 @@ class Hud {
     void   loadFont(Resources& res, std::string_view name, Font& f);
     void   loadNumbers(Resources& res);
 
-    // layout: 800x600 units -> pixels; `right` keeps the distance from the right edge
+    // layout: 800x600 units -> pixels, centred on wide screens; `right` keeps the distance from the right edge
     float  px(float x, bool right = false) const { return right ? float(scrW)-(800.f-x)*scale : offsetX+x*scale; }
+    // keeps the distance from the left edge, for what the original puts in the left corners
+    float  pl(float x) const { return x*scale; }
     float  py(float y) const { return y*scale; }
 
     // a quadrilateral given by its four corners on the screen, in order

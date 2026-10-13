@@ -512,7 +512,7 @@ void Hud::gauge(bool right, float value, float reach, const std::string& number,
   if(gaugeBase==nullptr || gaugeFill==nullptr)
     return;
   const float k  = GaugeSize/256.f*scale;
-  const float x0 = right ? float(scrW)-(GaugeX+GaugeSize)*scale : px(GaugeX);
+  const float x0 = right ? float(scrW)-(GaugeX+GaugeSize)*scale : pl(GaugeX);
   const float y0 = py(GaugeY);
   // texels -> the screen, mirrored on the right
   auto at = [&](float u, float v) {
@@ -772,7 +772,7 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
   // top left: the place, when there are opponents
   if(info.place>=1 && info.place<=6 && place[info.place-1].loaded) {
     const Image& im = place[info.place-1];
-    quad(im.tex,im.w,im.h,{0,0,float(im.w),float(im.h)},px(PlaceX),py(PlaceY),float(im.w)*scale,float(im.h)*scale,
+    quad(im.tex,im.w,im.h,{0,0,float(im.w),float(im.h)},pl(PlaceX),py(PlaceY),float(im.w)*scale,float(im.h)*scale,
          white4);
     }
   // under it the map

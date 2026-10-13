@@ -886,9 +886,10 @@ static const char* characterKind(rc::Characters::Kind k) {
   return "?";
   }
 
-// people and animals of a track: what they are, then for each one a car (Car1) driving at it from 3 m away
-// for a few seconds, with what happens: animations, "Wielkie Łup!", sounds, kicks and throws
-static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile& pack, const std::string& only) {
+// people and animals of a track: what they are, then for each one a car (Car1) driving at it from 3 m away (or
+// from 2.5 m at `kmh`) for a few seconds, with what happens: animations, "Wielkie Łup!", sounds, kicks and throws
+static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile& pack, const std::string& only,
+                    float kmh) {
   auto scene = rc::SbScene::load(readFile(game/"RCCarsDB"/(track+".sb")));
   auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
   rc::ObjectLibrary lib([&](const std::string& p){ return readFile(game/p); });
@@ -961,6 +962,15 @@ static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile
         from.y = *h-geom.min.y;
       const rc::Vec3 to = target-from;
       car.reset(rc::Mat4::translate(from)*rc::Mat4::rotate(1,std::atan2(to.x,to.z)*180.f/3.14159265f));
+      // with a speed: from 2.5 m away, already that fast
+      if(kmh>0) {
+        rc::Vec3 far = target-to.normalized()*2.5f;
+        if(auto h = coll.groundHeight(far+rc::Vec3{0,1.f,0}))
+          far.y = *h-geom.min.y;
+        const rc::Vec3 dir = (target-far).normalized();
+        car.place(rc::Mat4::translate(far)*rc::Mat4::rotate(1,std::atan2(dir.x,dir.z)*180.f/3.14159265f),
+                  rc::Vec3{dir.x,0,dir.z}.normalized()*(kmh/3.6f),{});
+        }
     }
     std::printf("%s (%s) at %.2f %.2f %.2f, the car drives at it:\n",a->name.c_str(),a->model->name.c_str(),
                 target.x,target.y,target.z);
@@ -993,6 +1003,9 @@ static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile
         }
       if(!a->sound.empty())
         std::printf("  %5.2f sound %s\n",t,a->sound.c_str());
+      if(kmh>0 && f%5==0 && f<60)
+        std::printf("  %5.2f car %.1f km/h, %.2f m from it\n",t,car.velocity().length()*3.6f,
+                    (a->world.translation()-car.pose().translation()).length());
       const float up = car.velocity().y;
       if(up>maxUp+1.f) {
         std::printf("  %5.2f the car goes up at %.1f m/s\n",t,up);
@@ -1130,7 +1143,7 @@ int main(int argc, char** argv) {
     if(cmd=="sb" && argc>3)
       return cmdSb(game/argv[3],pack);
     if(cmd=="chars" && argc>3)
-      return cmdChars(game,argv[3],pack,argc>4 ? argv[4] : "");
+      return cmdChars(game,argv[3],pack,argc>4 ? argv[4] : "",argc>5 ? float(std::atof(argv[5])) : 0.f);
     if(cmd=="ai" && argc>3)
       return cmdAi(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 2,argc>5 ? std::atoi(argv[5]) : 3);
     if(cmd=="ram" && argc>3)

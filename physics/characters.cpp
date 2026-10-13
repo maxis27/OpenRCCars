@@ -369,6 +369,7 @@ void Characters::placeBody(State& s) {
   }
 
 void Characters::restart() {
+  carKmh = lastKmh = 0;
   for(auto& p:states) {
     State& s = *p;
     s.pos      = s.home;
@@ -456,7 +457,7 @@ void Characters::finish(State& s) {
 bool Characters::hitBy(State& s, Vehicle* player, float kmh) {
   if(player==nullptr || s.body==nullptr || !s.body->inWorld)
     return false;
-  if(player->velocity().length()*3.6f<=kmh)
+  if(carKmh<=kmh)
     return false;
   const btCollisionObject* car  = &player->chassis();
   const btCollisionObject* body = s.body->rigid.get();
@@ -474,6 +475,10 @@ bool Characters::hitBy(State& s, Vehicle* player, float kmh) {
 
 bool Characters::update(float dt, Vehicle* player, const std::vector<Car>& cars) {
   greatHit = false;
+  // the speed the car hit with: the step that brought it into contact has already stopped it
+  const float nowKmh = player ? player->velocity().length()*3.6f : 0.f;
+  carKmh   = std::max(nowKmh,lastKmh);
+  lastKmh  = nowKmh;
   sincePerson += dt;
   sinceDog    += dt;
   sinceGuard  += dt;

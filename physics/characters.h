@@ -138,6 +138,8 @@ class Characters {
     float                                         sinceDog    = 1e3f;
     float                                         sinceGuard  = 1e3f;
     bool                                          greatHit    = false;
+    float                                         carKmh      = 0;    // the player's speed before this step
+    float                                         lastKmh     = 0;
     int                                           vultures    = 0;
   };
 

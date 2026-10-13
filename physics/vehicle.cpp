@@ -591,6 +591,10 @@ float Vehicle::speed() const {
   return float(vehicle->getCurrentSpeedKmHour())/3.6f/S;
   }
 
+Vec3 Vehicle::velocity() const {
+  return fromBt(body->getLinearVelocity())*(1.f/S);
+  }
+
 size_t Vehicle::wheelsOnGround() const {
   size_t n = 0;
   for(int i=0; i<vehicle->getNumWheels(); ++i)

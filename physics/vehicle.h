@@ -127,6 +127,8 @@ class Vehicle {
     Mat4                       pose()  const;
     // forward speed, m/s (negative when reversing)
     float                      speed() const;
+    // world velocity of the body, m/s
+    Vec3                       velocity() const;
     // turbo tank, 0..1 of a full one
     float                      boostLevel() const { return tank/prm.boostTank; }
     // turbo tank in units (CarParams::boostTank when full)

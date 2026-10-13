@@ -81,8 +81,15 @@ add_library(rcaudio STATIC
 target_include_directories(rcaudio PRIVATE lib/dr_mp3)
 target_link_libraries(rcaudio PUBLIC rcformats)
 
+# --- particle effects of the cars: dust, water spray (no GPU) ---
+add_library(rcfx STATIC
+  fx/particles.h  fx/particles.cpp
+  fx/careffects.h fx/careffects.cpp
+  )
+target_link_libraries(rcfx PUBLIC rcformats)
+
 add_executable(rcinfo tools/rcinfo.cpp)
-target_link_libraries(rcinfo rcformats rcphysics rcaudio)
+target_link_libraries(rcinfo rcformats rcphysics rcaudio rcfx)
 
 if(OPENRCCARS_TOOLS_ONLY)
   return()
@@ -105,6 +112,7 @@ add_library(rcengine STATIC
   game/resources.h         game/resources.cpp
   game/hud.h               game/hud.cpp
   game/arrow.h             game/arrow.cpp
+  game/effects.h           game/effects.cpp
   game/sounds.h            game/sounds.cpp
   game/world/levelmesh.h   game/world/levelmesh.cpp
   game/world/modelmesh.h     game/world/modelmesh.cpp
@@ -113,7 +121,7 @@ add_library(rcengine STATIC
   game/world/objects.h     game/world/objects.cpp
   )
 target_include_directories(rcengine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} lib/Tempest/Engine/include)
-target_link_libraries(rcengine PUBLIC rcformats rcphysics rcaudio Tempest Shaders)
+target_link_libraries(rcengine PUBLIC rcformats rcphysics rcaudio rcfx Tempest Shaders)
 # Tempest is static here, so its private link directory for vulkan-1.lib does not reach our executables.
 target_link_directories(rcengine PUBLIC "$ENV{VULKAN_SDK}/lib")
 

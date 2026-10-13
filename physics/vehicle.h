@@ -141,8 +141,8 @@ class Vehicle {
     btRigidBody&               chassis() { return *body; }
     const btRigidBody&         chassis() const { return *body; }
     // adds `dv` (m/s, world) to the velocity: a kick (people.sb characters)
-    void                       kick(const Vec3& dv);
-    // carried by someone (a person's hand): put at `pose` (model -> world), at rest; kick() throws it afterwards
+    void                       addVelocity(const Vec3& dv);
+    // carried by someone (a person's hand): put at `pose` (model -> world), at rest; addVelocity() throws it afterwards
     void                       hold(const Mat4& pose);
     // forward speed, m/s (negative when reversing)
     float                      speed() const;

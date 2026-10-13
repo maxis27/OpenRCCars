@@ -583,7 +583,7 @@ void Vehicle::push(const Vec3& impulse, const Vec3& at) {
   body->applyImpulse(toBt(impulse)*S,toBt(at)*S-body->getCenterOfMassPosition());
   }
 
-void Vehicle::kick(const Vec3& dv) {
+void Vehicle::addVelocity(const Vec3& dv) {
   body->activate(true);
   body->setLinearVelocity(body->getLinearVelocity()+toBt(dv)*S);
   }

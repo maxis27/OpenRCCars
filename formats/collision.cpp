@@ -22,6 +22,21 @@ Surface rc::surfaceOf(const SbTexture* texture) {
   return Surface::Default;
   }
 
+uint8_t rc::soundSurfaceOf(uint32_t material) {
+  // RCCars.exe keeps the material bits shifted down by 4 (its bit 0 is our bit 4)
+  const uint32_t m = material>>4;
+  if(m & 0x001) return SoundSurface::WetSand;
+  if(m & 0x002) return SoundSurface::Sand;
+  if(m & 0x004) return SoundSurface::Trampled;
+  if(m & 0x008) return SoundSurface::Wood;
+  if(m & 0x010) return SoundSurface::Grass;
+  if(m & 0x020) return SoundSurface::Gravel;
+  if(m & 0x080) return SoundSurface::Stone;
+  if(m & 0x100) return SoundSurface::Tin;
+  if(m & 0x200) return SoundSurface::Metal;
+  return SoundSurface::None;
+  }
+
 const char* rc::surfaceName(Surface s) {
   switch(s) {
     case Surface::Default:  return "default";
@@ -63,6 +78,13 @@ CollisionMesh::CollisionMesh(const SbScene& scene) {
       const auto*   base = f.layer(LayerTag::Base);
       const Surface surf = surfaceOf(base ? scene.texture(base->texture,m.model) : nullptr);
       water = water || surf==Surface::Water;
+      uint8_t sound = SoundSurface::None;
+      for(auto& l:f.layers)
+        if(const SbTexture* tx = scene.texture(l.texture,m.model)) {
+          const uint8_t n = soundSurfaceOf(tx->material);
+          if(n!=SoundSurface::None && (sound==SoundSurface::None || n<sound))
+            sound = n;
+          }
       auto at = [&](size_t i) {
         return f.pos[i]<m.positions.size() ? m.world.point(m.positions[f.pos[i]]) : Vec3{};
         };
@@ -80,6 +102,7 @@ CollisionMesh::CollisionMesh(const SbScene& scene) {
         t.mesh   = uint32_t(mi);
         t.face   = uint32_t(fi);
         t.surface = surf;
+        t.sound   = sound;
         tris.push_back(t);
         }
       faceTris[mi][fi] = {first,uint32_t(tris.size())-first};
@@ -335,6 +358,12 @@ Surface CollisionMesh::surfaceBelow(const Vec3& from, float maxDepth) const {
   if(auto h = raycast(from,Vec3{0,-1,0},maxDepth))
     return tris[h->triangle].surface;
   return Surface::Default;
+  }
+
+uint8_t CollisionMesh::soundBelow(const Vec3& from, float maxDepth) const {
+  if(auto h = raycast(from,Vec3{0,-1,0},maxDepth))
+    return tris[h->triangle].sound;
+  return SoundSurface::None;
   }
 
 void CollisionMesh::setSeas(const Seas& seas) {

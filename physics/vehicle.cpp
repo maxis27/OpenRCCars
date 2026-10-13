@@ -57,6 +57,7 @@ PhysicsWorld::PhysicsWorld(const CollisionMesh& track) : coll(track) {
     if(t.surface==Surface::Water)
       continue;
     ++solid;
+    solidTris.push_back(uint32_t(&t-track.triangles().data()));
     for(const Vec3* p:{&t.a,&t.b,&t.c}) {
       indices.push_back(int(vertices.size()/3));
       vertices.push_back(p->x*S);
@@ -82,6 +83,12 @@ PhysicsWorld::PhysicsWorld(const CollisionMesh& track) : coll(track) {
 PhysicsWorld::~PhysicsWorld() {
   // vehicles remove themselves; only the ground is left
   world->removeRigidBody(groundBody.get());
+  }
+
+uint8_t PhysicsWorld::groundSound(int triangle) const {
+  if(triangle<0 || size_t(triangle)>=solidTris.size())
+    return SoundSurface::None;
+  return coll.triangles()[solidTris[size_t(triangle)]].sound;
   }
 
 PhysicsWorld::PropHit PhysicsWorld::rayProps(const Vec3& f, const Vec3& t) {
@@ -211,6 +218,9 @@ void Vehicle::reset(const Mat4& start) {
   sinceProp    = 1e3f;
   sinceCar     = 1e3f;
   shakeLeft    = 0;
+  touch        = Contact{};
+  bump         = false;
+  carBefore    = false;
   }
 
 void Vehicle::recover() {
@@ -368,6 +378,8 @@ void Vehicle::hits(float dt) {
   // what the body touches after the last steps (a wheel touches props through its ray)
   bool prop = wheelProp, car = false;
   wheelProp = false;
+  touch     = Contact{};
+  touch.impact = -1;   // none yet
   auto& disp = *owner.bullet().getDispatcher();
   for(int i=0; i<disp.getNumManifolds(); ++i) {
     const btPersistentManifold* m = disp.getManifoldByIndexInternal(i);
@@ -385,7 +397,13 @@ void Vehicle::hits(float dt) {
       continue;
     prop |= other->getUserIndex()==PhysicsWorld::PropTag;
     car  |= other->getUserIndex()==PhysicsWorld::CarTag;
+    if(other==&owner.ground() || other->getUserIndex()==PhysicsWorld::PropTag)
+      contacts(*m,other);
     }
+  if(touch.impact<0)
+    touch = Contact{};
+  bump      = car && !carBefore;
+  carBefore = car;
 
   Hit h = Hit::None;
   if(prop && sinceProp>PropHitPause && float(body->getLinearVelocity().length())/S>PropHitSpeed) {
@@ -419,6 +437,34 @@ void Vehicle::hits(float dt) {
   lastHit = h;
   }
 
+void Vehicle::contacts(const btPersistentManifold& m, const btCollisionObject* other) {
+  const bool  first = m.getBody0()==body.get();
+  const auto* otherBody = btRigidBody::upcast(other);
+  for(int c=0; c<m.getNumContacts(); ++c) {
+    const btManifoldPoint& pt = m.getContactPoint(c);
+    if(pt.getDistance()>0)
+      continue;
+    // the normal out of the other body, towards the car
+    const btVector3 n   = first ? pt.m_normalWorldOnB : -pt.m_normalWorldOnB;
+    const btVector3 at  = first ? pt.getPositionWorldOnA() : pt.getPositionWorldOnB();
+    btVector3       v   = body->getVelocityInLocalPoint(at-body->getCenterOfMassPosition());
+    if(otherBody!=nullptr && otherBody->getInvMass()>0)
+      v -= otherBody->getVelocityInLocalPoint(at-otherBody->getCenterOfMassPosition());
+    v *= 1.f/S;
+    const float speed = float(v.length());
+    Contact     ct;
+    ct.impact = std::abs(float(v.dot(n)))*3.6f;
+    ct.hit    = speed>1e-6f && float(v.dot(n))/speed < std::cos(145.f*3.14159265f/180.f);
+    if(other==&owner.ground())
+      ct.surface = owner.groundSound(first ? pt.m_index1 : pt.m_index0);
+    else
+      ct.surface = SoundSurface::Wood;
+    // the strongest one: a hit before a touch, then the harder one
+    if(touch.impact<0 || (ct.hit && !touch.hit) || (ct.hit==touch.hit && ct.impact>touch.impact))
+      touch = ct;
+    }
+  }
+
 void Vehicle::surfaces(float dt) {
   const auto& track = owner.track();
   const int   n     = vehicle->getNumWheels();
@@ -426,6 +472,8 @@ void Vehicle::surfaces(float dt) {
   // wheels: the solid surface under each one touching the ground, and how deep each one is in water
   const Mat4 m = pose();
   size_t count[size_t(Surface::Water)+1] = {};
+  groundSnd   = SoundSurface::None;
+  groundedNow = false;
   float  wetSum = 0;
   // per wheel: where it is held back (RCCars.exe: in water by depth, otherwise in deep sand) and how much
   struct Drag { Vec3 at; float k = 0; };
@@ -443,6 +491,18 @@ void Vehicle::surfaces(float dt) {
       inWater = std::clamp(depth/(2.f*r),0.f,1.f);
       }
     wetSum += inWater;
+    // the wheel's sound surface (0x50acf0: the highest number of the wheels, water above the rest)
+    if(inWater>0) {
+      groundSnd   = SoundSurface::Water;
+      groundedNow = true;
+      }
+    else if(info.m_raycastInfo.m_isInContact) {
+      const uint8_t g = info.m_raycastInfo.m_groundObject==&owner.ground()
+          ? track.soundBelow(fromBt(info.m_raycastInfo.m_contactPointWS)*(1.f/S)+Vec3{0,0.02f,0},0.05f)
+          : uint8_t(SoundSurface::Wood);
+      groundSnd   = std::max(groundSnd,g);
+      groundedNow = true;
+      }
     Drag d;
     if(depth>0.3f*r) {
       d.at = hub;

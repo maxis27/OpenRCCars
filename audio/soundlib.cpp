@@ -40,7 +40,7 @@ BankChannel::BankChannel(Mixer& mixer, SoundLibrary& lib, const std::string& cha
   this->mixer = &mixer;
   id          = mixer.addChannel();
   for(auto& s:def->sounds)
-    sounds.push_back({s,0.f,lib.clip(s.name)});
+    sounds.push_back({s,0.f,lib.clip(s.name),0.f});
   }
 
 void BankChannel::play(int i) {
@@ -53,7 +53,7 @@ void BankChannel::play(int i) {
   auto& s = sounds[size_t(i)];
   Mixer::Play p;
   p.startMs   = s.start;
-  p.volume    = s.def.volume;
+  p.volume    = s.def.volume+s.level;
   p.fadeIn    = s.def.fadeIn;
   p.tail      = s.def.tail;
   p.loop      = s.def.loop();
@@ -100,9 +100,10 @@ void BankChannel::setTail(int sound, float ms) {
 void BankChannel::setVolume(int sound, float db) {
   if(sound<0 || size_t(sound)>=sounds.size())
     return;
-  sounds[size_t(sound)].def.volume = db;
+  auto& s = sounds[size_t(sound)];
+  s.level = db;
   if(isPlaying(sound))
-    mixer->setVolume(id,db);
+    mixer->setVolume(id,s.def.volume+db);
   }
 
 void BankChannel::setGain(float db) {

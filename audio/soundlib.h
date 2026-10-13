@@ -54,8 +54,11 @@ class BankChannel {
     void   setStart(int sound, float ms);
     // the tail of `sound`, also for the one playing now if it is that sound
     void   setTail(int sound, float ms);
-    // the volume of `sound` (dB), also for the one playing now
+    // the volume of `sound` in dB on top of its snd.dat one (RCCars.exe's SOND +0x1c, set by the car's sound code),
+    // also for the one playing now
     void   setVolume(int sound, float db);
+    // index of a sound by name, -1 if the channel has none of that name
+    int    find(const std::string& sound) const { return def ? def->find(sound) : -1; }
     // extra gain (dB) and pan of the whole channel
     void   setGain(float db);
     void   setPan(float pan);
@@ -68,6 +71,7 @@ class BankChannel {
       SoundBank::Sound            def;
       float                       start = 0;
       std::shared_ptr<const Clip> clip;
+      float                       level = 0;
       };
     Mixer*                      mixer = nullptr;
     const SoundBank::Channel*   def   = nullptr;

@@ -52,6 +52,7 @@ void MainWindow::loadLevel(const std::string& name) {
     checkpoints = std::make_unique<rc::Checkpoints>(level->scene(),level->collision());
     race        = std::make_unique<rc::Race>(*checkpoints,laps);
     hud->setTrack(name);
+    sounds->setTrack(level->scene());
     camera  = level->startCamera();
     setupPhysics();
     }
@@ -436,7 +437,7 @@ void MainWindow::tickSounds(float dt) {
   const bool racing = race->phase()==rc::Race::Phase::Racing;
   const bool control = !race->holdCar() && !freeCamera;
   const float fwd   = vehicle->speed();
-  airborne = vehicle->wheelsOnGround()==0 ? airborne+dt : 0.f;
+  airborne = !vehicle->grounded() ? airborne+dt : 0.f;
 
   rc::CarSound::Input in;
   in.speed    = std::abs(fwd)*3.6f;
@@ -445,16 +446,26 @@ void MainWindow::tickSounds(float dt) {
   in.braking  = (in.back && fwd*3.6f>1.f) || (control && keys[Event::K_B]);
   in.airborne = airborne>0.05f;
   in.racing   = racing;
+  in.boost    = vehicle->boosting();
+  in.jump     = control && keys[Event::K_Space];
+  in.inWater  = vehicle->submerged()>0;
+  in.ground   = vehicle->groundSound();
+  in.contact  = {vehicle->contact().surface,vehicle->contact().hit,vehicle->contact().impact};
+  in.carBump  = vehicle->carBump();
   carSound->update(in,dt);
 
-  // the computer's cars, heard from the camera
+  // the computer's cars and the water, heard from the camera
   const rc::Vec3 ear   = camera.position;
   const rc::Vec3 right = camera.right();
+  sounds->tickAmbient(ear,right,dt);
   for(size_t i=0; opponents && i<opponents->size() && i<aiSounds.size(); ++i) {
     const auto&    o  = (*opponents)[i];
     const rc::Vec3 to = o.pose().translation()-ear;
     const float    d  = to.length();
-    aiSounds[i].update(std::abs(o.speed())*3.6f,racing,d,d>1e-3f ? rc::Vec3::dot(to,right)/d : 0.f);
+    const rc::Vec3 at = o.pose().translation();
+    const auto     wl = level->collision().waterLevel(at,0.5f);
+    aiSounds[i].update(std::abs(o.speed())*3.6f,racing,d,d>1e-3f ? rc::Vec3::dot(to,right)/d : 0.f,
+                       wl && *wl>at.y);
     }
 
   // "wrong way" is said once each time the warning comes up

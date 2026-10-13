@@ -39,9 +39,11 @@ constexpr float ThrowUp        = 4.f;      // m/s
 constexpr float ThrowForward   = 7.f;      // m/s
 constexpr float TurnToCar      = 2.f*Pi;   // rad/s (360 degrees)
 constexpr float PathTurn       = Pi;       // rad/s (180 degrees), the heading towards the path's direction
+constexpr float OtherCarSize   = 0.25f;    // m: an opponent's car around its centre, to tell what it touches
 constexpr float HurtSpeed      = 15.f;     // km/h: a car faster than this hurts a person or a dog
 constexpr float DogPushOut     = 0.5f;     // m/s: a dog touched pushes the car off itself ..
 constexpr float DogPushUp      = 0.12f;    // .. and up
+constexpr float DogPainPause   = 0.5f;     // s without a hit before the dog whines again (ours)
 constexpr float GuardHitSpeed  = 10.f;     // km/h: hitting a guard
 constexpr float HitPause       = 2.f;      // s between two "Wielkie Łup!" for the same kind
 constexpr float HitBoost       = 5.f;      // turbo units for one
@@ -139,6 +141,7 @@ struct Characters::State {
   float             actTime  = 0;
   bool              holding  = false;
   float             noHit    = 0;      // s the car can't hurt this one (just kicked or thrown)
+  float             sinceHurt = 1e3f;  // s since a car hurt this one: the voice once per hit
   std::string       voice;
 
   // animals
@@ -475,7 +478,14 @@ bool Characters::hitBy(State& s, Vehicle* player, float kmh) {
   return false;
   }
 
-bool Characters::update(float dt, Vehicle* player, const std::vector<Car>& cars) {
+bool Characters::touches(Car& c, const Vec3& at, float radius, float height) {
+  if(horiz(c.pos-at)>=radius+OtherCarSize || c.pos.y<at.y-0.3f || c.pos.y>at.y+height+0.3f)
+    return false;
+  c.hit = true;
+  return true;
+  }
+
+bool Characters::update(float dt, Vehicle* player, std::vector<Car>& cars) {
   greatHit = false;
   // the speed the car hit with: the step that brought it into contact has already stopped it
   const float nowKmh = player ? player->velocity().length()*3.6f : 0.f;
@@ -489,11 +499,11 @@ bool Characters::update(float dt, Vehicle* player, const std::vector<Car>& cars)
     s.actor.sound.clear();
     switch(s.actor.kind) {
       case Kind::Person:  person (s,dt,player,cars); break;
-      case Kind::Guard:   guard  (s,dt,player);      break;
+      case Kind::Guard:   guard  (s,dt,player,cars); break;
       case Kind::Seagull: seagull(s,dt,player,cars); break;
-      case Kind::Crab:    crab   (s,dt,player);      break;
+      case Kind::Crab:    crab   (s,dt,player,cars); break;
       case Kind::Spider:  spider (s,dt,player,cars); break;
-      case Kind::Dog:     dog    (s,dt,player);      break;
+      case Kind::Dog:     dog    (s,dt,player,cars); break;
       case Kind::Vulture: vulture(s,dt);             break;
       }
     finish(s);
@@ -503,7 +513,7 @@ bool Characters::update(float dt, Vehicle* player, const std::vector<Car>& cars)
 
 // --- people (0x510400) ---
 
-void Characters::person(State& s, float dt, Vehicle* player, const std::vector<Car>& cars) {
+void Characters::person(State& s, float dt, Vehicle* player, std::vector<Car>& cars) {
   s.noHit = std::max(0.f,s.noHit-dt);
   // the path goes on only while the person stands or walks (0x511b50)
   const bool free = s.seq<0 || s.seq==s.sStand || s.seq==s.sWalk;
@@ -530,9 +540,10 @@ void Characters::person(State& s, float dt, Vehicle* player, const std::vector<C
       player->addBoost(HitBoost);
       }
     }
-  for(auto& c:cars)
-    if(horiz(c.pos-s.pos)<BodyRadius+0.2f && std::abs(c.pos.y-s.pos.y-0.2f)<0.4f && c.velocity.length()*3.6f>HurtSpeed)
-      hurt = true;
+  if(s.active)
+    for(auto& c:cars)
+      if(touches(c,s.pos,BodyRadius,0.6f) && c.velocity.length()*3.6f>HurtSpeed)
+        hurt = true;
   if(hurt && s.seq!=s.sHurt && s.sHurt>=0) {
     if(s.holding)
       s.holding = false;
@@ -636,7 +647,7 @@ bool Characters::attack(State& s, float dt, Vehicle* player) {
 
 // --- guard (0x51a950) ---
 
-void Characters::guard(State& s, float dt, Vehicle* player) {
+void Characters::guard(State& s, float dt, Vehicle* player, std::vector<Car>& cars) {
   s.noHit = std::max(0.f,s.noHit-dt);
   const Vec3 car  = player ? player->pose().translation() : Vec3{0,1e6f,0};
   const bool sees = player!=nullptr && s.inst->volume("visibilityVolume")->contains(car);
@@ -647,6 +658,8 @@ void Characters::guard(State& s, float dt, Vehicle* player) {
     play(s,s.sStand,true);
     return;
     }
+  for(auto& c:cars)
+    touches(c,s.pos,BodyRadius,0.6f);
   if(s.noHit<=0 && hitBy(s,player,GuardHitSpeed) && sinceGuard>HitPause) {
     sinceGuard = 0;
     greatHit   = true;
@@ -781,7 +794,7 @@ void Characters::seagull(State& s, float dt, Vehicle* player, const std::vector<
 
 // --- crab (0x514100) ---
 
-void Characters::crab(State& s, float dt, Vehicle* player) {
+void Characters::crab(State& s, float dt, Vehicle* player, std::vector<Car>& cars) {
   const Vec3 car  = player ? player->pose().translation() : Vec3{0,1e6f,0};
   const bool sees = player!=nullptr && s.inst->volume("visibilityVolume")->contains(car);
   if(!sees) {
@@ -809,8 +822,11 @@ void Characters::crab(State& s, float dt, Vehicle* player) {
     }
   s.actor.visible = true;
 
-  // run over (0x534670)
-  if(horiz(car-s.pos)<CrabSize*s.scale && std::abs(car.y-s.pos.y)<0.3f) {
+  // run over (0x534670), by any car
+  bool squashed = horiz(car-s.pos)<CrabSize*s.scale && std::abs(car.y-s.pos.y)<0.3f;
+  for(auto& c:cars)
+    squashed |= touches(c,s.pos,CrabSize*s.scale-OtherCarSize,0.1f);
+  if(squashed) {
     s.active   = false;
     s.waitExit = true;
     s.actor.visible = false;
@@ -851,7 +867,7 @@ void Characters::crab(State& s, float dt, Vehicle* player) {
 
 // --- spider (0x515570) ---
 
-void Characters::spider(State& s, float dt, Vehicle* player, const std::vector<Car>& cars) {
+void Characters::spider(State& s, float dt, Vehicle* player, std::vector<Car>& cars) {
   const Vec3 car  = player ? player->pose().translation() : Vec3{0,1e6f,0};
   const bool sees = player!=nullptr && s.inst->volume("visibilityVolume")->contains(car);
   if(!sees) {
@@ -878,7 +894,11 @@ void Characters::spider(State& s, float dt, Vehicle* player, const std::vector<C
   const float floor = ground(s.pos,s.pos.y);
 
   if(!s.dead && horiz(car-s.pos)<prm.spiderRad+0.1f && std::abs(car.y-s.pos.y)<0.3f)
-    s.dead = true;  // under the wheels (0x534770)
+    s.dead = true;  // under the wheels (0x534770), of any car
+  if(s.actor.visible)
+    for(auto& c:cars)
+      if(!s.dead && touches(c,s.pos,prm.spiderRad+0.1f-OtherCarSize,0.1f))
+        s.dead = true;
   if(s.dead) {
     s.pos.y = floor+prm.spiderFloorDead;
     play(s,s.sHide,false);
@@ -934,7 +954,7 @@ void Characters::spider(State& s, float dt, Vehicle* player, const std::vector<C
 
 // --- dog (0x519400) ---
 
-void Characters::dog(State& s, float dt, Vehicle* player) {
+void Characters::dog(State& s, float dt, Vehicle* player, std::vector<Car>& cars) {
   const Vec3 car = player ? player->pose().translation() : Vec3{0,1e6f,0};
   const Vec3 rel = car-s.home;
   const bool sees = player!=nullptr && horiz(rel)<DogSees && rel.y>-5.f && rel.y<5.f;
@@ -957,6 +977,10 @@ void Characters::dog(State& s, float dt, Vehicle* player) {
   s.actor.visible = true;
 
   // any touch pushes the car off the dog: 0.5 m/s away from it and 0.12 m/s up (0x5349d0 -> 0x4f3470)
+  s.sinceHurt += dt;
+  bool hurt = false;
+  for(auto& c:cars)
+    hurt |= touches(c,s.pos,DogRadius,0.4f) && c.velocity.length()*3.6f>HurtSpeed;
   if(hitBy(s,player,-1.f)) {
     Vec3 away = player->pose().translation()-s.pos;
     away.y = 0;
@@ -964,13 +988,18 @@ void Characters::dog(State& s, float dt, Vehicle* player) {
     player->addVelocity(away*DogPushOut+Vec3{0,DogPushUp,0});
     }
   if(hitBy(s,player,HurtSpeed)) {
+    hurt = true;
     if(sinceDog>HitPause) {
       sinceDog = 0;
       greatHit = true;
       player->addBoost(HitBoost);
       }
-    s.actor.sound = "dog_pain";
     }
+  // whines once a hit, not on every step the car stays on it
+  if(hurt && s.sinceHurt>DogPainPause)
+    s.actor.sound = "dog_pain";
+  if(hurt)
+    s.sinceHurt = 0;
 
   const bool chase = s.inst->volume("attackVolume")->contains(car);
   bool run = false;

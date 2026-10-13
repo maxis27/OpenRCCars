@@ -391,6 +391,10 @@ void MainWindow::tick(float dt) {
         hud->hit(true);
         Log::i("great hit (character) at ",Hud::formatTime(race->time()));
         }
+      // an opponent that ran into someone drives on by itself (RCCars.exe 0x534340 .. -> 0x4fd9d0)
+      for(size_t i=0; i<others.size(); ++i)
+        if(others[i].hit)
+          (*opponents)[i].knock();
       }
     carPose = vehicle->pose();
     const rc::Vec3 at = carPose.translation();

@@ -72,6 +72,7 @@ class Characters {
     struct Car {
       Vec3 pos;
       Vec3 velocity;
+      bool hit = false;   // set by update(): it ran into someone, which knocks it off its recording (0x4fd9d0)
       };
 
     // `pack` reads RCCars.pack (Profiles, Settings); a character that cannot be set up is left out (logged)
@@ -81,7 +82,8 @@ class Characters {
 
     // after PhysicsWorld::step. `player` may be null. Returns true when the player hit someone hard enough for
     // "Wielkie Łup!" (the turbo tank has got its 5 units already)
-    bool                        update(float dt, Vehicle* player, const std::vector<Car>& cars);
+    bool                        update(float dt, Vehicle* player, std::vector<Car>& cars);
+    bool                        update(float dt, Vehicle* player) { std::vector<Car> none; return update(dt,player,none); }
     // back to the start of the race
     void                        restart();
 
@@ -106,18 +108,20 @@ class Characters {
     void        makeBody(State& s);
     void        placeBody(State& s);
 
-    void        person (State& s, float dt, Vehicle* player, const std::vector<Car>& cars);
-    void        guard  (State& s, float dt, Vehicle* player);
+    void        person (State& s, float dt, Vehicle* player, std::vector<Car>& cars);
+    void        guard  (State& s, float dt, Vehicle* player, std::vector<Car>& cars);
     void        seagull(State& s, float dt, Vehicle* player, const std::vector<Car>& cars);
-    void        crab   (State& s, float dt, Vehicle* player);
-    void        spider (State& s, float dt, Vehicle* player, const std::vector<Car>& cars);
-    void        dog    (State& s, float dt, Vehicle* player);
+    void        crab   (State& s, float dt, Vehicle* player, std::vector<Car>& cars);
+    void        spider (State& s, float dt, Vehicle* player, std::vector<Car>& cars);
+    void        dog    (State& s, float dt, Vehicle* player, std::vector<Car>& cars);
     void        vulture(State& s, float dt);
 
     // kick (Pendal) and grab-and-throw (Brosok) of people and guards: true while one of them goes on
     bool        attack (State& s, float dt, Vehicle* player);
     // the car hit the character: true once when the car touches its body faster than `kmh`
     bool        hitBy  (State& s, Vehicle* player, float kmh);
+    // another car touches the character (within `radius` of `at`, `height` above it): marks it Car::hit
+    static bool touches(Car& c, const Vec3& at, float radius, float height);
     void        play   (State& s, int32_t seq, bool loop, float rate = 1.f);
     void        animate(State& s, float dt);
     void        turnTo (State& s, const Vec3& dir, float maxRad);

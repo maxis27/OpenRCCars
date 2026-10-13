@@ -927,7 +927,7 @@ static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile
       // round the path
       rc::Vec3 lo = {1e9f,1e9f,1e9f}, hi = {-1e9f,-1e9f,-1e9f};
       for(int f=0; f<60*60; ++f) {
-        chars.update(1.f/60.f,nullptr,{});
+        chars.update(1.f/60.f,nullptr);
         const rc::Vec3 p = a->world.translation();
         lo = {std::min(lo.x,p.x),std::min(lo.y,p.y),std::min(lo.z,p.z)};
         hi = {std::max(hi.x,p.x),std::max(hi.y,p.y),std::max(hi.z,p.z)};
@@ -940,7 +940,7 @@ static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile
     rc::Mat4 park = rc::Mat4::translate({0,-500,0});
     rc::Vehicle car(world,geom,prm,park);
     for(int f=0; f<30; ++f)
-      chars.update(1.f/60.f,nullptr,{});
+      chars.update(1.f/60.f,nullptr);
     // where it shows up once the car is near: the car 3 m in front of it, facing it
     rc::Vec3 target = a->world.translation();
     for(int f=0; f<120 && !a->visible; ++f) {
@@ -948,7 +948,7 @@ static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile
       rc::Vec3 from = target+rc::Vec3{f3.x,0,f3.z}.normalized()*3.f;
       car.reset(rc::Mat4::translate(from+rc::Vec3{0,0.3f,0}));
       world.step(1.f/60.f);
-      chars.update(1.f/60.f,&car,{});
+      chars.update(1.f/60.f,&car);
       target = a->world.translation();
       }
     if(!a->visible) {
@@ -962,7 +962,7 @@ static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile
         from.y = *h-geom.min.y;
       const rc::Vec3 to = target-from;
       car.reset(rc::Mat4::translate(from)*rc::Mat4::rotate(1,std::atan2(to.x,to.z)*180.f/3.14159265f));
-      // with a speed: from 2.5 m away, already that fast
+      // with a speed: from 2.5 m away, already that fast (negative: an opponent instead, the player stays put)
       if(kmh>0) {
         rc::Vec3 far = target-to.normalized()*2.5f;
         if(auto h = coll.groundHeight(far+rc::Vec3{0,1.f,0}))
@@ -972,8 +972,16 @@ static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile
                   rc::Vec3{dir.x,0,dir.z}.normalized()*(kmh/3.6f),{});
         }
     }
-    std::printf("%s (%s) at %.2f %.2f %.2f, the car drives at it:\n",a->name.c_str(),a->model->name.c_str(),
-                target.x,target.y,target.z);
+    std::printf("%s (%s) at %.2f %.2f %.2f, %s drives at it:\n",a->name.c_str(),a->model->name.c_str(),
+                target.x,target.y,target.z,kmh<0 ? "an opponent" : "the car");
+    std::vector<rc::Characters::Car> others;
+    rc::Vec3 otherDir;
+    if(kmh<0) {
+      const rc::Vec3 side = car.pose().vector({1,0,0});
+      otherDir = rc::Vec3{-side.x,0,-side.z}.normalized();
+      others.push_back({target+rc::Vec3{0,0.1f,0}-otherDir*2.5f,otherDir*(-kmh/3.6f)});
+      }
+    bool knocked = false;
     int32_t lastSeq = -2;
     bool    lastVis = true, hits = false;
     float   maxUp = 0;
@@ -985,13 +993,19 @@ static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile
       float ang = std::atan2(to.x,to.z)-std::atan2(fw.x,fw.z);
       while(ang> 3.14159265f) ang -= 6.2831853f;
       while(ang<-3.14159265f) ang += 6.2831853f;
-      in.throttle = 1;
-      in.steer    = std::clamp(ang*2.f,-1.f,1.f);
+      in.throttle = kmh<0 ? 0.f : 1.f;
+      in.steer    = kmh<0 ? 0.f : std::clamp(ang*2.f,-1.f,1.f);
       car.update(in,1.f/60.f);
       world.step(1.f/60.f);
-      if(chars.update(1.f/60.f,&car,{})) {
+      for(auto& o:others)
+        o.pos += o.velocity*(1.f/60.f);
+      if(chars.update(1.f/60.f,&car,others)) {
         std::printf("  %5.2f Wielkie Lup! (car %.1f km/h)\n",t,car.velocity().length()*3.6f);
         hits = true;
+        }
+      if(!knocked && !others.empty() && others[0].hit) {
+        std::printf("  %5.2f the opponent ran into it: knocked off its recording\n",t);
+        knocked = true;
         }
       if(a->seq!=lastSeq) {
         std::printf("  %5.2f %s\n",t,a->seq>=0 ? a->skeleton->sequences()[size_t(a->seq)].name.c_str() : "-");

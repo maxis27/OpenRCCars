@@ -142,7 +142,7 @@ int main(int argc, const char** argv) {
           p.y = *g-geom.min.y;
         veh.hold(rc::Mat4::translate(p));
         world.step(1.f/60.f);
-        chars->update(1.f/60.f,&veh,{});
+        chars->update(1.f/60.f,&veh);
         }
       carPose = veh.pose();
       const rc::Vec3 at   = a->world.translation();
@@ -162,7 +162,7 @@ int main(int argc, const char** argv) {
       rc::Vehicle veh(world,rc::carGeometry(carSb,"Car1"),rc::CarParams::load(res.pack(),1),carPose);
       for(int i=0; i<2; ++i) {
         veh.hold(carPose);
-        chars->update(1.f/60.f,&veh,{});
+        chars->update(1.f/60.f,&veh);
         }
       }
     CharacterView charView(device);

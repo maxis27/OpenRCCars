@@ -80,6 +80,27 @@ struct Mat4 {
     return r;
     }
 
+  // general inverse (affine: rotation, scale and translation; the last row is 0 0 0 1)
+  Mat4 inverse() const {
+    const float d = determinant3();
+    Mat4 r;
+    if(d==0)
+      return r;
+    const float k = 1.f/d;
+    r.m[0][0] =  (m[1][1]*m[2][2]-m[1][2]*m[2][1])*k;
+    r.m[0][1] = -(m[0][1]*m[2][2]-m[0][2]*m[2][1])*k;
+    r.m[0][2] =  (m[0][1]*m[1][2]-m[0][2]*m[1][1])*k;
+    r.m[1][0] = -(m[1][0]*m[2][2]-m[1][2]*m[2][0])*k;
+    r.m[1][1] =  (m[0][0]*m[2][2]-m[0][2]*m[2][0])*k;
+    r.m[1][2] = -(m[0][0]*m[1][2]-m[0][2]*m[1][0])*k;
+    r.m[2][0] =  (m[1][0]*m[2][1]-m[1][1]*m[2][0])*k;
+    r.m[2][1] = -(m[0][0]*m[2][1]-m[0][1]*m[2][0])*k;
+    r.m[2][2] =  (m[0][0]*m[1][1]-m[0][1]*m[1][0])*k;
+    const Vec3 t = r.vector(translation());
+    r.m[0][3] = -t.x; r.m[1][3] = -t.y; r.m[2][3] = -t.z;
+    return r;
+    }
+
   // column-major copy, as expected by GLSL mat4
   void toColumnMajor(float out[16]) const {
     for(int c=0; c<4; ++c)

@@ -11,6 +11,7 @@
 //   rcinfo <game_dir> gates <RCCarsDB/x.sb> [car]  every main checkpoint driven at under physics
 //   rcinfo <game_dir> objects <RCCarsDB/x.sb>    objects placed on a track (INST): model, kind, physics, settling test
 //   rcinfo <game_dir> ai <RCCarsDB/x.sb> [level 1-3] [laps]  the opponents: recordings, their loops, a race without the player
+//   rcinfo <game_dir> sound <RCCarsDB/x.sb> <out.wav> [car 1-3]  the test drive with the engine sound, rendered to WAV
 //   rcinfo <game_dir> check                      decode every texture in the pack and every RCCarsDB/*.sb
 
 #include "formats/pack.h"
@@ -24,6 +25,9 @@
 #include "physics/race.h"
 #include "physics/props.h"
 #include "physics/vehicle.h"
+#include "audio/carsound.h"
+#include "audio/mixer.h"
+#include "audio/soundlib.h"
 
 #include <algorithm>
 #include <cmath>
@@ -34,6 +38,7 @@
 #include <iostream>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <random>
 
 namespace fs = std::filesystem;
@@ -321,7 +326,20 @@ static std::vector<TrackProp> placeProps(const fs::path& game, const rc::SbScene
 // two minutes or one lap, backing up when stuck. It knows nothing about the track's shape, so it gets stuck
 // where the straight line to the next checkpoint runs into a wall or a post. The test fails if the car does not
 // reach even the first checkpoint after the start or leaves the track (falls through or out of the collision grid).
-static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& pack, int car, int upgrade) {
+static void writeWav(const fs::path& p, const std::vector<int16_t>& pcm, uint32_t rate) {
+  auto u32 = [](std::string& s, uint32_t v){ for(int i=0;i<4;++i) s.push_back(char(v>>(8*i))); };
+  auto u16 = [](std::string& s, uint16_t v){ s.push_back(char(v)); s.push_back(char(v>>8)); };
+  const uint32_t bytes = uint32_t(pcm.size()*2);
+  std::string h = "RIFF";
+  u32(h,36+bytes); h += "WAVEfmt "; u32(h,16); u16(h,1); u16(h,2); u32(h,rate); u32(h,rate*4); u16(h,4); u16(h,16);
+  h += "data"; u32(h,bytes);
+  std::ofstream f(p,std::ios::binary);
+  f.write(h.data(),std::streamsize(h.size()));
+  f.write(reinterpret_cast<const char*>(pcm.data()),std::streamsize(bytes));
+  }
+
+static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& pack, int car, int upgrade,
+                    const char* wavOut = nullptr) {
   auto scene = rc::SbScene::load(readFile(game/track));
   auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
   rc::CollisionMesh coll(scene);
@@ -360,7 +378,20 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   rc::PhysicsWorld world(coll);
   auto             props = placeProps(game,scene,world);
   rc::Vehicle      veh(world,geom,prm,start);
-  const float dt = 1.f/60.f, limit = 120.f;
+
+  // the engine sound of the drive (rcinfo sound)
+  std::unique_ptr<rc::Mixer>        mixer;
+  std::unique_ptr<rc::SoundLibrary> sndLib;
+  std::unique_ptr<rc::CarSound>     engine;
+  std::vector<int16_t>              pcm;
+  float                             airTime = 0;
+  if(wavOut!=nullptr) {
+    mixer  = std::make_unique<rc::Mixer>();
+    sndLib = std::make_unique<rc::SoundLibrary>([&pack](const std::string& f){ return pack.read(f); },
+                                                readFile(game/"RCCars.sb"));
+    engine = std::make_unique<rc::CarSound>(*mixer,*sndLib,car-1);
+    }
+  const float dt = 1.f/60.f, limit = wavOut ? 40.f : 120.f;
   size_t flips = 0, reverses = 0, drowned = 0, passed = 0;
   float  maxSpeed = 0, stuck = 0, backing = 0, upsideDown = 0, t = 0;
   bool   fell = false;
@@ -413,6 +444,28 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
       }
     veh.update(in,dt);
     world.step(dt);
+    if(engine) {
+      static const char* const names[] = {"idle","start","accel","release","coast"};
+      const float fwd = veh.speed();
+      airTime = veh.wheelsOnGround()==0 ? airTime+dt : 0;
+      rc::CarSound::Input si;
+      si.speed    = std::abs(veh.speed())*3.6f;
+      si.gas      = in.throttle>0;
+      si.back     = in.throttle<0;
+      si.braking  = si.back && fwd*3.6f>1.f;
+      si.airborne = airTime>0.05f;
+      si.racing   = true;
+      const auto was = engine->state();
+      const bool on  = engine->running();
+      engine->update(si,dt);
+      if(engine->state()!=was || engine->running()!=on)
+        std::printf("%6.2f engine %-7s %s at %5.1f km/h%s\n",t,names[int(engine->state())],
+                    engine->running() ? "on " : "off",si.speed,si.airborne ? " (in the air)" : "");
+      const size_t n = size_t(rc::Mixer::Rate/60);
+      const size_t at = pcm.size();
+      pcm.resize(at+n*2);
+      mixer->render(pcm.data()+at,n);
+      }
     maxSpeed = std::max(maxSpeed,veh.speed());
     onSurface[veh.surface()] += dt;
     // in the sea for too long: back to the last checkpoint, as the game does
@@ -435,6 +488,10 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
     if(frame%60==0)
       std::printf("%6.2f pos (%7.2f %6.2f %7.2f) speed %5.1f km/h wheels %zu on %s -> %s\n",t,p.x,p.y,p.z,
                   veh.speed()*3.6f,veh.wheelsOnGround(),rc::surfaceName(veh.surface()),route[next].name.c_str());
+    }
+  if(engine) {
+    writeWav(wavOut,pcm,rc::Mixer::Rate);
+    std::printf("engine sound: %.1f s written to %s\n",double(pcm.size()/2)/rc::Mixer::Rate,wavOut);
     }
   const bool lap = cps.laps()>0;
   std::printf("%s: %zu of %zu checkpoints in %.1f s, max speed %.1f km/h, %zu times backed up, %zu times put back"
@@ -824,6 +881,14 @@ int main(int argc, char** argv) {
       return cmdObj(game/argv[3],argv[4]);
 
     rc::PackFile pack(game/"RCCars.pack");
+    if(cmd=="pack" && argc>3) {
+      // lists the entries in one folder, e.g. "rcinfo <game> pack Sound"
+      const std::string dir = rc::PackFile::normalize(std::string(argv[3])+"\\");
+      for(auto& e:pack.entries())
+        if(rc::PackFile::normalize(e.name).rfind(dir,0)==0)
+          std::printf("%8u %s\n",e.size,e.name.c_str());
+      return 0;
+      }
     if(cmd=="pack")
       return cmdPack(pack);
     if(cmd=="check")
@@ -844,6 +909,8 @@ int main(int argc, char** argv) {
       return cmdAi(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 2,argc>5 ? std::atoi(argv[5]) : 3);
     if(cmd=="gates" && argc>3)
       return cmdGates(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1);
+    if(cmd=="sound" && argc>4)
+      return cmdDrive(game,argv[3],pack,argc>5 ? std::atoi(argv[5]) : 1,0,argv[4]);
     if(cmd=="drive" && argc>3)
       return cmdDrive(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1,argc>5 ? std::atoi(argv[5]) : 0);
     std::fprintf(stderr,"unknown command\n");

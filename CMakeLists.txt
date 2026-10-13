@@ -29,6 +29,7 @@ add_library(rcformats STATIC
   formats/objects.h   formats/objects.cpp
   formats/water.h     formats/water.cpp
   formats/carprofile.h formats/carprofile.cpp
+  formats/soundbank.h  formats/soundbank.cpp
   )
 target_include_directories(rcformats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -69,8 +70,18 @@ add_library(rcphysics STATIC
   )
 target_link_libraries(rcphysics PUBLIC rcformats PRIVATE bullet)
 
+# --- sound: software mixer, the original's engine and channel logic, MP3 music (no audio device needed) ---
+add_library(rcaudio STATIC
+  audio/mixer.h    audio/mixer.cpp
+  audio/soundlib.h audio/soundlib.cpp
+  audio/carsound.h audio/carsound.cpp
+  audio/music.h    audio/music.cpp
+  )
+target_include_directories(rcaudio PRIVATE lib/dr_mp3)
+target_link_libraries(rcaudio PUBLIC rcformats)
+
 add_executable(rcinfo tools/rcinfo.cpp)
-target_link_libraries(rcinfo rcformats rcphysics)
+target_link_libraries(rcinfo rcformats rcphysics rcaudio)
 
 if(OPENRCCARS_TOOLS_ONLY)
   return()
@@ -101,7 +112,7 @@ add_library(rcengine STATIC
   game/world/objects.h     game/world/objects.cpp
   )
 target_include_directories(rcengine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} lib/Tempest/Engine/include)
-target_link_libraries(rcengine PUBLIC rcformats rcphysics Tempest Shaders)
+target_link_libraries(rcengine PUBLIC rcformats rcphysics rcaudio Tempest Shaders)
 # Tempest is static here, so its private link directory for vulkan-1.lib does not reach our executables.
 target_link_directories(rcengine PUBLIC "$ENV{VULKAN_SDK}/lib")
 

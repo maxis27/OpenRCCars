@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 
+#include "audio/ambient.h"
 #include "audio/carsound.h"
 #include "audio/mixer.h"
 #include "audio/music.h"
@@ -33,6 +34,10 @@ class Sounds {
     // the next race track of the playlist (Autoexec.gm), and on to the next one whenever a track ends
     void startMusic();
     void stopMusic();
+    // the water of a track (water_splash_N, WATER_FALL_N), heard from `ear` with `right` to the right of it
+    void setTrack(const rc::SbScene& scene);
+    void tickAmbient(const rc::Vec3& ear, const rc::Vec3& right, float dt);
+
     // call once per frame
     void tick();
 
@@ -48,6 +53,7 @@ class Sounds {
     std::unique_ptr<rc::SoundLibrary>            lib;
     std::map<std::string,rc::BankChannel>        channels;
     rc::MusicList                                music;
+    rc::AmbientSounds                            ambient;
     bool                                         musicOn = false;
 
     std::unique_ptr<Tempest::SoundDevice>        device;

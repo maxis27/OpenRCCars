@@ -25,6 +25,14 @@ enum class Surface : uint8_t {
 Surface     surfaceOf(const SbTexture* texture);
 const char* surfaceName(Surface s);
 
+// RCCars.exe's surface numbers for the car's sounds (0x535060): 1 sand, 2 wet sand, 3 trampled sand, 4 grass,
+// 5 gravel, 6 the tin / boat textures (material bit 12, played with the car_*_asphalt sounds), 7 wood, 8 stone,
+// 9 metal (bit 13, not used on the tracks), 0 none (asphalt bit 10 included). The game adds 10 for water itself.
+// A face with several textures takes the lowest number of them (0x534fc0).
+namespace SoundSurface { enum : uint8_t { None=0, Sand=1, WetSand=2, Trampled=3, Grass=4, Gravel=5, Tin=6, Wood=7,
+                                          Stone=8, Metal=9, Water=10, Count=11 }; }
+uint8_t     soundSurfaceOf(uint32_t material);
+
 // Triangle soup of the faces a track's COLL grid refers to, in world space, with the same uniform grid
 // for queries. Collision geometry is the render geometry (including faces without a texture, which act as
 // invisible walls), so nothing here depends on the renderer.
@@ -36,6 +44,7 @@ class CollisionMesh {
       uint32_t mesh = 0;   // SbScene::meshes
       uint32_t face = 0;   // SbMesh::faces
       Surface  surface = Surface::Default;
+      uint8_t  sound   = SoundSurface::None;   // see soundSurfaceOf
       };
 
     // which triangles a query sees: the solid track, or only the water surfaces in it
@@ -68,6 +77,8 @@ class CollisionMesh {
     std::optional<float>         groundHeight(const Vec3& from, float maxDepth = 1000.f) const;
     // what the solid surface directly below `from` (within maxDepth) is made of
     Surface                      surfaceBelow(const Vec3& from, float maxDepth) const;
+    // the same for the sounds (SoundSurface), the solid ground only
+    uint8_t                      soundBelow(const Vec3& from, float maxDepth) const;
     // height of the nearest water surface above `at`, or if there is none, below it; within `range` either way
     // (shaped by shoreHeight)
     std::optional<float>         waterLevel(const Vec3& at, float range) const;

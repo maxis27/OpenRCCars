@@ -15,6 +15,8 @@ class btCompoundShape;
 class btDefaultCollisionConfiguration;
 class btDiscreteDynamicsWorld;
 class btRigidBody;
+class btPersistentManifold;
+class btCollisionObject;
 class btRaycastVehicle;
 class btSequentialImpulseConstraintSolver;
 class btTriangleIndexVertexArray;
@@ -57,6 +59,8 @@ class PhysicsWorld {
     const CollisionMesh&     track() const { return coll; }
     btDiscreteDynamicsWorld& bullet()      { return *world; }
     btRigidBody&             ground()      { return *groundBody; }
+    // the sound surface (SoundSurface) of a triangle of ground()'s mesh, by Bullet's triangle index
+    uint8_t                  groundSound(int triangle) const;
 
   private:
     const CollisionMesh&                                  coll;
@@ -71,6 +75,7 @@ class PhysicsWorld {
     std::unique_ptr<btTriangleIndexVertexArray>           meshData;
     std::unique_ptr<btBvhTriangleMeshShape>               meshShape;
     std::unique_ptr<btRigidBody>                          groundBody;
+    std::vector<uint32_t>                                 solidTris;   // ground mesh triangle -> CollisionMesh one
   };
 
 // A car on btRaycastVehicle: chassis box + four suspension rays. The wheels stand on solid ground only: water
@@ -100,6 +105,23 @@ class Vehicle {
     // Every hit has already added 5 units to the turbo tank.
     enum class Hit : uint8_t { None, Hit, Great };
     Hit                        hit() const { return lastHit; }
+
+    // For the sounds, as RCCars.exe keeps them (car state 0x50acf0, contacts 0x4f6940 / 0x4f68a0):
+    // the body's strongest contact with the track or a prop in the last update, if any. `hit` when the car moves
+    // straight into it (more than 145 degrees between the contact normal and the car's velocity there), otherwise a
+    // touch; `impact` is the speed along the normal in km/h. Props count as wood (RCCars.exe: objects -> 7).
+    struct Contact {
+      uint8_t surface = 0;  // SoundSurface, 0 = no contact
+      bool    hit     = false;
+      float   impact  = 0;
+      };
+    const Contact&             contact()  const { return touch; }
+    // touched another car in the last update, after not touching one in the update before
+    bool                       carBump()  const { return bump; }
+    // the highest sound surface under the wheels touching the ground or standing in water (SoundSurface::Water)
+    uint8_t                    groundSound() const { return groundSnd; }
+    // a wheel touches the ground or stands in water
+    bool                       grounded() const { return groundedNow; }
 
     // model -> world
     Mat4                       pose()  const;
@@ -133,6 +155,8 @@ class Vehicle {
     void                                  surfaces(float dt);
     // the contacts of the last physics steps -> lastHit
     void                                  hits(float dt);
+    // one manifold of the body with the track or a prop -> touch
+    void                                  contacts(const btPersistentManifold& m, const btCollisionObject* other);
 
     PhysicsWorld&                         owner;
     CarGeometry                           geom;
@@ -150,6 +174,11 @@ class Vehicle {
     float                                 underWater = 0;     // s fully under water
 
     Hit                                   lastHit   = Hit::None;
+    Contact                               touch;
+    bool                                  bump      = false;
+    bool                                  carBefore = false;  // touched a car in the update before
+    uint8_t                               groundSnd = 0;
+    bool                                  groundedNow = false;
     bool                                  wheelProp = false;  // a suspension ray stood on a prop
     float                                 sinceProp = 1e3f;   // s since the last hit on a prop
     float                                 sinceCar  = 1e3f;   // s since the last contact with another car

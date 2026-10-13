@@ -447,7 +447,7 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
     if(engine) {
       static const char* const names[] = {"idle","start","accel","release","coast"};
       const float fwd = veh.speed();
-      airTime = veh.wheelsOnGround()==0 ? airTime+dt : 0;
+      airTime = !veh.grounded() ? airTime+dt : 0;
       rc::CarSound::Input si;
       si.speed    = std::abs(veh.speed())*3.6f;
       si.gas      = in.throttle>0;
@@ -455,6 +455,14 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
       si.braking  = si.back && fwd*3.6f>1.f;
       si.airborne = airTime>0.05f;
       si.racing   = true;
+      si.boost    = veh.boosting();
+      si.inWater  = veh.submerged()>0;
+      si.ground   = veh.groundSound();
+      si.contact  = {veh.contact().surface,veh.contact().hit,veh.contact().impact};
+      si.carBump  = veh.carBump();
+      if(si.contact.surface!=0)
+        std::printf("%6.2f contact: %s on surface %d, %.1f km/h\n",t,si.contact.hit ? "hit" : "touch",
+                    int(si.contact.surface),si.contact.impact);
       const auto was = engine->state();
       const bool on  = engine->running();
       engine->update(si,dt);

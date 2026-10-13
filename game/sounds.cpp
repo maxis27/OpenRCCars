@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "resources.h"
+#include "formats/settings.h"
 
 using namespace Tempest;
 
@@ -71,6 +72,23 @@ void Sounds::stopAll() {
 
 void Sounds::setPaused(bool p) {
   mix.setPaused(p);
+  }
+
+void Sounds::setTrack(const rc::SbScene& scene) {
+  ambient.stop();
+  rc::SliderFile ini;
+  try {
+    const auto d = res.pack().read("Settings\\water_splash_mng.ini");
+    ini = rc::SliderFile::parse(std::string_view(reinterpret_cast<const char*>(d.data()),d.size()));
+    }
+  catch(const std::exception& e) {
+    Log::e("water_splash_mng.ini: ",e.what());
+    }
+  ambient = rc::AmbientSounds(mix,*lib,scene,ini);
+  }
+
+void Sounds::tickAmbient(const rc::Vec3& ear, const rc::Vec3& right, float dt) {
+  ambient.update(ear,right,dt);
   }
 
 void Sounds::startMusic() {

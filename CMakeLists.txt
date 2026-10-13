@@ -76,6 +76,7 @@ add_library(rcaudio STATIC
   audio/soundlib.h audio/soundlib.cpp
   audio/carsound.h audio/carsound.cpp
   audio/music.h    audio/music.cpp
+  audio/ambient.h  audio/ambient.cpp
   )
 target_include_directories(rcaudio PRIVATE lib/dr_mp3)
 target_link_libraries(rcaudio PUBLIC rcformats)

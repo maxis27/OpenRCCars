@@ -155,7 +155,7 @@ void MainWindow::respawnCar() {
     return;
   carPose = checkpoints->respawn(car->bboxMin().y);
   vehicle->reset(carPose);
-  effects->clear();
+  effects->clear(true);
   sounds->play("Checkpoint","cp_reset");
   besideDone = true;
   if(opponents)
@@ -575,6 +575,7 @@ void MainWindow::render() {
         characterView->draw(enc,frameId,resources,*characters,push);
       if(car) {
         const auto parts = carPartPoses();
+        car->setDirt(effects->dirt());
         car->draw(enc,viewProj,push,carPose,&parts);
         }
       if(opponents) {
@@ -587,6 +588,8 @@ void MainWindow::render() {
           m->second->draw(enc,viewProj,push,o.pose(),&parts);
           }
         }
+      if(vehicle)
+        effects->drawTracks(enc,frameId,viewProj,camera.position);
       if(level)
         level->mesh().draw(enc,push,LevelMesh::Pass::Translucent);
       if(vehicle)

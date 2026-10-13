@@ -88,6 +88,9 @@ target_link_libraries(rcaudio PUBLIC rcformats)
 add_library(rcfx STATIC
   fx/particles.h  fx/particles.cpp
   fx/careffects.h fx/careffects.cpp
+  fx/marks.h
+  fx/tracks.h     fx/tracks.cpp
+  fx/wake.h       fx/wake.cpp
   )
 target_link_libraries(rcfx PUBLIC rcformats)
 

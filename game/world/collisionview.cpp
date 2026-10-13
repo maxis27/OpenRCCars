@@ -17,8 +17,11 @@ CollisionView::CollisionView(Device& device, const rc::CollisionMesh& coll, cons
     if(face.layer(rc::LayerTag::Base)==nullptr) {
       c[0] = 0.2f; c[1] = 0.45f; c[2] = 1.0f; c[3] = 0.45f;
       }
-    else if(t.surface==rc::Surface::Water) {   // not solid
+    else if(coll.isWater(t)) {   // not solid
       c[0] = 0.1f; c[1] = 0.95f; c[2] = 1.0f; c[3] = 0.40f;
+      }
+    else if(t.surface==rc::Surface::Water) { // waterfall: neither solid nor water
+      c[0] = 0.8f; c[1] = 0.8f;  c[2] = 0.8f; c[3] = 0.30f;
       }
     else if(t.surface==rc::Surface::DeepSand && up>0.5f) {
       c[0] = 0.9f; c[1] = 0.3f;  c[2] = 0.9f; c[3] = 0.45f;
@@ -36,6 +39,9 @@ CollisionView::CollisionView(Device& device, const rc::CollisionMesh& coll, cons
     for(int i=0; i<3; ++i) {
       Vertex v = {};
       v.pos[0] = p[i]->x; v.pos[1] = p[i]->y; v.pos[2] = p[i]->z;
+      // the sea is drawn lowered (WLOD offset): show it where the car meets it, not at the scene's height
+      if(coll.isWater(t))
+        v.pos[1] = coll.waterSurface(t.mesh,*p[i]);
       v.bary[i] = 1.f;
       for(int k=0; k<4; ++k)
         v.color[k] = c[k];

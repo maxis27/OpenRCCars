@@ -12,6 +12,7 @@
 #include <map>
 #include <memory>
 
+#include "arrow.h"
 #include "camera.h"
 #include "hud.h"
 #include "physics/checkpoints.h"
@@ -53,6 +54,9 @@ class MainWindow : public Tempest::Window {
     std::vector<rc::Mat4> carPartPoses() const;
     std::vector<rc::Mat4> opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const;
     Hud::Info             hudInfo() const;
+    // the way on for the arrow: the point it shows, relative to the car's heading, radians, positive = left
+    float                 wayDirection() const;
+    DirectionArrow::Input arrowInput() const;
 
     Tempest::Device&        device;
     Resources&              resources;
@@ -81,6 +85,7 @@ class MainWindow : public Tempest::Window {
     bool                    paused   = false;
     rc::Vec3                lastCarPos;     // for the car's velocity
     std::unique_ptr<Hud>    hud;
+    std::unique_ptr<DirectionArrow> arrow;
     std::unique_ptr<Sounds> sounds;
     std::unique_ptr<rc::CarSound>   carSound;   // the player's engine
     std::vector<rc::AiCarSound>     aiSounds;   // one per opponent

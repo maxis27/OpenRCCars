@@ -21,7 +21,7 @@ class Resources;
 // countdown ("3", "2", "1", "Jazda!"), "okrążenie" with the lap number, "zły kierunek", "najlepsze okrążenie",
 // "meta", "pauza", "Łup!", and the times in the game's Smash font. Positions follow Settings/cockpit.ini and
 // cockpit_time.ini (a 800x600 screen; elements on the right keep their distance from the right edge on wider
-// screens). The direction arrow is the cockpit's chevron (coc_str_2) turned towards the next checkpoint. Over the
+// screens). The direction arrow between the brackets is a 3D model drawn by DirectionArrow (game/arrow.h). Over the
 // next main checkpoint hangs the animated arrow cp_ar_* (Settings/anim_cp.ini).
 // At the bottom the original's two gauges (cockpit_sp1, cockpit_sp2): turbo on the left, the speed on the right; at the
 // top right under the lap the track map (trackmap_<n>, map_cp, map_arrow), at the top left the place (place<n>.csi)
@@ -37,7 +37,6 @@ class Hud {
       float turbo     = 0;     // 0..1 of the tank
       float turboMax  = 1;     // the tank's size, 0..1 of the gauge (the original: 50..100 units of 100)
       float speedMax  = 0;     // km/h the car can reach (with turbo)
-      float direction = 0;     // the next checkpoint relative to the car's heading, radians, positive = left
       int   place     = 0;     // 1.. the place in the race, 0: not shown (no opponents)
       rc::Vec3 carPos, carForward;            // the player's car, for the map
       struct Car { rc::Vec3 pos, forward; };
@@ -134,7 +133,6 @@ class Hud {
     Tempest::RenderPipeline          psoDepth;  // the same, tested against the scene's depth
     std::string                      lang;
     Image                            msg321, msgGo, msgBest, msgWrong, msgPause, msgHits, lapLabel;
-    const Tempest::Texture2d*        arrow = nullptr; // coc_str_2, 128x128
     // cp_ar_<2 green, 3 red: the lap's end>_f<1..3>, 256x256: arrows pointing down at the next checkpoint
     const Tempest::Texture2d*        cpArrow[2][3] = {};
     Font                             font;

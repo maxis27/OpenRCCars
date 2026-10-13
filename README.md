@@ -61,7 +61,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   oryginału są tylko kule zaliczania punktów (1,6 m) obrysowane na trasie do debugowania (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
   zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono, pośrednia, na którą wskazuje strzałka,
   niebieska. Każde zaliczenie trafia też do logu
-- **przeciwnicy**: jak w oryginale, nie jeżdżą z fizyką, tylko odtwarzają przejazdy nagrane na każdej trasie
+- **przeciwnicy**: jak w oryginale, dopóki nikt ich nie potrąci, nie jeżdżą z fizyką, tylko odtwarzają przejazdy nagrane na każdej trasie
   (`CarProfiles/<trasa>/*.dat`). Skład wyścigu (do pięciu kierowców, auto, nagranie) jest w `Scripts/ailayouts.ini`;
   na łatwym startują trzej, na normalnym czterej, na trudnym wszyscy (klawisz O, domyślnie normalny). Nagranie to
   jedno okrążenie od startu, którego koniec schodzi się z początkiem pętli; kolejne okrążenia kierowca jedzie z
@@ -70,8 +70,17 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   0,92 / 1 / 1,07) razy „gumka” (`Splines/FuncWaitAccel<n>_A.bspl`): kto jest 40–50 m za graczem, jedzie do
   1,1–1,2 raza szybciej, kto 20–45 m przed nim, zwalnia do 0,6–0,65. Gracz staje na swoim miejscu w szyku
   (`PlayerPath`, `start.dat`). Kierowcy (Doc, BabyShark, Daisy, Dakilla, Johny, MCJocker, MaxXMad) mają swoje
-  malowanie auta (`car_askin<auto><1–4>`). U nas są bryłami kinematycznymi: gracz się od nich odbija, a one
-  pchają rekwizyty, ale nic ich nie zepchnie z toru jazdy. Kokpit pokazuje miejsce obrazkiem z gry
+  malowanie auta (`car_askin<auto><1–4>`). Odtwarzając nagranie, są bryłą kinematyczną (pchają rekwizyty).
+  Gdy dotknie ich inne auto, wypadają z nagrania (`RCCars.exe` 0x533990 → 0x4fd9d0): stają się autem z fizyką
+  jak gracz (parametry swojego auta, ta sama masa 1 kg, więc się przepychają, obracają i przewracają), a autopilot
+  z gry (0x4fdb50–0x4fe490) prowadzi je z powrotem na nagranie: celuje w punkt nagrania 2,7 m przed najbliższym
+  (szukanym do 6 m naprzód), prędkość 4–10 m/s zależnie od odległości do celu, mniejsza przy ostrym skręcie,
+  koła do 35° (przez pierwszą sekundę co najmniej 30°, z prędkością 90°/s); zablokowane (wolniej niż 2 km/h
+  albo dociśnięte do przeszkody) cofa przez 1,5 s. Po 2 s wraca do odtwarzania, gdy jest 10 cm od punktu
+  nagrania i jedzie w jego kierunku (do 10°), a po 5 s wraca od razu, jeśli gracz go nie widzi (u nas: dalej niż
+  50 m albo za graczem, zgadnięte). Powrót płynnie przechodzi w nagranie przez sekundę. Przy zderzeniu wolniejsze
+  auto (przy podobnej prędkości przeciwnik) dostaje impuls lekko w górę, bo gra liczy jego środek 10 cm wyżej.
+  Kokpit pokazuje miejsce obrazkiem z gry
   (`place1..6.csi`: „1szy” … „6ty”), a meta tabelę wyników, w którą wpadają czasy kolejnych kierowców
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
   baloniki, łuski, toczące się kłębki) stoją tam, gdzie kładzie je trasa (od 8 do 17 na trasie), i są bryłami
@@ -195,6 +204,7 @@ rcinfo <folder_gry> objects RCCarsDB/beach_1.sb   # obiekty na trasie (INST): mo
 rcinfo <folder_gry> race RCCarsDB/beach_1.sb [okrążenia]  # punkty kontrolne i test logiki wyścigu (bez fizyki)
 rcinfo <folder_gry> gates RCCarsDB/beach_1.sb [auto 1-3]  # każdy główny punkt kontrolny zaliczony autem z fizyką
 rcinfo <folder_gry> ai RCCarsDB/beach_1.sb [poziom 1-3] [okrążenia]  # przeciwnicy: nagrania, ich pętle i wyścig bez gracza
+rcinfo <folder_gry> ram RCCarsDB/beach_1.sb [przeciwnik] [s] [side]  # gracz wjeżdża w przeciwnika: wypadnięcie z nagrania, powrót, „Łup!”
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
 rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
 rcshot <folder_gry> beach_1 shot.png [w h] [x y z yaw pitch]   # render offscreen, z autem i kamerą za nim
@@ -282,9 +292,10 @@ lib/Tempest     silnik (submoduł git)
     wciśniętym klawiszu, dopalacz rusza znowu po 0,9 s i dopiero powyżej 10 jednostek. `BOOSTERS` nie zmienia
     przyspieszenia, tylko ładowanie turbo;
   - „Łup!” i „Wielkie Łup!” (`msg_hits.csi`, przez 1 s, ważniejsze od „złego kierunku”): każde daje +5 jednostek
-    turbo. „Łup!” za dotknięcie rekwizytu ze `stone.sb` szybciej niż 7 km/h (najwyżej co 0,3 s). Po zetknięciu
-    z innym autem (najwyżej co 2 s) gra przez 0,5 s sumuje obrót auta w jego osiach: średnio ponad 3 rad/s wokół X,
-    5 wokół Z albo 7 w sumie to „Wielkie Łup!”, ponad 0,8 / 1 / 2 to „Łup!”. Ludzie, strażnik (od 10 km/h) i pies
+    turbo. „Łup!” za dotknięcie rekwizytu ze `stone.sb` szybciej niż 7 km/h (najwyżej co 0,3 s). Po uderzeniu
+    w przeciwnika (oba auta co najmniej 2 s od poprzedniego) gra przez 0,5 s sumuje obrót **przeciwnika** w jego
+    osiach (0x5334b0): średnio ponad 3 rad/s wokół X, 5 wokół Z albo 7 w sumie to „Wielkie Łup!”, ponad 0,8 / 1 / 2
+    to „Łup!”, czyli liczy się, jak mocno gracz nim rzucił. Ludzie, strażnik (od 10 km/h) i pies
     (od 15 km/h) dają „Wielkie Łup!” (najwyżej co 2 s); kraby, pająki, mewy i ruch uliczny nic;
   - skręt: pozycja kierownicy rośnie w stronę wciśniętą o `4,5 - 0,5·v` (v w m/s, najmniej 1) na sekundę, wraca
     (i przechodzi na drugą stronę) o 6 na sekundę; `steering<N>.bspl` zamienia ją na kąt kół (20° na jednostkę),
@@ -465,7 +476,7 @@ lib/Tempest     silnik (submoduł git)
 6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
    menu i zapisu rekordów)
 7. ~~Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`)~~
-   (zrobione dla szybkiego wyścigu; brakuje zderzeń, które wytrącają przeciwnika z nagrania, mistrzostw z
+   (zrobione dla szybkiego wyścigu, ze zderzeniami, które wytrącają przeciwnika z nagrania; brakuje mistrzostw z
    `championship.ini`, duchów z `GhostRecords`, twarzy kierowców i ich wyboru w menu)
 
 ## Licencja

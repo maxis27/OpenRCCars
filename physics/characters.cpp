@@ -458,7 +458,7 @@ bool Characters::hitBy(State& s, Vehicle* player, float kmh) {
     return false;
   if(player->velocity().length()*3.6f<=kmh)
     return false;
-  const btCollisionObject* car  = player->chassis();
+  const btCollisionObject* car  = &player->chassis();
   const btCollisionObject* body = s.body->rigid.get();
   auto& disp = *owner.bullet().getDispatcher();
   for(int i=0; i<disp.getNumManifolds(); ++i) {
@@ -592,7 +592,7 @@ bool Characters::attack(State& s, float dt, Vehicle* player) {
         Vec3 out = to;
         out.y = 0;
         out = horiz(out)>1e-4f ? out*(1.f/horiz(out)) : facing(s.yaw);
-        player->push(out*KickOut+Vec3{0,KickUp,0}-player->velocity());
+        player->kick(out*KickOut+Vec3{0,KickUp,0}-player->velocity());
         s.actTime = 0;
         s.noHit   = 0.5f;
         }
@@ -617,7 +617,7 @@ bool Characters::attack(State& s, float dt, Vehicle* player) {
     if(s.t>ThrowAt || s.done) {
       s.holding = false;
       s.noHit   = 0.5f;
-      player->push(facing(s.yaw)*ThrowForward+Vec3{0,ThrowUp,0}-player->velocity());
+      player->kick(facing(s.yaw)*ThrowForward+Vec3{0,ThrowUp,0}-player->velocity());
       }
     }
   if(s.done) {

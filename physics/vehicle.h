@@ -46,7 +46,7 @@ class PhysicsWorld {
 
     // btCollisionObject::getUserIndex() of props (Prop), the only bodies suspension rays hit besides the track
     static constexpr int     PropTag = 1;
-    // the same of the opponents' cars (Opponent)
+    // the same of the cars (Vehicle, Opponent)
     static constexpr int     CarTag  = 2;
     // the same of people, guards and dogs (Characters)
     static constexpr int     CharacterTag = 3;
@@ -98,14 +98,18 @@ class Vehicle {
     ~Vehicle();
 
     void                       reset(const Mat4& start);
+    // exactly at `pose` (model -> world), moving with `velocity` (m/s) and `spin` (rad/s, world axes); the springs
+    // at rest
+    void                       place(const Mat4& pose, const Vec3& velocity, const Vec3& spin);
     // back on the wheels where it is, facing the same way (after a roll-over)
     void                       recover();
     // call once per frame before PhysicsWorld::step
     void                       update(const Input& in, float dt);
 
     // RCCars.exe's "Łup!" / "Wielkie Łup!" (msg_hits.csi): what the car hit since the last update, see Vehicle::hits.
-    // Every hit has already added 5 units to the turbo tank.
+    // Every hit has already added HitBoost units to the turbo tank. Hits on other cars are Opponents::collide's.
     enum class Hit : uint8_t { None, Hit, Great };
+    static constexpr float     HitBoost = 5.f;
     Hit                        hit() const { return lastHit; }
 
     // For the sounds, as RCCars.exe keeps them (car state 0x50acf0, contacts 0x4f6940 / 0x4f68a0):
@@ -127,14 +131,19 @@ class Vehicle {
 
     // model -> world
     Mat4                       pose()  const;
-    // velocity of the centre of mass, world, m/s
-    Vec3                       velocity() const;
+    // centre of mass, world; its velocity (m/s); the angular velocity in the car's own axes (rad/s, x pitch, z roll)
+    Vec3                       centre()    const;
+    Vec3                       velocity()  const;
+    Vec3                       localSpin() const;
+    // an impulse (kg m/s) at the world point `at`
+    void                       push(const Vec3& impulse, const Vec3& at);
+    // the Bullet body, tagged PhysicsWorld::CarTag
+    btRigidBody&               chassis() { return *body; }
+    const btRigidBody&         chassis() const { return *body; }
     // adds `dv` (m/s, world) to the velocity: a kick (people.sb characters)
-    void                       push(const Vec3& dv);
-    // carried by someone (a person's hand): put at `pose` (model -> world), at rest; push() throws it afterwards
+    void                       kick(const Vec3& dv);
+    // carried by someone (a person's hand): put at `pose` (model -> world), at rest; kick() throws it afterwards
     void                       hold(const Mat4& pose);
-    // the chassis in the Bullet world, to tell what it touches
-    const btCollisionObject*   chassis() const;
     // forward speed, m/s (negative when reversing)
     float                      speed() const;
     // turbo tank, 0..1 of a full one
@@ -191,9 +200,6 @@ class Vehicle {
     bool                                  groundedNow = false;
     bool                                  wheelProp = false;  // a suspension ray stood on a prop
     float                                 sinceProp = 1e3f;   // s since the last hit on a prop
-    float                                 sinceCar  = 1e3f;   // s since the last contact with another car
-    float                                 shakeLeft = 0;      // s left of the window after a car contact
-    Vec3                                  shake;              // the window's rotation so far, model axes, rad
 
     std::unique_ptr<btBoxShape>           box;
     std::unique_ptr<btCompoundShape>      shape;

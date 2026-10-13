@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -815,7 +816,7 @@ static int cmdAi(const fs::path& game, const fs::path& track, rc::PackFile& pack
   rc::PhysicsWorld   world(coll);
   const std::string  name = track.stem().string();
   rc::Opponents ai(world,[&pack](const std::string& f){ return pack.read(f); },carScene,name,cps,
-                   rc::Opponents::Level(level));
+                   rc::Opponents::Level(level),[&pack](int32_t c){ return rc::CarParams::load(pack,c); });
   std::printf("%s: AIRace%d, %zu opponents (%s), %.0f m a lap\n",name.c_str(),rc::aiRaceNumber(name),ai.size(),
               rc::Opponents::levelName(rc::Opponents::Level(level)),cps.lapLength());
   rc::Mat4 grid;
@@ -935,9 +936,91 @@ static int cmdFx(rc::PackFile& pack) {
   return spray>0 ? 0 : 4;
   }
 
+// the player driving into an opponent from the start of a race: knocked off its recording, driven back to it,
+// and what the player gets for it
+static int cmdRam(const fs::path& game, const fs::path& track, rc::PackFile& pack, int target, float seconds,
+                  bool side) {
+  auto scene    = rc::SbScene::load(readFile(game/track));
+  auto carScene = rc::SbScene::load(readFile(game/"RCCarsDB/Car.sb"));
+  rc::CollisionMesh  coll(scene);
+  rc::Checkpoints    cps(scene,coll);
+  rc::PhysicsWorld   world(coll);
+  auto               props = placeProps(game,scene,world);
+  const std::string  name  = track.stem().string();
+  auto params = [&pack](int32_t c){ return rc::CarParams::load(pack,c); };
+  rc::Opponents ai(world,[&pack](const std::string& f){ return pack.read(f); },carScene,name,cps,
+                   rc::Opponents::Level::Normal,params);
+  rc::Mat4 grid;
+  if(ai.size()==0 || !ai.playerStart(grid)) {
+    std::printf("no opponents\n");
+    return 3;
+    }
+  const bool straight = target<0;   // no target: straight on
+  target = std::clamp(target,0,int(ai.size())-1);
+  rc::Vehicle veh(world,rc::carGeometry(carScene,"Car1"),params(1),grid);
+  ai.restart();
+  std::printf("%s: chasing %s\n",name.c_str(),ai[size_t(target)].name.c_str());
+  const float dt = 1.f/60.f;
+  std::vector<bool> was(ai.size(),false);
+  size_t knocks = 0, backs = 0, hits = 0, greats = 0;
+  float  tankBefore = veh.boostTank();
+  bool placed = false;
+  for(float t=0; t<seconds; t+=dt) {
+    // "side": once the field has spread out, from 3 m beside the target's way ahead, square at it
+    if(side && !placed && t>=8.f && !ai[size_t(target)].knocked()) {
+      const rc::Mat4 p  = ai[size_t(target)].pose();
+      const rc::Vec3 f  = p.vector({0,0,1}), l = p.vector({1,0,0});
+      const float    v  = std::abs(ai[size_t(target)].speed());
+      rc::Vec3       at = p.translation()+f*(v*0.45f)+l*3.f;
+      rc::Mat4 m = rc::Mat4::rotate(1,std::atan2(-l.x,-l.z)*180.f/3.14159265f);
+      if(auto h = coll.groundHeight(at+rc::Vec3{0,1.f,0}))
+        at.y = *h-veh.geometry().min.y+0.01f;
+      m.m[0][3] = at.x; m.m[1][3] = at.y; m.m[2][3] = at.z;
+      veh.place(m,(l*-1.f)*7.f,{});
+      std::printf("%6.2f player put 3 m beside %s, at it with 25 km/h\n",t,ai[size_t(target)].name.c_str());
+      placed = true;
+      }
+    const rc::Mat4 m  = veh.pose();
+    rc::Vec3       to = ai[size_t(target)].pose().translation()-m.translation();
+    const rc::Vec3 f  = m.vector({0,0,1});
+    float angle = std::atan2(to.x,to.z)-std::atan2(f.x,f.z);
+    while(angle> 3.14159265f) angle -= 6.2831853f;
+    while(angle<-3.14159265f) angle += 6.2831853f;
+    rc::Vehicle::Input in;
+    in.steer    = straight ? 0.f : std::clamp(angle/0.35f,-1.f,1.f);
+    in.throttle = 1;
+    in.boost    = true;
+    tankBefore  = veh.boostTank();
+    veh.update(in,dt);
+    auto h = std::max(veh.hit(),ai.collide(veh,dt));
+    if(h!=rc::Vehicle::Hit::None) {
+      std::printf("%6.2f %s (tank %.1f -> %.1f)\n",t,h==rc::Vehicle::Hit::Great ? "GREAT HIT" : "hit",tankBefore,veh.boostTank());
+      (h==rc::Vehicle::Hit::Great ? greats : hits)++;
+      }
+    ai.update(dt,true,m.translation(),0,false,t,3);
+    world.step(dt);
+    for(size_t i=0; i<ai.size(); ++i) {
+      auto& o = ai[i];
+      if(o.knocked()!=was[i]) {
+        const rc::Mat4 p = o.pose();
+        std::printf("%6.2f %-10s %s at (%.2f %.2f %.2f), %.1f km/h, up %.2f\n",t,o.name.c_str(),
+                    o.knocked() ? "knocked off" : "back on its recording",p.m[0][3],p.m[1][3],p.m[2][3],
+                    std::abs(o.speed())*3.6f,p.vector({0,1,0}).y);
+        (o.knocked() ? knocks : backs)++;
+        was[i] = o.knocked();
+        }
+      }
+    }
+  for(size_t i=0; i<ai.size(); ++i)
+    std::printf("  %-10s %s, %.0f m along the route, %zu laps\n",ai[i].name.c_str(),
+                ai[i].knocked() ? "still knocked off" : "replaying",ai[i].progress(),ai[i].laps());
+  std::printf("%zu knocked off, %zu back on, %zu hits, %zu great hits\n",knocks,backs,hits,greats);
+  return knocks>0 ? 0 : 4;
+  }
+
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates|ai|fx ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates|ai|fx|ram ...\n");
     return 1;
     }
   try {
@@ -981,6 +1064,9 @@ int main(int argc, char** argv) {
       return cmdSb(game/argv[3],pack);
     if(cmd=="ai" && argc>3)
       return cmdAi(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 2,argc>5 ? std::atoi(argv[5]) : 3);
+    if(cmd=="ram" && argc>3)
+      return cmdRam(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 0,argc>5 ? float(std::atof(argv[5])) : 30.f,
+                    argc>6 && std::strcmp(argv[6],"side")==0);
     if(cmd=="gates" && argc>3)
       return cmdGates(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1);
     if(cmd=="sound" && argc>4)

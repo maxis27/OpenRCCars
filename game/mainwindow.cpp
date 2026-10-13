@@ -82,7 +82,8 @@ void MainWindow::setupOpponents() {
     return;
   try {
     opponents = std::make_unique<rc::Opponents>(*physics,[this](const std::string& f){ return resources.pack().read(f); },
-                                                carScene,level->name(),*checkpoints,aiLevel);
+                                                carScene,level->name(),*checkpoints,aiLevel,
+                                                [this](int32_t c){ return rc::CarParams::load(resources.pack(),c); });
     }
   catch(const std::exception& e) {
     Log::e("opponents: ",e.what());
@@ -359,7 +360,10 @@ void MainWindow::tick(float dt) {
       }
     jumpPressed = false;
     vehicle->update(in,dt);
-    if(const auto hit = vehicle->hit(); hit!=rc::Vehicle::Hit::None) {
+    auto hit = vehicle->hit();
+    if(opponents)
+      hit = std::max(hit,opponents->collide(*vehicle,dt));
+    if(hit!=rc::Vehicle::Hit::None) {
       hud->hit(hit==rc::Vehicle::Hit::Great);
       Log::i(hit==rc::Vehicle::Hit::Great ? "great hit" : "hit"," at ",Hud::formatTime(race->time()));
       }

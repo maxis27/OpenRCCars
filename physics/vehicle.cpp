@@ -156,6 +156,7 @@ Vehicle::Vehicle(PhysicsWorld& w, const CarGeometry& g, const CarParams& p, cons
   ci.m_angularDamping = 0.05f;
   body = std::make_unique<btRigidBody>(ci);
   body->setActivationState(DISABLE_DEACTIVATION);
+  body->setUserIndex(PhysicsWorld::CarTag);
   // fast and small: sweep a sphere inside the box against thin walls
   body->setCcdMotionThreshold(std::min({half.x,half.y,half.z})*S*0.5f);
   body->setCcdSweptSphereRadius(std::min({half.x,half.y,half.z})*S*0.8f);
@@ -216,11 +217,21 @@ void Vehicle::reset(const Mat4& start) {
   lastHit      = Hit::None;
   wheelProp    = false;
   sinceProp    = 1e3f;
-  sinceCar     = 1e3f;
-  shakeLeft    = 0;
   touch        = Contact{};
   bump         = false;
   carBefore    = false;
+  }
+
+void Vehicle::place(const Mat4& pose, const Vec3& velocity, const Vec3& spin) {
+  reset(pose);
+  const btTransform t = toBt(pose*Mat4::translate(com));
+  body->setWorldTransform(t);
+  motion->setWorldTransform(t);
+  body->setInterpolationWorldTransform(t);
+  body->setLinearVelocity(toBt(velocity)*S);
+  body->setAngularVelocity(toBt(spin));
+  body->setInterpolationLinearVelocity(body->getLinearVelocity());
+  body->setInterpolationAngularVelocity(body->getAngularVelocity());
   }
 
 void Vehicle::recover() {
@@ -356,24 +367,18 @@ void Vehicle::update(const Input& in, float dt) {
 // RCCars.exe gives the player's car a hit, shown as "Łup!" or "Wielkie Łup!" (msg_hits.csi) for a second and worth
 // HitBoost turbo units, when it
 //  - touches a prop of stone.sb faster than PropHitSpeed, at most every PropHitPause s (0x533ee0);
-//  - touches another car, both at least CarHitPause s after their last car contact (0x533990): for CarShakeTime s
-//    the game sums the car's rotation in its own axes, and from the average angular velocity over the window
-//    (x: pitch, z: roll) decides a great hit (x > 3, z > 5 or all > 7 rad/s) or a hit (0.8, 1, 2) (0x4f6460);
+//  - knocks another car about (Opponents::collide);
 //  - (not here yet: no characters on the tracks) hits people, a guard faster than 10 km/h or a dog faster than
 //    15 km/h: a great hit, at most every 2 s.
 // Road traffic, crabs, spiders and gulls give nothing.
 namespace {
-constexpr float HitBoost      = 5.f;
 constexpr float PropHitSpeed  = 1.944445f; // m/s, 7 km/h
 constexpr float PropHitPause  = 0.3f;
-constexpr float CarHitPause   = 2.f;
-constexpr float CarShakeTime  = 0.5f;
 }
 
 void Vehicle::hits(float dt) {
   lastHit    = Hit::None;
   sinceProp += dt;
-  sinceCar  += dt;
 
   // what the body touches after the last steps (a wheel touches props through its ray)
   bool prop = wheelProp, car = false;
@@ -405,36 +410,11 @@ void Vehicle::hits(float dt) {
   bump      = car && !carBefore;
   carBefore = car;
 
-  Hit h = Hit::None;
   if(prop && sinceProp>PropHitPause && float(body->getLinearVelocity().length())/S>PropHitSpeed) {
-    h         = Hit::Hit;
+    lastHit   = Hit::Hit;
     sinceProp = 0;
     addBoost(HitBoost);
     }
-
-  if(car && sinceCar>CarHitPause) {
-    sinceCar  = 0;
-    shakeLeft = CarShakeTime;
-    shake     = Vec3{};
-    }
-  if(shakeLeft>0) {
-    // angular velocity in the car's own axes (rad/s, not affected by Scale)
-    const btVector3 w = body->getWorldTransform().getBasis().transpose()*body->getAngularVelocity();
-    const float     t = std::min(dt,shakeLeft);
-    shake     += fromBt(w)*t;
-    shakeLeft -= dt;
-    if(shakeLeft<=0) {
-      const Vec3  a  = shake*(1.f/CarShakeTime);
-      const float ax = std::abs(a.x), az = std::abs(a.z), al = a.length();
-      const Hit   c  = (ax>3.f || az>5.f || al>7.f) ? Hit::Great :
-                       (ax>0.8f || az>1.f || al>2.f) ? Hit::Hit : Hit::None;
-      if(c!=Hit::None) {
-        h = std::max(h,c);
-        addBoost(HitBoost);
-        }
-      }
-    }
-  lastHit = h;
   }
 
 void Vehicle::contacts(const btPersistentManifold& m, const btCollisionObject* other) {
@@ -587,12 +567,24 @@ Mat4 Vehicle::pose() const {
   return fromBt(t)*Mat4::translate(com*-1.f);
   }
 
-float Vehicle::speed() const {
-  return float(vehicle->getCurrentSpeedKmHour())/3.6f/S;
+Vec3 Vehicle::centre() const {
+  return fromBt(body->getCenterOfMassPosition())*(1.f/S);
   }
 
 Vec3 Vehicle::velocity() const {
   return fromBt(body->getLinearVelocity())*(1.f/S);
+  }
+
+Vec3 Vehicle::localSpin() const {
+  return fromBt(body->getWorldTransform().getBasis().transpose()*body->getAngularVelocity());
+  }
+
+void Vehicle::push(const Vec3& impulse, const Vec3& at) {
+  body->applyImpulse(toBt(impulse)*S,toBt(at)*S-body->getCenterOfMassPosition());
+  }
+
+float Vehicle::speed() const {
+  return float(vehicle->getCurrentSpeedKmHour())/3.6f/S;
   }
 
 size_t Vehicle::wheelsOnGround() const {

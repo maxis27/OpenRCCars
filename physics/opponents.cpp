@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include <BulletCollision/CollisionShapes/btCompoundShape.h>
+
 #include "btconvert.h"
 #include "vehicle.h"
 
@@ -17,6 +19,105 @@ static constexpr float SeamFade = 1.f;
 static Vec3 flat(Vec3 v) {
   v.y = 0;
   return v;
+  }
+
+// RCCars.exe's autopilot of a knocked car (0x4fdb50 .. 0x4fe490), see Opponent::drive
+namespace Autopilot {
+constexpr float Window      = 6.f;     // m of the recording ahead where the nearest frame is looked for
+constexpr float Aim         = 2.7f;    // m from the nearest frame to the one steered at
+constexpr float BackOn      = 0.1f;    // m (across) from a frame to go on replaying from it ...
+constexpr float BackOnAngle = 10.f;    // ... heading this many degrees at most from the recording's
+constexpr float BackOnAfter = 2.f;     // s knocked before it may
+constexpr float PutBack     = 5.f;     // s knocked: put back on the recording where the player does not see it
+constexpr float MaxSteer    = 35.f;    // degrees
+constexpr float SteerSpeed  = 90.f;    // degrees/s
+constexpr float StuckSpeed  = 0.5555556f; // m/s (2 km/h)
+constexpr float BackUpTime  = 1.5f;    // s of backing up when stuck
+}
+
+// the player sees a car this close in front (a guess: RCCars.exe asks every viewport, 0x487300(i, pos, 50, 100))
+static constexpr float SeeDistance = 50.f;
+// a knocked car back on the recording blends into it in this many seconds (0x503190)
+static constexpr float ResumeFade  = 1.f;
+
+// rigid transform inverse
+static Mat4 inverse(const Mat4& m) {
+  Mat4 r;
+  for(int i=0; i<3; ++i)
+    for(int j=0; j<3; ++j)
+      r.m[i][j] = m.m[j][i];
+  const Vec3 t = r.vector(m.translation());
+  r.m[0][3] = -t.x; r.m[1][3] = -t.y; r.m[2][3] = -t.z;
+  return r;
+  }
+
+// `a` and `b` mixed, `k` of `b`: the position along the line, the rotation by its forward and up axes
+static Mat4 blendPose(const Mat4& a, const Mat4& b, float k) {
+  auto mix = [k](const Vec3& x, const Vec3& y) { return x+(y-x)*k; };
+  Vec3 f = mix(a.vector({0,0,1}),b.vector({0,0,1})).normalized();
+  Vec3 u = mix(a.vector({0,1,0}),b.vector({0,1,0}));
+  Vec3 l = Vec3::cross(u,f).normalized();
+  u      = Vec3::cross(f,l);
+  const Vec3 p = mix(a.translation(),b.translation());
+  Mat4 m;
+  m.m[0][0] = l.x; m.m[0][1] = u.x; m.m[0][2] = f.x; m.m[0][3] = p.x;
+  m.m[1][0] = l.y; m.m[1][1] = u.y; m.m[1][2] = f.y; m.m[1][3] = p.y;
+  m.m[2][0] = l.z; m.m[2][1] = u.z; m.m[2][2] = f.z; m.m[2][3] = p.z;
+  return m;
+  }
+
+// signed angle in degrees from `from` to `to` around the vertical, + = to the left of `from` (towards +X when
+// `from` is +Z), as RCCars.exe's 0x410150
+static float yawAngle(const Vec3& from, const Vec3& to) {
+  return std::atan2(from.z*to.x-from.x*to.z,from.x*to.x+from.z*to.z)*180.f/3.14159265f;
+  }
+
+// the box of a car's body: a btBoxShape, or the one child of a btCompoundShape (Vehicle)
+static bool boxOf(const btRigidBody& b, btTransform& t, btVector3& half) {
+  const btCollisionShape* s = b.getCollisionShape();
+  t = b.getWorldTransform();
+  if(s->getShapeType()==COMPOUND_SHAPE_PROXYTYPE) {
+    auto c = static_cast<const btCompoundShape*>(s);
+    if(c->getNumChildShapes()!=1)
+      return false;
+    t = t*c->getChildTransform(0);
+    s = c->getChildShape(0);
+    }
+  if(s->getShapeType()!=BOX_SHAPE_PROXYTYPE)
+    return false;
+  half = static_cast<const btBoxShape*>(s)->getHalfExtentsWithMargin();
+  return true;
+  }
+
+// the two boxes, each grown by `grow` (Bullet's units), overlap (separating axis test)
+static bool boxesMeet(const btRigidBody& a, const btRigidBody& b, float grow) {
+  btTransform ta, tb;
+  btVector3   ha, hb;
+  if(!boxOf(a,ta,ha) || !boxOf(b,tb,hb))
+    return false;
+  ha += btVector3(grow,grow,grow);
+  hb += btVector3(grow,grow,grow);
+  const btMatrix3x3& A = ta.getBasis();
+  const btMatrix3x3& B = tb.getBasis();
+  const btVector3    d = tb.getOrigin()-ta.getOrigin();
+  auto apart = [&](const btVector3& axis) {
+    if(axis.length2()<1e-8f)
+      return false;
+    btScalar ra = 0, rb = 0;
+    for(int i=0; i<3; ++i) {
+      ra += ha[i]*btFabs(axis.dot(A.getColumn(i)));
+      rb += hb[i]*btFabs(axis.dot(B.getColumn(i)));
+      }
+    return btFabs(d.dot(axis))>ra+rb;
+    };
+  for(int i=0; i<3; ++i)
+    if(apart(A.getColumn(i)) || apart(B.getColumn(i)))
+      return false;
+  for(int i=0; i<3; ++i)
+    for(int j=0; j<3; ++j)
+      if(apart(A.getColumn(i).cross(B.getColumn(j))))
+        return false;
+  return true;
   }
 
 float RouteTracker::update(const Vec3& car, size_t laps) {
@@ -70,8 +171,8 @@ float RouteTracker::update(const Vec3& car, size_t laps) {
   }
 
 Opponent::Opponent(PhysicsWorld& world, const CarGeometry& g, std::vector<CarProfile> p, const Checkpoints& route,
-                   const Spline& band)
-  : owner(world), geom(g), profiles(std::move(p)), tracker(route), bandSpline(band) {
+                   const Spline& band, const CarParams& params)
+  : owner(world), geom(g), prm(params), profiles(std::move(p)), tracker(route), bandSpline(band) {
   // the lap's end: where each recording comes back to cp_1 in the second half of its loop, within the computer's
   // radius of it as in RCCars.exe (Checkpoints::passes)
   for(auto& r:profiles) {
@@ -118,10 +219,18 @@ Opponent::Opponent(PhysicsWorld& world, const CarGeometry& g, std::vector<CarPro
   }
 
 Opponent::~Opponent() {
-  owner.bullet().removeRigidBody(body.get());
+  if(driven==nullptr)
+    owner.bullet().removeRigidBody(body.get());
   }
 
 void Opponent::restart() {
+  if(driven!=nullptr) {
+    driven.reset();
+    owner.bullet().addRigidBody(body.get());
+    }
+  sinceCar     = 1e3f;
+  shakeLeft    = 0;
+  resumeFade   = 0;
   cur          = 0;
   playTime     = 0;
   lapCount     = 0;
@@ -141,11 +250,18 @@ void Opponent::restart() {
   body->setInterpolationAngularVelocity(btVector3(0,0,0));
   }
 
-void Opponent::update(float dt, float rate, float ahead, bool band) {
+void Opponent::update(float dt, float rate, float ahead, bool band, bool seen) {
   float r = rate;
   if(band && !bandSpline.empty())
     r *= bandSpline.at(ahead);
   lastRate = r;
+  if(driven!=nullptr)
+    drive(dt,seen);
+  if(driven!=nullptr) {
+    currentSpeed = driven->speed();
+    tracker.update(driven->pose().translation(),lapCount);
+    return;
+    }
   const float before = playTime;
   playTime += dt*r;
   if(before<lines[cur] && playTime>=lines[cur])
@@ -165,6 +281,10 @@ void Opponent::update(float dt, float rate, float ahead, bool band) {
   const CarProfile& profile = profiles[cur];
   seam    = seam*std::max(0.f,1.f-dt/SeamFade);
   current = Mat4::translate(seam)*profile.pose(playTime);
+  if(resumeFade>0) {
+    current    = blendPose(current,current*resumeOffset,resumeFade);
+    resumeFade = std::max(0.f,resumeFade-dt/ResumeFade);
+    }
   const Vec3 v = profile.velocity(playTime);   // as recorded, without the replay rate
   const Vec3 f = current.vector({0,0,1});
   currentSpeed = Vec3::dot(v,f)*r;
@@ -194,6 +314,8 @@ void Opponent::place() {
   }
 
 Mat4 Opponent::wheelPose(size_t i) const {
+  if(driven!=nullptr)
+    return driven->wheelPose(i);
   auto&       wh  = geom.wheels[i];
   const float deg = 180.f/3.14159265f;
   return Mat4::translate(wh.center) *
@@ -201,8 +323,185 @@ Mat4 Opponent::wheelPose(size_t i) const {
          Mat4::rotate(0,wheelTurn*deg);
   }
 
+Mat4 Opponent::pose() const {
+  return driven!=nullptr ? driven->pose() : current;
+  }
+
+float Opponent::speed() const {
+  return driven!=nullptr ? driven->speed() : currentSpeed;
+  }
+
+btRigidBody& Opponent::chassis() {
+  return driven!=nullptr ? driven->chassis() : *body;
+  }
+
+Vec3 Opponent::velocity() const {
+  if(driven!=nullptr)
+    return driven->velocity();
+  return profiles[cur].velocity(playTime)*lastRate;
+  }
+
+Vec3 Opponent::localSpin() const {
+  return driven!=nullptr ? driven->localSpin() : Vec3{};
+  }
+
+Vec3 Opponent::framePoint(size_t i) const {
+  return profiles[cur].frames()[i].position;
+  }
+
+void Opponent::knock() {
+  if(driven!=nullptr)
+    return;
+  const Vec3 v = velocity();
+  owner.bullet().removeRigidBody(body.get());
+  driven = std::make_unique<Vehicle>(owner,geom,prm,current);
+  driven->place(current,v,Vec3{});
+  driveTime  = 0;
+  sinceTouch = 0;
+  stuckTime  = 0;
+  backTime   = 0;
+  backing    = false;
+  steerDeg   = 0;
+  resumeFade = 0;
+  // the frame it was at
+  const auto& fr = profiles[cur].frames();
+  nearFrame = 0;
+  while(nearFrame+1<fr.size() && fr[nearFrame+1].time<=playTime)
+    ++nearFrame;
+  }
+
+void Opponent::resume(size_t frame) {
+  const auto& fr = profiles[cur].frames();
+  frame = std::min(frame,fr.size()-1);
+  const float t = fr[frame].time;
+  if(playTime<lines[cur] && t>=lines[cur])
+    ++lapCount;
+  playTime = t;
+  // from where the knocked car is into the recording; more than 2 m apart it jumps there (0x503190)
+  const Mat4 was = driven->pose();
+  const Mat4 rec = profiles[cur].pose(playTime);
+  seam         = {};
+  resumeOffset = inverse(rec)*was;
+  resumeFade   = (was.translation()-rec.translation()).length()<=2.f ? 1.f : 0.f;
+  current      = was;
+  driven.reset();
+  owner.bullet().addRigidBody(body.get());
+  place();
+  body->setInterpolationWorldTransform(body->getWorldTransform());
+  }
+
+// RCCars.exe 0x4fe1f0: a knocked car drives at the frame of its recording Autopilot::Aim ahead of the nearest one,
+// the speed and the wheels set as 0x4fddd0 does; it backs up for a moment when stuck (0x4fe490). It replays again
+// from a frame it is back on (0x4fdb50), or is put back on the nearest frame where the player does not see it.
+void Opponent::drive(float dt, bool seen) {
+  using namespace Autopilot;
+  driveTime  += dt;
+  sinceTouch += dt;
+  if(driven->contact().surface!=0)
+    sinceTouch = 0;   // the body against the track or a prop
+
+  const Mat4  m   = driven->pose();
+  const Vec3  at  = m.translation();
+  const Vec3  fwd = m.vector({0,0,1});
+  const Vec3  vel = driven->velocity();
+  const float spd = vel.length();
+
+  // the nearest frame within Window ahead of the last one (0x4fd8b0); past the end on into the next recording
+  {
+    const auto& fr   = profiles[cur].frames();
+    const Vec3  from = framePoint(nearFrame);
+    size_t      best = nearFrame;
+    float       bd   = (flat(framePoint(nearFrame)-at)).length();
+    for(size_t i=nearFrame+1; i<fr.size() && (framePoint(i)-from).length()<=Window; ++i)
+      if(const float d = flat(framePoint(i)-at).length(); d<bd) {
+        bd   = d;
+        best = i;
+        }
+    if(playTime<lines[cur] && fr[best].time>=lines[cur])
+      ++lapCount;
+    nearFrame = best;
+    playTime  = fr[best].time;
+    if(nearFrame+1>=fr.size() && profiles.size()>0) {
+      cur       = (cur+1)%profiles.size();
+      const auto& nx = profiles[cur].frames();
+      nearFrame = 0;
+      while(nearFrame+1<nx.size() && nx[nearFrame+1].time<=profiles[cur].cycleStart())
+        ++nearFrame;
+      playTime  = nx[nearFrame].time;
+      }
+  }
+  const auto& fr = profiles[cur].frames();
+  size_t aim = nearFrame;
+  while(aim+1<fr.size() && (framePoint(aim)-framePoint(nearFrame)).length()<=Aim)
+    ++aim;
+
+  // stuck: barely moving, or pressed against something, for a while (0x4fe490)
+  backTime += dt;
+  if(!backing) {
+    stuckTime = (spd<StuckSpeed || sinceTouch<dt*1.5f) ? stuckTime+dt : 0.f;
+    if(stuckTime>2.f || (stuckTime>0.5f && sinceTouch<0.5f)) {
+      backing  = true;
+      backTime = 0;
+      }
+    }
+  else if(backTime>BackUpTime) {
+    backing   = false;
+    stuckTime = 0;
+    }
+
+  Vehicle::Input in;
+  if(backing) {
+    in.throttle = -1;
+    if(backTime>0.5f)
+      steerDeg += std::clamp(5.f-steerDeg,-30.f*dt,30.f*dt);
+    }
+  else {
+    // back on the recording (0x4fdb50)
+    if(driveTime>PutBack && !seen) {
+      resume(nearFrame);
+      return;
+      }
+    if(driveTime>BackOnAfter) {
+      const Vec3 rv = fr[nearFrame].velocity;
+      if(flat(framePoint(nearFrame)-at).length()<BackOn && std::abs(yawAngle(rv,vel))<BackOnAngle) {
+        resume(nearFrame);
+        return;
+        }
+      if(flat(framePoint(aim)-at).length()<BackOn) {
+        resume(aim);
+        return;
+        }
+      }
+
+    // at the aim (0x4fddd0): slower the nearer it is and the more it has to turn
+    const Vec3  to    = framePoint(aim)-at;
+    const float dist  = to.length();
+    const float angle = yawAngle(fwd,to);
+    const float a     = std::abs(angle);
+    float want = dist<1.f ? 4.f : dist<10.f ? 4.f+(dist-1.f)*(2.f/3.f) : 10.f;
+    want *= a<=20.f ? 1.f-a*0.025f : 0.5f;
+    if(spd<want)
+      in.throttle = spd<want*0.5f ? 1.f : 1.f-(spd-want*0.5f)/(want*0.5f);
+    float s = 0;
+    if(angle>30.f)
+      s = MaxSteer;
+    else if(angle<-30.f)
+      s = -MaxSteer;
+    else if(angle>0.5f)
+      s = (angle-0.5f)*(MaxSteer/29.5f);
+    else if(angle<-0.5f)
+      s = (angle+0.5f)*(MaxSteer/29.5f);
+    // the first second it turns hard
+    if(driveTime<1.f && std::abs(s)<30.f)
+      s = s>=0 ? 30.f : -30.f;
+    steerDeg += std::clamp(s-steerDeg,-SteerSpeed*dt,SteerSpeed*dt);
+    }
+  in.steer = std::clamp(steerDeg/std::max(prm.steerAngle,1.f),-1.f,1.f);
+  driven->update(in,dt);
+  }
+
 Opponents::Opponents(PhysicsWorld& world, const Reader& read, const SbScene& carScene, const std::string& track,
-                     const Checkpoints& route, Level level)
+                     const Checkpoints& route, Level level, const Params& params)
   : owner(world), lvl(level), player(route) {
   const int32_t raceId = aiRaceNumber(track);
   if(raceId==0 || route.empty())
@@ -270,7 +569,8 @@ Opponents::Opponents(PhysicsWorld& world, const Reader& read, const SbScene& car
       }
     catch(...) {
       }
-    auto car = std::make_unique<Opponent>(world,carGeometry(carScene,CarModels[o.car]),std::move(laps),route,band);
+    const CarParams prm = params ? params(o.car+1) : CarParams{};
+    auto car = std::make_unique<Opponent>(world,carGeometry(carScene,CarModels[o.car]),std::move(laps),route,band,prm);
     car->car = o.car;
     if(auto d = layout.drivers.find(o.driver); d!=layout.drivers.end()) {
       // the face picture names the driver: "MCJocker.tga"
@@ -305,6 +605,7 @@ bool Opponents::playerStart(Mat4& pose) const {
 
 void Opponents::restart() {
   player.reset();
+  playerSinceCar = 1e3f;
   for(auto& c:cars)
     c->restart();
   }
@@ -314,10 +615,13 @@ void Opponents::update(float dt, bool racing, const Vec3& playerPos, size_t play
   player.update(playerPos,playerLaps);
   for(auto& c:cars) {
     if(!racing) {
-      c->place();
+      if(!c->knocked())
+        c->place();
       continue;
       }
-    c->update(dt,baseRate,c->progress()-player.progress(),!playerDone);
+    const Vec3 to   = c->pose().translation()-playerPose.translation();
+    const bool seen = to.length()<SeeDistance && Vec3::dot(to,playerPose.vector({0,0,1}))>0;
+    c->update(dt,baseRate,c->progress()-player.progress(),!playerDone,seen);
     if(c->finishTime<0 && int(c->laps())>=laps)
       c->finishTime = raceTime;
     }
@@ -352,4 +656,112 @@ int Opponents::place(float playerFinish) const {
     if(s[i].player)
       return int(i+1);
   return 1;
+  }
+
+// RCCars.exe 0x533990 for two cars that touch: both knocked off their recordings (0x4fd9d0) and pushed apart by an
+// impulse along the line between their centres, through the middle (0x534be0, 0x4f0730); the slower one's centre
+// counts 0.1 m higher (the player's opponent's when they go about as fast), so the one hit is also lifted. Bullet
+// does the push here; the lift is added. A car is knocked already when it is about to be touched, so that Bullet
+// meets two cars of the same weight and not one that cannot be moved.
+Vehicle::Hit Opponents::collide(Vehicle& pl, float dt) {
+  constexpr float CarHitPause = 2.f;    // s both cars since their last hit (0x56f4)
+  constexpr float ShakeTime   = 0.5f;   // s of the window (0x5334b0)
+  constexpr float Lift        = 0.1f;   // m
+
+  playerPose      = pl.pose();
+  playerSinceCar += dt;
+  for(auto& c:cars)
+    c->sinceCar += dt;
+
+  // about to be touched: by the player or by a knocked car, within two frames at their speeds
+  for(auto& c:cars) {
+    if(c->knocked())
+      continue;
+    auto near = [&](btRigidBody& other, const Vec3& v) {
+      const float grow = ((v-c->velocity()).length()*2.f*dt+0.01f)*S;
+      return boxesMeet(c->chassis(),other,grow);
+      };
+    bool hit = near(pl.chassis(),pl.velocity());
+    for(auto& o:cars)
+      if(!hit && o!=c && o->knocked())
+        hit = near(o->chassis(),o->velocity());
+    if(hit)
+      c->knock();
+    }
+
+  // the cars touching: -1 the player, else the opponent's index
+  auto who = [&](const btCollisionObject* b) -> int {
+    if(b==&pl.chassis())
+      return -1;
+    for(size_t i=0; i<cars.size(); ++i)
+      if(b==&cars[i]->chassis())
+        return int(i);
+    return -2;
+    };
+  auto& disp = *owner.bullet().getDispatcher();
+  for(int k=0; k<disp.getNumManifolds(); ++k) {
+    const btPersistentManifold* m = disp.getManifoldByIndexInternal(k);
+    bool touching = false;
+    for(int c=0; c<m->getNumContacts() && !touching; ++c)
+      touching = m->getContactPoint(c).getDistance()<=0;
+    if(!touching)
+      continue;
+    const int a = who(m->getBody0()), b = who(m->getBody1());
+    if(a<-1 || b<-1 || a==b)
+      continue;
+    for(int i:{a,b})
+      if(i>=0) {
+        cars[size_t(i)]->knock();
+        cars[size_t(i)]->touched();
+        }
+    float& sa = a<0 ? playerSinceCar : cars[size_t(a)]->sinceCar;
+    float& sb = b<0 ? playerSinceCar : cars[size_t(b)]->sinceCar;
+    if(sa<=CarHitPause || sb<=CarHitPause)
+      continue;
+    sa = 0;
+    sb = 0;
+    if(a>=0 && b>=0)
+      continue;
+    // the player hit opponent `o`: it is lifted unless the player is clearly the slower one, and judged
+    Opponent&  o  = *cars[size_t(a<0 ? b : a)];
+    Vehicle*   ov = o.vehicle();
+    if(ov==nullptr)
+      continue;
+    const Vec3  vp = flat(pl.velocity()), vo = flat(ov->velocity());
+    const bool  liftPlayer = vp.length()*1.1f<vo.length();
+    Vehicle&    up = liftPlayer ? pl : *ov;
+    Vehicle&    by = liftPlayer ? *ov : pl;
+    const Vec3  d  = up.centre()-by.centre();
+    const Vec3  n  = flat(d).normalized();
+    const float closing = Vec3::dot(by.velocity()-up.velocity(),n);
+    if(closing>0) {
+      // the share of an equal-mass push (restitution 0.1) that the lifted centre turns upwards
+      const float j  = up.params().mass*closing*0.55f;
+      const Vec3  dl = d+Vec3{0,Lift,0};
+      up.push(Vec3{0,j*Lift/std::max(dl.length(),0.05f),0},(up.centre()+by.centre())*0.5f);
+      }
+    o.shakeLeft = ShakeTime;
+    o.shake     = Vec3{};
+    }
+
+  // how hard the player knocked them: the opponent's average rotation in the window, in its own axes, x the
+  // pitch and z the roll (0x4f6460)
+  Vehicle::Hit got = Vehicle::Hit::None;
+  for(auto& c:cars) {
+    if(c->shakeLeft<=0)
+      continue;
+    c->shake     += c->localSpin()*std::min(dt,c->shakeLeft);
+    c->shakeLeft -= dt;
+    if(c->shakeLeft>0)
+      continue;
+    const Vec3  a  = c->shake*(1.f/ShakeTime);
+    const float ax = std::abs(a.x), az = std::abs(a.z), al = a.length();
+    const auto  h  = (ax>3.f || az>5.f || al>7.f)   ? Vehicle::Hit::Great :
+                     (ax>0.8f || az>1.f || al>2.f) ? Vehicle::Hit::Hit : Vehicle::Hit::None;
+    if(h!=Vehicle::Hit::None) {
+      pl.addBoost(Vehicle::HitBoost);
+      got = std::max(got,h);
+      }
+    }
+  return got;
   }

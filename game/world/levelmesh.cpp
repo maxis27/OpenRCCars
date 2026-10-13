@@ -294,11 +294,10 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
         }
       if(water)
         key.mask = -2; // own batch
-      // lowers `p` to the water surface at the shore (CollisionMesh::shoreHeight) and returns its depth
+      // the depth of the water at `p` (streams and pools stay flat where the scene has them, as in RCCars.exe)
       auto shapeWater = [&](float* p) {
         const rc::Vec3 at    = {p[0],p[1],p[2]};
         const auto     floor = ground->groundHeight(at+rc::Vec3{0,0.05f,0},50.f); // not from higher up: rocks overhang the sea
-        p[1] = ground->shoreHeight(at);
         return floor ? p[1]-*floor : 100.f;
         };
       // the depth is interpolated per vertex: split big sea triangles near the shore so that it follows the seabed
@@ -316,7 +315,7 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
           lerp(x.pos,y.pos,v.pos,3);       lerp(x.normal,y.normal,v.normal,3);
           lerp(x.uvBase,y.uvBase,v.uvBase,2); lerp(x.uvLight,y.uvLight,v.uvLight,2);
           lerp(x.uvBase2,y.uvBase2,v.uvBase2,2);
-          v.uvMask[1] = (x.uvMask[1]+y.uvMask[1])*0.5f; // the scene's height, before shapeWater
+          v.uvMask[1] = (x.uvMask[1]+y.uvMask[1])*0.5f; // the scene's height
           v.pos[1]    = v.uvMask[1];
           v.uvMask[0] = shapeWater(v.pos);
           return v;

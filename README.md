@@ -35,8 +35,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 - **nawierzchnie i woda**: rodzaj nawierzchni pochodzi z bitów materiału tekstury (`GLTX`): piasek, mokry piasek,
   głęboki piasek (`Sand_trample`), żwir i reszta. Jak w danych oryginału, jazdę zmieniają tylko głęboki piasek i woda
   (`Settings/tires<N>.ini`: `coeffDeepSand`, `coeffWater`; Hummer na dużych kołach mniej traci w wodzie); pozostałe
-  nawierzchnie różnią się w oryginale tylko kurzem spod kół. Woda (tekstura `sea`: morze, strumienie, kałuże,
-  wodospady) nie jest twarda: auto brodzi w płytkiej wodzie i zwalnia, w głębokiej tonie, a po 1 s całkiem pod wodą (po dach, antena się nie liczy)
+  nawierzchnie różnią się w oryginale tylko kurzem spod kół. Woda (tekstura `sea`: morze, strumienie, kałuże;
+  wodospady są tylko do oglądania) nie jest twarda: auto brodzi w płytkiej wodzie i zwalnia, w głębokiej tonie, a po 1 s całkiem pod wodą (po dach, antena się nie liczy)
   wraca do ostatniego punktu kontrolnego, jak w instrukcji („jeśli utoniesz w morzu”). Tam też wraca po klawiszu R
   i po wypadnięciu poza trasę.
 - **wyścig**: odliczanie 3, 2, 1, „Jazda!” z dźwiękami startu `cp_start` i `prestart` (auto stoi do startu), 3, 5
@@ -93,6 +93,11 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   bokiem do morza; pająki biegają między dziurami, uciekają przed autem i giną pod kołami; psy gonią auto i
   szczekają; sępy krążą nad country_2. Potrącenie człowieka, strażnika albo psa to „Wielkie Łup!” i ich głos.
   Animacje szkieletowe są liczone na CPU
+- **efekty spod kół**: kurz na piasku, mokrym piasku, głębokim piasku i żwirze oraz bryzgi wody, gdy koło tnie
+  lustro wody, jak w `RCCars.exe`: ustawienia z `Settings/car_dustx.ini`, `surf_*.crs` i `water_spray.crs`, krzywe
+  intensywności z `Splines/dust_int.spl`, `dust_speed.spl`, `wspr_int.spl`, tekstury `dust` i `particle`. Auto gracza
+  kurzy wszystkimi kołami, przeciwnicy tylko tylnymi i z krócej żyjącym kurzem. Oba efekty są w oryginale
+  delikatne: kurz to półprzezroczyste kłęby rosnące przez sekundę, bryzgi to kilkupikselowe krople
 - **narzędzia**: `rcinfo` (inspekcja/eksport danych i jazda testowa, bez GPU) i `rcshot` (render offscreen do PNG)
 
 ![Auto na starcie (beach_1)](docs/car_beach_1.jpg)
@@ -105,6 +110,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 
 ![Wyścig: odliczanie, jazda, zły kierunek, meta (beach_1)](docs/race_beach_1.jpg)
 ![Przeciwnicy: start, wyścig, meta (beach_1)](docs/opponents_beach_1.jpg)
+
+![Efekty: kurz za przeciwnikami na starcie, bryzgi spod kół w morzu (beach_1)](docs/effects_beach_1.jpg)
 
 ![Rekwizyty: pachołek (beach_2), butelki (urban_1), kłębek przy werandzie (country_3), czajnik (country_1)](docs/objects.jpg)
 
@@ -204,6 +211,7 @@ rcinfo <folder_gry> objects RCCarsDB/beach_1.sb   # obiekty na trasie (INST): mo
 rcinfo <folder_gry> race RCCarsDB/beach_1.sb [okrążenia]  # punkty kontrolne i test logiki wyścigu (bez fizyki)
 rcinfo <folder_gry> gates RCCarsDB/beach_1.sb [auto 1-3]  # każdy główny punkt kontrolny zaliczony autem z fizyką
 rcinfo <folder_gry> ai RCCarsDB/beach_1.sb [poziom 1-3] [okrążenia]  # przeciwnicy: nagrania, ich pętle i wyścig bez gracza
+rcinfo <folder_gry> fx                            # ustawienia kurzu i bryzgów, ile cząsteczek daje auto na każdej nawierzchni
 rcinfo <folder_gry> ram RCCarsDB/beach_1.sb [przeciwnik] [s] [side]  # gracz wjeżdża w przeciwnika: wypadnięcie z nagrania, powrót, „Łup!”
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
 rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
@@ -227,7 +235,7 @@ formats/        formaty danych, czyste C++ bez zależności
   csi.*         tekstury
   scene.*       sceny .sb
   collision.*   siatka kolizji z węzła COLL, raycast, nawierzchnie
-  settings.*    pliki suwaków Settings/*.ini, Scripts/upgrades.ini, krzywe .bspl
+  settings.*    pliki suwaków Settings/*.ini i *.crs, Scripts/upgrades.ini, krzywe .bspl i .spl
   objects.*     modele obiektów z INST: w którym pliku leżą (stone.sb, people.sb, AIChars.sb, Roadcar.sb)
   carprofile.*  nagrane przejazdy przeciwników (CarProfiles/*.dat), Scripts/ailayouts.ini
   skeleton.*    szkielet modelu .sb: kości, sekwencje ASEQ, poza w chwili animacji
@@ -241,10 +249,14 @@ physics/        fizyka jazdy (Bullet, bez GPU)
   props.*       rekwizyty: parametry ze skryptu SCRI, kształt, bryła sztywna
   characters.*  ludzie i zwierzęta: zachowanie każdego rodzaju, kopnięcia i rzuty autem, „Wielkie Łup!”
   opponents.*   przeciwnicy: odtwarzanie nagrań w tempie z gumką, okrążenia, kolejność w wyścigu
+fx/             efekty cząsteczkowe, bez GPU
+  particles.*   emiter i cząsteczki jak system cząsteczek RCCars.exe
+  careffects.*  kurz spod kół i bryzgi wody: ustawienia, emisja, ruch, sprite'y do narysowania
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
   camera.*      kamera swobodna
   hud.*         kokpit wyścigu (obrazki i czcionka z Language/<język>)
+  effects.*     efekty aut gracza i przeciwników: sprite'y zwrócone do kamery, posortowane, z testem głębi
   world/        Level (trasa), LevelMesh (geometria na GPU, batche po teksturach), ModelMesh (auto, obiekt),
                 Objects (rekwizyty trasy), CollisionView (nakładka kolizji)
   mainwindow.*  okno, pętla, wejście
@@ -349,9 +361,12 @@ lib/Tempest     silnik (submoduł git)
   piany, gdy woda opada, krycie spada od `AlphaMax` (h = −1) do `AlphaMin` (h = 1), a gdy woda rośnie, do `AlphaMin`
   już przy `HeightOn` (`waterLOD_coast.ini`: `(v−100)/100`, czyli 0). Tekstura przesuwa się o `ScrollVel` (0,11) na
   sekundę. `HeightOff` jest wczytywane, ale nieużywane.
-- Pozostała woda (kałuże na country_1, strumień i wodospady na country_3 bez fal w `WLOD`) jest płaska i
-  przezroczysta wg głębokości nad dnem z kolizji (pełne krycie od 0,8 m). Przy brzegu tafla wygina się w dół do
-  gruntu za brzegiem (`CollisionMesh::shoreHeight`), tak samo dla rysowania i fizyki.
+- Pozostała woda (kałuże `pool*` na beach_4 i country_1, strumienie `stream*` i wodospady `wtr_fall*` na beach_1 i
+  country_3, bez fal w `WLOD`) jest płaska i przezroczysta wg głębokości nad dnem z kolizji (pełne krycie od 0,8 m).
+  `RCCars.exe` (0x523260, tabela 0x575710: nazwa obiektu zawiera `stream`, `wtr_fall` lub `pool`) tylko przesuwa jej
+  teksturę (strumienie i wodospady płyną, kałuże falują szumem `PoolNoiseFreq/Len` z `WaterLOD_Stream`), a jej
+  wierzchołków nie rusza. Wodę pod autem szuka promieniem tylko w morzach i w obiektach `stream`/`pool`
+  (0x51c240, 0x535120): wodospady nie są dla auta wodą. U nas tak samo (`CollisionMesh::isWater`).
 - `EVOL` to bryły w scenie: dziecko `0x03` nazwa, `0xd0` kształt (u32), `0xd4` liczby; kształt 2 to graniastosłup
   `[ymin, ymax, x0, z0, x1, z1, …]` (wielokąt w XZ).
 - Markery (`MARK`) mają w elemencie `0x04` właściwości wpisane w edytorze poziomów jako pary tekstów (lista
@@ -463,6 +478,31 @@ lib/Tempest     silnik (submoduł git)
   edytorze zwykle 0,1–0,5 m nad ziemią (kilka do 1,4 m): po wczytaniu trasy opadają na nią przez 2 s, zanim
   ruszy wyścig.
 
+- **Efekty cząsteczkowe** (`RCCars.exe` 0x477xxx): emiter tworzy `rate` cząsteczek na sekundę (ułamki przechodzą
+  na następną klatkę), rozkłada je wzdłuż drogi, którą przebył od poprzedniej klatki (0x4776e0), i rysuje jako
+  kwadraty zwrócone do kamery, posortowane od najdalszego, z alfą malejącą z wiekiem (0x459260). Rozmiar to
+  `skala × DX / głębokość` pikseli ekranu 640 szerokiego przy poziomym polu widzenia 80° (0x405f70), u bryzgów
+  (flaga 0x80) stała liczba pikseli. Suwaki efektów czyta 0x532410 jako pozycję suwaka przez dzielnik zapisany w
+  kodzie (brak klucza to 0), nie przez `FValues`. Część ustawień jest tylko w postaci skompilowanej `.crs`
+  (rekordy `[u16 znacznik][u32 koniec]`, nazwy XOR 0x25), `car_dustx` tylko jako `.ini`. Krzywe `.spl` to tekst:
+  liczba odcinków i po cztery punkty (początek, dwa uchwyty, koniec), liczone jako Hermite (0x40f830).
+- **Kurz** (`car_dustx`, 0x52e000, 0x52e320, 0x52e810, 0x52e960): z miejsca styku koła z suchą ziemią, nie w
+  wodzie, do 12 m od kamery. Nawierzchnia (`surf_default|sand|wetsand|dunesand|gravel`) daje mnożnik intensywności
+  (0 dla asfaltu), kolor i czas życia. Ilość to `dust_int(km/h) × 2/3 × mnożnik`; jadąc do przodu kurzą tylne koła,
+  na wstecznym przednie (połowa) i tylne (ćwierć), na głębokim piasku wszystkie. Cząsteczka dostaje
+  `dust_speed(m/s)` procent prędkości auta, zwalnia w poziomie (`SpeedAtt`), obraca się coraz szybciej i rośnie w
+  ciągu sekundy do `DynamicScale` (tył) albo `DynamicScaleForw` (przód) razy (0x52e180). Przy buksowaniu
+  (`WheelSpinThresh`) kurz leci do tyłu z prędkością obwodu koła; nasz Bullet nie ma poślizgu kół, więc ta gałąź
+  czeka na nową fizykę. W oryginale kurz brudzi też auto (tekstury `dirt_car*`), tego jeszcze nie ma.
+- **Bryzgi** (`WATER_SPRAY`, 0x527e20, 0x527f70, 0x528220, 0x528780): gdy lustro wody przecina koło, a auto jedzie
+  szybciej niż 15 km/h; ilość to `wspr_int(km/h) × cięciwa / promień`. Krople lecą na zewnątrz i w górę pod kątem
+  `AngleIncidence`, połowa w drugą stronę i trzy razy krócej, płyną z autem (`SpeedDecay`), drgają
+  (`OscillationLen`) i maleją do połowy w 0,7 s.
+- Rozpoznane, jeszcze nieprzeniesione: ślady opon (`car_trace`, tekstury `t_halfdry_tire2_N`, 0x52f050), kilwater na
+  wodzie (`wtr_trace`, `whr_horse`, tylko gracz, 0x528ce0, 0x526020), spaliny (`exhausted_gas`, 0x530180), pluski w
+  stałych miejscach tras (markery `water_splash_N` na beach_1, beach_3, country_3; 0x5272f0), fale
+  `Water_Wave_New` i `BURST_MNG`.
+
 ## Dalsze kroki
 
 1. ~~Model auta postawiony na starcie~~ (zrobione; LOD-y i ulepszenia `UPGRADES*` jeszcze niewyświetlane)
@@ -470,7 +510,8 @@ lib/Tempest     silnik (submoduł git)
 3. ~~Fizyka jazdy: Bullet `btRaycastVehicle` + parametry z ustawień gry~~ (zrobione; do dostrojenia na wyczucie
    względem oryginału; kolizje kul z `cdt*.ini` nieużyte)
    - ~~nawierzchnie i woda~~ (zrobione: głęboki piasek i woda spowalniają, w głębokiej wodzie auto tonie i wraca do
-     ostatniego punktu kontrolnego); brakuje kurzu i plusków spod kół oraz stref `car_reset_volume_*` („dziury”)
+     ostatniego punktu kontrolnego); ~~kurz i bryzgi spod kół~~ (zrobione); brakuje śladów opon, kilwatera, spalin,
+     brudzenia auta i stref `car_reset_volume_*` („dziury”)
 4. Węzły `INST` (instancje obiektów): ~~rekwizyty~~ (zrobione: bryły sztywne z parametrami ze skryptów; brakuje
    wiatru dla kłębków i dźwięków uderzeń `SNCH`); ~~postacie i zwierzęta~~ (zrobione; brakuje efektu strzału
    strażnika, śladów stóp i rozgniecenia kraba); ruch uliczny czeka. Do tego `HHID` (widoczność/sektory)

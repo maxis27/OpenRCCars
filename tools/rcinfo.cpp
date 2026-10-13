@@ -29,6 +29,7 @@
 #include "audio/carsound.h"
 #include "audio/mixer.h"
 #include "audio/soundlib.h"
+#include "fx/careffects.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1032,6 +1033,69 @@ static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile
   return failures;
   }
 
+// the settings of the cars' dust and spray, and how many particles a car makes on each surface and in water
+static int cmdFx(rc::PackFile& pack) {
+  const auto set = rc::fx::EffectSettings::load([&pack](const std::string& f){ return pack.read(f); });
+  const auto& d = set.dust;
+  std::printf("dust: DX %.2f DY %.2f twist %.2f scale %.2f+-%.2f x %.2f+-%.2f grow %.2f/%.2f att %.2f gravity %.2f shift %.2f\n",
+              d.dx,d.dy,d.twist,d.scaleX,d.scaleXDisp,d.scaleY,d.scaleYDisp,d.grow,d.growFront,d.speedAtt,d.gravityY,d.shiftX);
+  for(float kmh:{5.f,15.f,30.f,60.f})
+    std::printf("  %3.0f km/h: %.1f particles/s, speed %.0f%%\n",kmh,d.intensity.at(kmh),d.speed.at(kmh/3.6f));
+  for(size_t i=0; i<d.surfaces.size(); ++i) {
+    auto& t = d.surfaces[i];
+    std::printf("  %-8s int %.2f rgba %3.0f %3.0f %3.0f %3.0f life %.2f+-%.2f\n",rc::surfaceName(rc::Surface(i)),
+                t.intScale,t.rgba[0],t.rgba[1],t.rgba[2],t.rgba[3],t.life,t.lifeDisp);
+    }
+  const auto& w = set.spray;
+  std::printf("spray: DX %.2f rgba %.0f %.0f %.0f %.0f life %.2f+-%.2f angle %.0f+-%.0f span %.0f vel %.2f+-%.2f scale %.2f/%.2fs\n",
+              w.dx,w.rgba[0],w.rgba[1],w.rgba[2],w.rgba[3],w.life,w.lifeDisp,w.angle,w.angleDisp,w.angleSpan,w.velLen,
+              w.velLenDisp,w.scale,w.timeScale);
+
+  // a car going straight at 30 km/h for 2 s: on sand, then with its wheels half in water
+  auto run = [&](rc::Surface surface, bool water) {
+    rc::fx::CarEffects fx(set,true);
+    rc::fx::Random     rnd;
+    rc::fx::CarState   car;
+    car.velocity = {0,0,30.f/3.6f};
+    car.gas      = true;
+    for(int i=0; i<4; ++i) {
+      rc::fx::CarState::Wheel wh;
+      wh.front  = i<2;
+      wh.left   = i%2==0;
+      wh.radius = 0.05f;
+      car.wheels.push_back(wh);
+      }
+    std::vector<rc::fx::Billboard> out;
+    for(int f=0; f<120; ++f) {
+      const float z = car.velocity.z*float(f)/60.f;
+      car.pose = rc::Mat4::translate({0,0,z});
+      for(size_t i=0; i<4; ++i) {
+        auto& wh = car.wheels[i];
+        wh.hub      = {wh.left ? 0.1f : -0.1f,0.05f,z+(wh.front ? 0.15f : -0.15f)};
+        wh.contact  = {wh.hub.x,0,wh.hub.z};
+        wh.onGround = true;
+        wh.surface  = surface;
+        wh.water.reset();
+        if(water)
+          wh.water = 0.05f;
+        }
+      fx.update(car,car.pose.translation()+rc::Vec3{0,1,-2},1.f/60.f,rnd);
+      }
+    fx.collect(out);
+    size_t dust = 0;
+    for(auto& b:out)
+      dust += b.texture==rc::fx::Billboard::Dust ? 1 : 0;
+    return std::pair<size_t,size_t>(dust,out.size()-dust);
+    };
+  for(auto s:{rc::Surface::Default,rc::Surface::Sand,rc::Surface::DeepSand,rc::Surface::Gravel}) {
+    auto [dust,spray] = run(s,false);
+    std::printf("30 km/h on %-8s: %zu dust, %zu spray\n",rc::surfaceName(s),dust,spray);
+    }
+  auto [dust,spray] = run(rc::Surface::Sand,true);
+  std::printf("30 km/h in water: %zu dust, %zu spray\n",dust,spray);
+  return spray>0 ? 0 : 4;
+  }
+
 // the player driving into an opponent from the start of a race: knocked off its recording, driven back to it,
 // and what the player gets for it
 static int cmdRam(const fs::path& game, const fs::path& track, rc::PackFile& pack, int target, float seconds,
@@ -1116,7 +1180,7 @@ static int cmdRam(const fs::path& game, const fs::path& track, rc::PackFile& pac
 
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates|ai|ram|chars ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates|ai|fx|ram|chars ...\n");
     return 1;
     }
   try {
@@ -1144,6 +1208,8 @@ int main(int argc, char** argv) {
       return cmdPack(pack);
     if(cmd=="check")
       return cmdCheck(game,pack);
+    if(cmd=="fx")
+      return cmdFx(pack);
     if(cmd=="extract" && argc>4) {
       auto d = pack.read(argv[3]);
       writeFile(argv[4],d.data(),d.size());

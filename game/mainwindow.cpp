@@ -27,6 +27,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name)
   carScene = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
   hud      = std::make_unique<Hud>(device,res);
   arrow    = std::make_unique<DirectionArrow>(device,res);
+  effects  = std::make_unique<Effects>(device,res);
   sounds   = std::make_unique<Sounds>(res);
   characterView = std::make_unique<CharacterView>(device);
   loadCar(0);
@@ -129,6 +130,7 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
   const auto prm  = rc::CarParams::load(resources.pack(),int32_t(carId+1),upgrade);
   vehicle  = std::make_unique<rc::Vehicle>(*physics,geom,prm,carPose);
   arrow->reset();
+  effects->clear();
   if(restartRace) {
     race->restart(carPose,again);
     sounds->stopAll();
@@ -153,6 +155,7 @@ void MainWindow::respawnCar() {
     return;
   carPose = checkpoints->respawn(car->bboxMin().y);
   vehicle->reset(carPose);
+  effects->clear();
   sounds->play("Checkpoint","cp_reset");
   besideDone = true;
   if(opponents)
@@ -419,6 +422,12 @@ void MainWindow::tick(float dt) {
       }
     lastCarPos = at;
     arrow->tick(dt,arrowInput());
+    {
+      const bool driving = !race->holdCar() && !freeCamera;
+      const bool gas     = driving && (keys[Event::K_W] || keys[Event::K_Up]);
+      const bool brake   = driving && (keys[Event::K_S] || keys[Event::K_Down]);
+      effects->tick(dt,*vehicle,opponents.get(),level->collision(),camera.position,gas,brake);
+    }
 
     // on its roof or side for a while: back on the wheels
     upsideDown = carPose.vector({0,1,0}).y<0.3f ? upsideDown+dt : 0;
@@ -580,6 +589,8 @@ void MainWindow::render() {
         }
       if(level)
         level->mesh().draw(enc,push,LevelMesh::Pass::Translucent);
+      if(vehicle)
+        effects->draw(enc,frameId,int(w()),int(h()),viewProj,camera.position);
       if(level && showCollision)
         level->collisionView().draw(enc,push);
       if(race && vehicle) {

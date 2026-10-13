@@ -23,6 +23,7 @@
 #include "physics/checkpoints.h"
 #include "physics/opponents.h"
 #include "physics/race.h"
+#include "physics/resetvolumes.h"
 #include "physics/props.h"
 #include "physics/vehicle.h"
 #include "audio/carsound.h"
@@ -380,6 +381,7 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   rc::PhysicsWorld world(coll);
   auto             props = placeProps(game,scene,world);
   rc::Vehicle      veh(world,geom,prm,start);
+  rc::ResetVolumes resets(scene);
 
   // the engine sound of the drive (rcinfo sound)
   std::unique_ptr<rc::Mixer>        mixer;
@@ -394,7 +396,7 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
     engine = std::make_unique<rc::CarSound>(*mixer,*sndLib,car-1);
     }
   const float dt = 1.f/60.f, limit = wavOut ? 40.f : 120.f;
-  size_t flips = 0, reverses = 0, drowned = 0, passed = 0;
+  size_t flips = 0, reverses = 0, respawns = 0, passed = 0;
   float  maxSpeed = 0, stuck = 0, backing = 0, upsideDown = 0, t = 0;
   bool   fell = false;
   int    frame = 0;
@@ -478,15 +480,21 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
       }
     maxSpeed = std::max(maxSpeed,veh.speed());
     onSurface[veh.surface()] += dt;
-    // in the sea for too long: back to the last checkpoint, as the game does
-    if(veh.drowned()) {
-      const rc::Vec3 at = veh.pose().translation();
-      std::printf("%6.2f drowned at (%.2f %.2f %.2f), back to %s\n",t,at.x,at.y,at.z,
+    // in the sea for too long, out of the collision box or in a reset volume: back to the last checkpoint, as
+    // the game does
+    const rc::Vec3 at   = veh.pose().translation();
+    const auto&    box  = scene.collision;
+    const bool     out  = at.x<box.min.x || at.x>box.max.x || at.z<box.min.z || at.z>box.max.z || at.y<box.min.y-0.1f;
+    const bool     drown = veh.drowned();
+    if(drown || out || resets.tick(at,dt)) {
+      std::printf("%6.2f %s at (%.2f %.2f %.2f), back to %s\n",t,
+                  drown ? "drowned" : out ? "out of the track" : "in a reset volume",at.x,at.y,at.z,
                   route[cps.lastPassed()].name.c_str());
+      resets.reset();
       veh.reset(cps.respawn(geom.min.y));
       aim  = cps.guide();
       prev = veh.pose().translation();
-      ++drowned;
+      ++respawns;
       continue;
       }
     const rc::Vec3 now = veh.pose().translation();
@@ -505,8 +513,8 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
     }
   const bool lap = cps.laps()>0;
   std::printf("%s: %zu of %zu checkpoints in %.1f s, max speed %.1f km/h, %zu times backed up, %zu times put back"
-              " on the wheels, drowned %zu times\n",lap ? "lap finished" : "lap not finished",passed,cps.mainCount(),t,
-              maxSpeed*3.6f,reverses,flips,drowned);
+              " on the wheels, %zu times back to the last checkpoint\n",lap ? "lap finished" : "lap not finished",passed,cps.mainCount(),t,
+              maxSpeed*3.6f,reverses,flips,respawns);
   size_t knocked = 0;
   for(auto& p:props) {
     const rc::Vec3 at = p.body->pose().translation();
@@ -1018,9 +1026,88 @@ static int cmdRam(const fs::path& game, const fs::path& track, rc::PackFile& pac
   return knocks>0 ? 0 : 4;
   }
 
+// "rcinfo <game> drown <track> [car]": the reset volumes and the collision box of a track, then the car let down
+// into water of a few depths, and how long until it counts as drowned (RCCars.exe: 2 s, 0.5 s when deep)
+static int cmdDrown(const fs::path& game, const fs::path& track, rc::PackFile& pack, int car) {
+  auto scene = rc::SbScene::load(readFile(game/track));
+  auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
+  rc::CollisionMesh coll(scene);
+  coll.setSeas(rc::Seas::load(scene,pack,track.stem().string()));
+  const auto geom = rc::carGeometry(cars,"Car"+std::to_string(car));
+  const auto prm  = rc::CarParams::load(pack,car,0);
+  const auto& grid = scene.collision;
+  std::printf("collision box (%.1f %.1f %.1f) .. (%.1f %.1f %.1f)\n",grid.min.x,grid.min.y,grid.min.z,
+              grid.max.x,grid.max.y,grid.max.z);
+  std::printf("car origin %.3f m above the bottom of the wheels, roof %.3f m above it\n",-geom.min.y,geom.roof);
+
+  rc::ResetVolumes resets(scene);
+  for(auto& v:resets.volumes()) {
+    const auto& d = v.volume->data;
+    std::printf("%-24s filter %.3f s, y %.2f .. %.2f, %zu corners\n",v.volume->name.c_str(),v.filter,
+                d.size()>1 ? d[0] : 0.f,d.size()>1 ? d[1] : 0.f,d.size()>2 ? (d.size()-2)/2 : 0);
+    }
+  rc::Checkpoints cps(scene,coll);
+  for(auto& p:cps.route()) {
+    if(!p.main)
+      continue;
+    const rc::Vec3 at = p.position;
+    const bool out = at.x<grid.min.x || at.x>grid.max.x || at.z<grid.min.z || at.z>grid.max.z || at.y<grid.min.y-0.1f;
+    bool inVolume = false;
+    for(auto& v:resets.volumes())
+      inVolume |= v.volume->contains(at);
+    if(out || inVolume)
+      std::printf("  %s at (%.1f %.1f %.1f): %s\n",p.name.c_str(),at.x,at.y,at.z,
+                  out ? "out of the collision box" : "in a reset volume");
+    }
+
+  // water spots by depth (surface over flat solid ground), the first one of each found on a 1 m grid
+  const float depths[] = {0.1f,0.2f,0.3f,0.5f,1.f,2.f};
+  bool        found[std::size(depths)] = {};
+  for(float x=grid.min.x; x<grid.max.x; x+=1.f)
+    for(float z=grid.min.z; z<grid.max.z; z+=1.f) {
+      const auto ground = coll.groundHeight(rc::Vec3{x,grid.max.y,z});
+      if(!ground)
+        continue;
+      const auto surface = coll.waterLevel(rc::Vec3{x,*ground+0.01f,z},20.f);
+      if(!surface || *surface<=*ground)
+        continue;
+      const float depth = *surface-*ground;
+      // flat ground around it, so that the car stays at that depth
+      bool flat = true;
+      for(float d:{-0.6f,0.6f})
+        for(const rc::Vec3& o:{rc::Vec3{d,0,0},rc::Vec3{0,0,d}}) {
+          const auto g = coll.groundHeight(rc::Vec3{x+o.x,*ground+0.5f,z+o.z});
+          flat &= g && std::abs(*g-*ground)<0.03f;
+          }
+      if(!flat)
+        continue;
+      for(size_t i=0; i<std::size(depths); ++i) {
+        if(found[i] || std::abs(depth-depths[i])>0.03f*std::max(1.f,depths[i]))
+          continue;
+        found[i] = true;
+        rc::PhysicsWorld world(coll);
+        rc::Mat4         at = rc::Mat4::translate({x,*ground-geom.min.y+0.05f,z});
+        rc::Vehicle      veh(world,geom,prm,at);
+        float t = 0;
+        const float dt = 1.f/60.f;
+        rc::Vehicle::Input hold;
+        hold.handbrake = true;
+        for(; t<10.f && !veh.drowned(); t+=dt) {
+          veh.update(hold,dt);
+          world.step(dt);
+          }
+        const rc::Vec3 end = veh.pose().translation();
+        std::printf("water %.2f m deep at (%.1f %.1f %.1f): %s after %.2f s, %.2f m away, %.2f m under\n",depth,x,
+                    *ground,z,veh.drowned() ? "drowned" : "still not drowned",t,
+                    std::hypot(end.x-x,end.z-z),*surface-end.y);
+        }
+      }
+  return 0;
+  }
+
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates|ai|fx|ram ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates|ai|fx|ram|drown ...\n");
     return 1;
     }
   try {
@@ -1067,6 +1154,8 @@ int main(int argc, char** argv) {
     if(cmd=="ram" && argc>3)
       return cmdRam(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 0,argc>5 ? float(std::atof(argv[5])) : 30.f,
                     argc>6 && std::strcmp(argv[6],"side")==0);
+    if(cmd=="drown" && argc>3)
+      return cmdDrown(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1);
     if(cmd=="gates" && argc>3)
       return cmdGates(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1);
     if(cmd=="sound" && argc>4)

@@ -19,6 +19,7 @@
 #include "physics/checkpoints.h"
 #include "physics/opponents.h"
 #include "physics/race.h"
+#include "physics/resetvolumes.h"
 #include "physics/vehicle.h"
 #include "resources.h"
 #include "sounds.h"
@@ -46,7 +47,7 @@ class MainWindow : public Tempest::Window {
     void tick(float dt);
     void loadLevel(const std::string& name);
     void loadCar(size_t id);
-    void respawnCar();    // back to the last checkpoint passed (R, drowned, off the track)
+    void respawnCar();    // back to the last checkpoint passed (R, drowned, out of the track, reset volume)
     // the car on the start line and the race from the countdown; `again`: "Jeszcze raz", no delay before "3"
     void setupPhysics(bool restartRace = true, bool again = false);
     void setupOpponents();                      // the opponents of the track for aiLevel
@@ -77,6 +78,7 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<rc::Vehicle>      vehicle;
     std::unique_ptr<rc::Checkpoints>  checkpoints;
     std::unique_ptr<rc::Race>         race;
+    rc::ResetVolumes                  resetVolumes; // refers to the level's scene
     // declared after `checkpoints` and `physics`: they refer to both
     std::unique_ptr<rc::Opponents>    opponents;
     rc::Opponents::Level              aiLevel = rc::Opponents::Level::Normal; // O: off, easy, normal, hard

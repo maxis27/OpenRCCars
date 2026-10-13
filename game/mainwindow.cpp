@@ -52,6 +52,7 @@ void MainWindow::loadLevel(const std::string& name) {
     level   = std::move(next);
     checkpoints = std::make_unique<rc::Checkpoints>(level->scene(),level->collision());
     race        = std::make_unique<rc::Race>(*checkpoints,laps);
+    resetVolumes = rc::ResetVolumes(level->scene());
     hud->setTrack(name);
     sounds->setTrack(level->scene());
     camera  = level->startCamera();
@@ -134,6 +135,7 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
     paused       = false;
     }
   lastCarPos = carPose.translation();
+  resetVolumes.reset();
   chaseYaw = level->startCamera().yaw;
   Log::i("car ",Cars[carId],", upgrade ",upgrade,": top speed ",prm.topSpeed*3.6f," km/h, grip ",prm.gripFront);
   }
@@ -150,6 +152,7 @@ void MainWindow::respawnCar() {
     opponents->playerMoved();
   lastCarPos = carPose.translation();
   upsideDown = 0;
+  resetVolumes.reset();
   const rc::Vec3 f = carPose.vector({0,0,1});
   chaseYaw = std::atan2(f.x,f.z)*180.f/3.14159265f;
   }
@@ -407,9 +410,13 @@ void MainWindow::tick(float dt) {
       vehicle->recover();
       upsideDown = 0;
       }
-    // drowned or fell off the world: back to the last checkpoint
-    auto& grid = level->scene().collision;
-    if(vehicle->drowned() || (!grid.empty() && carPose.translation().y<grid.min.y-20.f)) {
+    // back to the last checkpoint (RCCars.exe 0x508160): out of the track's collision box (sideways, or more
+    // than 0.1 m under it), drowned, or a while in a reset volume
+    const auto&    grid = level->scene().collision;
+    const rc::Vec3 pos  = carPose.translation();
+    const bool     out  = !grid.empty() && (pos.x<grid.min.x || pos.x>grid.max.x || pos.z<grid.min.z ||
+                                            pos.z>grid.max.z || pos.y<grid.min.y-0.1f);
+    if(out || vehicle->drowned() || resetVolumes.tick(pos,dt)) {
       respawnCar();
       }
     tickSounds(dt);

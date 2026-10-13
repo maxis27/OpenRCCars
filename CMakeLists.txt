@@ -63,6 +63,7 @@ add_library(rcphysics STATIC
   physics/carparams.h   physics/carparams.cpp
   physics/vehicle.h     physics/vehicle.cpp
   physics/checkpoints.h physics/checkpoints.cpp
+  physics/resetvolumes.h physics/resetvolumes.cpp
   physics/race.h        physics/race.cpp
   physics/props.h       physics/props.cpp
   physics/opponents.h   physics/opponents.cpp

@@ -546,7 +546,13 @@ void Vehicle::surfaces(float dt) {
 
   wet        = wetNow;
   sub        = subNow;
-  underWater = sub>=1.f ? underWater+dt : 0.f;
+  // drowning (0x508a10): a point just above the origin under the surface, the deeper the faster
+  const Vec3 probe = m.translation()+Vec3{0,prm.drownHeight,0};
+  const auto surface = track.waterLevel(probe,10.f);
+  if(surface && *surface>probe.y)
+    underWater += (probe.y<*surface-prm.drownDeep ? 4.f : 1.f)*dt;
+  else
+    underWater = 0;
   if(wet>0 || sub>0) {
     under = Surface::Water;
     }

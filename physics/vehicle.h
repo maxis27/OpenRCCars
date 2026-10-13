@@ -80,7 +80,8 @@ class PhysicsWorld {
 
 // A car on btRaycastVehicle: chassis box + four suspension rays. The wheels stand on solid ground only: water
 // (Surface::Water) is not solid, so the car wades through shallow water and sinks into deep water, slowed down
-// by it, and counts as drowned once it has been fully under water for CarParams::drownTime.
+// by it, and counts as drowned once a point just above its origin has been under water for CarParams::drownTime
+// (see CarParams::drownHeight).
 class Vehicle {
   public:
     struct Input {
@@ -150,8 +151,8 @@ class Vehicle {
     Surface                    surface() const { return under; }
     // how deep the body is in water: 0 dry .. 1 fully under water
     float                      submerged() const { return sub; }
-    // fully under water for a while: the original puts the car back on the track (last checkpoint)
-    bool                       drowned() const { return underWater>=prm.drownTime; }
+    // under water for a while: the original puts the car back on the track (last checkpoint)
+    bool                       drowned() const { return underWater>prm.drownTime; }
     bool                       onGround() const;
     size_t                     wheelsOnGround() const;
 
@@ -183,7 +184,7 @@ class Vehicle {
     Surface                               under = Surface::Default;
     float                                 sub   = 0;
     float                                 wet   = 0;          // share of the wheels in water, 0..1
-    float                                 underWater = 0;     // s fully under water
+    float                                 underWater = 0;     // drowning timer, s (see CarParams::drownTime)
 
     Hit                                   lastHit   = Hit::None;
     Contact                               touch;

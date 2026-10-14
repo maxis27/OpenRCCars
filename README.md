@@ -23,13 +23,14 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   z tego powstaje siatka kolizji (trójkąty w przestrzeni świata) z raycastem po komórkach (DDA). Auto staje na
   ziemi wyznaczonej raycastem. Klawisz **K** pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
   ściany, niebieskie niewidoczne ściany (ściany bez tekstury)
-- **fizyka jazdy** ([Bullet](https://github.com/bulletphysics/bullet3) `btRaycastVehicle`): auto jeździ po trasie
-  z klawiatury. Koła to promienie rzucane przez siatkę kolizji `COLL` (raycast z kroku 2), nadwozie to prostopadłościan
-  zderzający się z tymi samymi trójkątami (ściany, słupy, niewidoczne bariery). Parametry każdego auta z
+- **fizyka jazdy** jak w `RCCars.exe`: własny model auta (sprężyny, opony z poślizgiem, koła jako kule) na
+  [Bullecie](https://github.com/bulletphysics/bullet3), który porusza nadwozie i zderza je z trasą i rekwizytami.
+  Nadwozie to 9 kul z `cdt<N>.ini`, koła to kule wisące na sprężynach i opadające na trójkąty siatki `COLL`
+  (ściany, słupy, niewidoczne bariery) i rekwizyty. Parametry każdego auta z
   `Settings/engine|springs|tires|steering|resistance|cdt<N>.ini`, silnik, dopalacz, turbo, skręt, skok, opory oraz
   głęboki piasek i woda tak jak w kodzie `RCCars.exe` (krzywa `Splines/OVERKILL|BUGGY|HUMMER.bspl`, zob. „Fizyka wg
   `RCCars.exe`”), ulepszenia (dopalacze, rezonatory, opony) z `Scripts/upgrades.ini`. Koła kręcą się, skręcają i pracują na
-  zawieszeniu; klawisze jak w instrukcji oryginału (`Instrukcja.pdf`: spacja skok, Shift dopalacz, B blokada kół);
+  zawieszeniu; hamulec przy skręcie powyżej `angleDriftOn` puszcza tył w poślizg; klawisze jak w instrukcji oryginału (`Instrukcja.pdf`: spacja skok, Shift dopalacz, B blokada kół);
   zbiornik turbo ładuje się sam i dostaje 10 jednostek za każdy punkt kontrolny; skok +3 m/s w górę auta (spacja
   na przewróconym aucie stawia je na koła); auto przewrócone na dach wraca na koła po 2 s
 - **nawierzchnie i woda**: rodzaj nawierzchni pochodzi z bitów materiału tekstury (`GLTX`): piasek, mokry piasek,
@@ -236,7 +237,7 @@ formats/        formaty danych, czyste C++ bez zależności
 physics/        fizyka jazdy (Bullet, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
-  vehicle.*     świat Bulleta trasy, btRaycastVehicle z promieniami przez siatkę COLL, nawierzchnie i woda
+  vehicle.*     świat Bulleta trasy, auto jak w RCCars.exe (sprężyny, opony, kule kół), nawierzchnie i woda
   checkpoints.* punkty kontrolne w kolejności, zaliczanie (1,6 m), postęp auta, powrót do ostatniego punktu
   race.*        wyścig: odliczanie, okrążenia, czasy, zły kierunek, meta
   props.*       rekwizyty: parametry ze skryptu SCRI, kształt, bryła sztywna
@@ -307,6 +308,30 @@ lib/Tempest     silnik (submoduł git)
     który rośnie do `AngleSteer` (0..100, 29,3°). Pełny skręt nie maleje z prędkością, tylko wolniej się go nabiera;
   - skok (spacja, co najmniej 0,5 s od poprzedniego): +3 m/s wzdłuż osi „w górę” auta (Buggy 3,3) i obrót wokół
     pionu ×1,5; auto przechylone o ponad 80° zamiast skoczyć staje na koła;
+  - auto (0x4f0910, 0x4f5e50): bryła sztywna o masie 1 kg, bezwładność prostopadłościanu całego modelu (Buggy
+    ×2 wokół osi przód-tył), środek masy `CenterMassOY` (0..0,2 m) nad początkiem modelu; prędkość najwyżej 20 m/s,
+    moment pędu najwyżej 1. Kule nadwozia z `cdt<N>.ini`: `CdtRadUp<i>` (0,01..0,3 m) w `CdtDeltaX|Y|Z<i>`
+    (−0,3..0,3 m, Buggy `CdtDeltaZ_CENTRAL<i>`), każda trzy razy: na środku i przesunięta o `shiftRoofBaseLefter`
+    w lewo i w prawo. Koło to kula `CdtRadWheel` (0,01..0,1 m, tylne × `coeffRadBackWheels` 1..2);
+  - sprężyny (`springs<N>.ini`, 0x4f91b0, 0x4f0f80): `length` 0,01..0,5 m, `lenMin` × 0,1..0,9, `lenMax`
+    × 1,1..2, ugięcie `kPos` = (length − lenMin) × 0,1..0,9, tłumienie `kSpeed` 1..10, mocowanie `touchPoint`
+    (0..1 m) nad piastą. Sztywność k = m·g / (liczba kół · ugięcie). Koło dotykające ziemi pcha auto wzdłuż jego osi
+    „w górę” siłą k·(length − długość − 0,02 r) − kSpeed·(zmiana długości)/dt, tłumienie najwyżej tyle co
+    sprężyna; do ruchu liczy się tylko część wzdłuż normalnej podłoża, a moment w osiach auta razy
+    `coeffMomentOX` (0,5..2, pochylenie) i `coeffMomentOZ` (1..3, przechył), bez obrotu wokół pionu.
+    Koło wciśnięte w ziemię od razu idzie w górę (najwyżej do `lenMin`), w dół opada do spoczynku (`length`, a
+    wolniej niż 5 km/h `length − 0,95·kPos`) z szybkością rosnącą z czasem jazdy (0x4fb340). Tę szybkość
+    w oryginale mnoży nieznany nam czynnik; przyjęliśmy 30 (wolniej koła nie nadążały za autem);
+  - napęd (0x4eea50): siła silnika (najwyżej 20 × przyczepność tyłu) po połowie na tylne koła stojące na
+    podłożu nachylonym mniej niż 46°, wzdłuż podłoża. Klawisz hamulca hamuje i przy |v| ≤ 2 m/s wrzuca wsteczny,
+    gaz tak samo w drugą stronę (0x4ee5e0); hamując silnik nie ciągnie;
+  - opony (`tires<N>.ini`, 0x4f7fa0, 0x4edac0, 0x4ee280): przyczepność `CoeffFrontTires|RearTires` 0,1..1
+    × ulepszenie `TIRES`. Działają najwyżej w dwóch kołach, przednim i tylnym: przy mniej niż 3 kołach na ziemi
+    w pierwszych dwóch dotykających, inaczej w zewnętrznych w zakręcie (jadąc prosto w prawych). Każde zatrzymuje
+    poślizg w bok (hamując: każdy poślizg) siłą, która razem z drugą znosi przyspieszenie punktu koła od reszty sił
+    (najwyżej 5 × przyczepność z przodu, 10 × z tyłu) i jego prędkość w tym kierunku (najwyżej 10 × przyczepność
+    na sekundę). Hamulec ze skrętem powyżej `angleDriftOn` (1..45°) to poślizg: tył ma przyczepność
+    × `coeffDriftRear` (1..0,1) i oba koła limit 10. Z kołami prosto opony gaszą też obrót auta (1/s);
   - głęboki piasek i woda (`tires<N>.ini`, 0..1): każde koło w głębokim piasku dokłada `coeffDeepSand·v²` przeciw
     ruchowi w swoim punkcie, a w wodzie `coeffWater·v²`, od zera przy kole zanurzonym w 30% do całości przy 90%;
   - R (co najmniej 1 s od poprzedniego) stawia auto na markerze ostatniego zaliczonego punktu, przodem w stronę
@@ -480,8 +505,8 @@ lib/Tempest     silnik (submoduł git)
 
 1. ~~Model auta postawiony na starcie~~ (zrobione; LOD-y i ulepszenia `UPGRADES*` jeszcze niewyświetlane)
 2. ~~Kolizje trasy z węzła `COLL`~~ (zrobione: siatka kolizji, raycast, nakładka debug)
-3. ~~Fizyka jazdy: Bullet `btRaycastVehicle` + parametry z ustawień gry~~ (zrobione; do dostrojenia na wyczucie
-   względem oryginału; kolizje kul z `cdt*.ini` nieużyte)
+3. ~~Fizyka jazdy: model auta z `RCCars.exe` (sprężyny, opony z poślizgiem, kule kół i nadwozia z `cdt*.ini`) na
+   Bullecie~~ (zrobione; szybkość opadania kół przyjęta, nie odczytana)
    - ~~nawierzchnie i woda~~ (zrobione: głęboki piasek i woda spowalniają, w głębokiej wodzie auto tonie i wraca do
      ostatniego punktu kontrolnego); ~~kurz i bryzgi spod kół~~ (zrobione); brakuje śladów opon, kilwatera, spalin,
      brudzenia auta i stref `car_reset_volume_*` („dziury”)

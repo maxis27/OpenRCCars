@@ -176,8 +176,6 @@ Same narzędzia do danych (bez Tempesta i GPU): `cmake -B build -DOPENRCCARS_TOO
 
 ## Sterowanie
 
-| Klawisz | Akcja |
-|---|---|
 Jazda (kamera za autem):
 
 | Klawisz | Akcja |

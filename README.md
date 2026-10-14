@@ -15,7 +15,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   wszystkie 1316 tekstur z archiwum dekodują się poprawnie
 - **.sb** (CREAT Studio Scene Project 6.0): hierarchia węzłów, siatki, UV, normalne, warstwy tekstur
   (BAS1/LM_1/ALP1/BAS2), osadzone lightmapy, markery (checkpointy `cp_*`); wszystkie 18 plików parsują się poprawnie
-- **renderer**: trasa z teksturami, lightmapami, mieszaniem tekstur terenu, alpha-testem, przezroczystością i mgłą;
+- **renderer**: trasa z teksturami, lightmapami, mieszaniem tekstur terenu, alpha-testem, przezroczystością i mgłą
+  każdej trasy jak w oryginale (`Settings/fog_<trasa>.ini`);
   przełączanie 10 tras
 - **auto**: model z `Car.sb` (Overkill, Buggy, Hummer) stoi na pozycji startowej gracza (`INST 'Player'`), osadzony
   na ziemi; nadwozie i koła są osobnymi częściami (pod obrót i skręt kół); kamera za autem albo kamera swobodna;
@@ -228,6 +229,7 @@ rcinfo <folder_gry> ai RCCarsDB/beach_1.sb [poziom 1-3] [okrążenia]  # przeciw
 rcinfo <folder_gry> fx                            # ustawienia efektów, ile cząsteczek, śladów i kilwatera daje auto na każdej nawierzchni
 rcinfo <folder_gry> ram RCCarsDB/beach_1.sb [przeciwnik] [s] [side]  # gracz wjeżdża w przeciwnika: wypadnięcie z nagrania, powrót, „Łup!”
 rcinfo <folder_gry> drown RCCarsDB/beach_1.sb [auto 1-3]  # strefy powrotu, pudło kolizji, czas tonięcia na kilku głębokościach (też przeciwnika)
+rcinfo <folder_gry> fog beach_1                   # mgła trasy: gęstość, kolor, ile koloru zostaje w danej odległości
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
 rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
 rcshot <folder_gry> beach_1 shot.png [w h] [x y z yaw pitch]   # render offscreen, z autem i kamerą za nim
@@ -239,6 +241,7 @@ RCSHOT_DRIVE=3 RCSHOT_BOOST=1 rcshot ...                        # z dopalaczem
 RCSHOT_START="-8 -41 90" RCSHOT_DRIVE=1.6 rcshot ...            # auto najpierw w punkcie x z, obrócone o yaw (tu: do morza)
 RCSHOT_TIME=2.5 rcshot ...                                       # chwila animacji wody (fale, piana)
 RCSHOT_OBJECTS=0 rcshot ...                                      # bez rekwizytów
+RCSHOT_FOG=0 rcshot ...                                          # bez mgły
 ```
 
 ## Struktura
@@ -561,11 +564,21 @@ lib/Tempest     silnik (submoduł git)
   `Settings/carEnvMap.ini` (0x4f9d00, 0x5080b0, 0x507d80): karoseria `EnvMapBody` 112/255, `*GRE1*` (szyby,
   chromy) `EnvMapGRE1` 255/255, `*GRE2*` (lampy, zderzaki) `EnvMapGRE2` 137/255; reszta z flagą (np. rekwizyty ze
   `stone.sb`) całą mapę. `EnvMapUpgrades` (156) dotyczy ulepszeń, których jeszcze nie pokazujemy. U nas to jeden
-  przebieg `shader/level.frag` (`environment()`), który dodaje mapę do koloru przed mgłą.
+  przebieg `shader/level.frag` (`environment()`), który dodaje mapę do koloru; takie siatki oryginał rysuje bez mgły.
 - **Kamera nad wodą** (0x501180, ostatni krok kamery za autem): jeśli punkt 7 cm pod okiem kamery jest pod wodą
   (promień tylko po wodzie, 0x5350d0), oko idzie na 14 cm nad jej powierzchnię; kierunek patrzenia zostaje.
   Powierzchnia to animowana siatka morza (0x5353b0 bierze bieżące wierzchołki), więc liczymy ją z falami
   (`Level::waterHeight`, `WaterWaves::lift`). Kamera nigdy nie schodzi pod wodę i oryginał nie ma widoku spod wody.
+- **Mgła** (moduł „Fog”, 0x5324c0; `formats/fog.h`): po wczytaniu trasy gra czyta `Settings/fog_<trasa>.ini`
+  (0x532870): `Density` × 0,001, `ColorR/G/B`; `Start` i `End` też, ale bez znaczenia, bo Direct3D dostaje mgłę
+  wykładniczą `D3DFOG_EXP` w tablicy (0x461970): piksel w odległości `w` od kamery zachowuje `exp(-density·w)`
+  swojego koloru, reszta to kolor mgły. Gęstości: beach 0,006–0,020, country 0,009–0,026, urban 0,023–0,025
+  (beach_1: po 100 m zostaje 55% koloru; country_1: 12%). Kolor mgły barwi też niebo. Siatki z mapą otoczenia
+  (morze, karoserie) mają mgłę wyłączoną (0x464e50 … 0x4658b0). Każda zmiana przechodzi liniowo w 0,5 s
+  (0x532aa0), także na starcie z „braku mgły”. Obiekt z sekcją `FOG` (`FOG_Start`, `FOG_End`, `FOG_EndInt` jako
+  gęstość, `FOG_Color`) mógłby zmieniać mgłę na zdarzenia 126/127 (wjazd i powrót do mgły trasy), ale żadna trasa
+  takiego obiektu nie ma. W oryginale wyłącza ją `VIDEO_UseFog 0` w `Config.gm`, u nas jest zawsze. Efekty
+  (kurz, bryzgi) rysujemy jeszcze bez mgły.
 - Rozpoznane, jeszcze nieprzeniesione: pluski w stałych miejscach tras (markery `water_splash_N` na beach_1,
   beach_3, country_3; 0x5272f0), fale `Water_Wave_New` i `BURST_MNG`.
 

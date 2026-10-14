@@ -14,6 +14,7 @@
 //   rcinfo <game_dir> sound <RCCarsDB/x.sb> <out.wav> [car 1-3]  the test drive with the engine sound, rendered to WAV
 //   rcinfo <game_dir> check                      decode every texture in the pack and every RCCarsDB/*.sb
 
+#include "formats/fog.h"
 #include "formats/pack.h"
 #include "formats/csi.h"
 #include "formats/scene.h"
@@ -1346,7 +1347,7 @@ static int cmdDrown(const fs::path& game, const fs::path& track, rc::PackFile& p
 
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates|ai|fx|ram|chars|drown ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates|ai|fx|fog|ram|chars|drown ...\n");
     return 1;
     }
   try {
@@ -1376,6 +1377,15 @@ int main(int argc, char** argv) {
       return cmdCheck(game,pack);
     if(cmd=="fx")
       return cmdFx(pack);
+    if(cmd=="fog" && argc>3) {
+      // the track's fog (formats/fog.h) and how much of the scene is left through it
+      const auto f = rc::FogParams::load(pack,argv[3]);
+      std::printf("density %.3f, colour %u %u %u, start %.0f, end %.0f\n",f.density,
+                  (f.color>>16)&0xffu,(f.color>>8)&0xffu,f.color&0xffu,f.start,f.end);
+      for(float d:{25.f,50.f,100.f,200.f,400.f})
+        std::printf("  %4.0f m: %3.0f%% of the colour left\n",d,rc::Fog::visibility(f.density,d)*100.f);
+      return 0;
+      }
     if(cmd=="extract" && argc>4) {
       auto d = pack.read(argv[3]);
       writeFile(argv[4],d.data(),d.size());

@@ -75,12 +75,12 @@ class LevelMesh {
 
     struct Push {
       float    viewProj[16];
-      float    cameraPos[4];   // xyz, w = fog distance
+      float    cameraPos[4];   // xyz, w = fog density (rc::Fog)
       float    sunDir[4];      // xyz, w = lightmap scale
       uint32_t flags = 0;
       float    time = 0;       // seconds, animates the water and the foam
       float    envMap = 0;     // strength of the environment map (ScenePipelines::env), 0 = none
-      uint32_t padding = 0;
+      uint32_t fogColor = 0;  // 0x00RRGGBB
       float    carPos[4] = {0,1e6f,0,0}; // the player's car: the sea is see-through near it (WaterWaves)
       };
 

@@ -13,6 +13,7 @@
 #include <memory>
 
 #include "arrow.h"
+#include "formats/fog.h"
 #include "camera.h"
 #include "effects.h"
 #include "hud.h"
@@ -83,6 +84,7 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<rc::Checkpoints>  checkpoints;
     std::unique_ptr<rc::Race>         race;
     rc::ResetVolumes                  resetVolumes; // refers to the level's scene
+    rc::Fog                           fog;
     // declared after `checkpoints` and `physics`: they refer to both
     std::unique_ptr<rc::Opponents>    opponents;
     rc::Opponents::Level              aiLevel = rc::Opponents::Level::Normal; // O: off, easy, normal, hard

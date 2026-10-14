@@ -13,6 +13,7 @@
 //   rcinfo <game_dir> ai <RCCarsDB/x.sb> [level 1-3] [laps]  the opponents: recordings, their loops, a race without the player
 //   rcinfo <game_dir> sound <RCCarsDB/x.sb> <out.wav> [car 1-3]  the test drive with the engine sound, rendered to WAV
 //   rcinfo <game_dir> traffic <track> [seconds]  the road traffic: departures, how the cars stand on the road, a push
+//   rcinfo <game_dir> shots <track> [car 1-3] [seconds]  guards and the BTR shooting at a parked car: bursts, hits, put back
 //   rcinfo <game_dir> check                      decode every texture in the pack and every RCCarsDB/*.sb
 
 #include "formats/fog.h"
@@ -34,6 +35,7 @@
 #include "audio/mixer.h"
 #include "audio/soundlib.h"
 #include "fx/careffects.h"
+#include "fx/worldfx.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1484,9 +1486,150 @@ static int cmdDrown(const fs::path& game, const fs::path& track, rc::PackFile& p
   return 0;
   }
 
+// The guards (and the BTR) shooting at the player's car, parked in front of them until the first hit, then left to
+// the push; the game's rules on top (MainWindow): held after a hit, put back Vehicle::ShotHold s after the first
+static int cmdShots(const fs::path& game, const std::string& track, rc::PackFile& pack, int carNo, float seconds) {
+  auto scene = rc::SbScene::load(readFile(game/"RCCarsDB"/(track+".sb")));
+  auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
+  rc::ObjectLibrary lib([&](const std::string& p){ return readFile(game/p); });
+  rc::CollisionMesh coll(scene);
+  auto reader = [&pack](const std::string& f){ return pack.read(f); };
+  const auto geom = rc::carGeometry(cars,"Car"+std::to_string(carNo));
+  const auto prm  = rc::CarParams::load(pack,carNo,0);
+  const auto set  = rc::fx::WorldSettings::load(reader);
+  std::printf("burst: %d shots %.2f s apart, radius %.2f m, offset %.2f; hit chance %.0f%%\n",set.burst.shots,
+              set.burst.timeShoot,set.burst.radius,set.burst.offset,rc::fx::Gunfire::chanceFor(true,carNo-1));
+
+  // who shoots: each guard, then the BTR
+  std::vector<std::string> shooters;
+  {
+    rc::PhysicsWorld world(coll);
+    rc::Characters   chars(world,lib,scene,track,reader);
+    for(auto* a:chars.actors())
+      if(a->kind==rc::Characters::Kind::Guard)
+        shooters.push_back(a->name);
+  }
+  {
+    rc::PhysicsWorld world(coll);
+    rc::Traffic      traffic(world,lib,scene,track,reader);
+    for(auto* c:traffic.cars())
+      if(c->kind==rc::Traffic::Kind::Btr)
+        shooters.push_back(c->name);
+  }
+  if(shooters.empty())
+    std::printf("nobody shoots on %s\n",track.c_str());
+
+  for(auto& who:shooters) {
+    rc::PhysicsWorld world(coll);
+    rc::Characters   chars(world,lib,scene,track,reader);
+    rc::Traffic      traffic(world,lib,scene,track,reader);
+    rc::fx::Gunfire  gun(set);
+    rc::fx::Random   rnd(7);
+    rc::Vehicle      car(world,geom,prm,rc::Mat4::translate({0,-500,0}));
+    std::vector<rc::Characters::Car> none;
+    const rc::Characters::Actor* guard = nullptr;
+    for(auto* a:chars.actors())
+      if(a->name==who)
+        guard = a;
+    const rc::Traffic::Car* btr = nullptr;
+    for(auto* c:traffic.cars())
+      if(c->name==who)
+        btr = c;
+
+    // where the car waits: 4 m in front of the guard, or 10 m from the BTR on its way, going round it 30 degrees
+    // every 2 s until its turret finds it
+    float round = 0;
+    auto parking = [&](rc::Mat4& at) {
+      rc::Vec3 from, look;
+      if(guard!=nullptr) {
+        from = guard->world.translation();
+        look = guard->world.vector({0,0,1});
+        }
+      else if(btr!=nullptr && btr->onRoad) {
+        from = btr->pose.translation();
+        look = btr->pose.vector({0,0,1});
+        }
+      else
+        return false;
+      look.y = 0;
+      look   = look.normalized();
+      look   = rc::Mat4::rotate(1,round).vector(look);
+      rc::Vec3 p = from+look*(guard ? 4.f : 10.f);
+      if(auto h = coll.groundHeight(p+rc::Vec3{0,2.f,0}))
+        p.y = *h-geom.min.y;
+      at = rc::Mat4::translate(p)*rc::Mat4::rotate(1,std::atan2(-look.x,-look.z)*180.f/3.14159265f);
+      return true;
+      };
+    std::printf("%s:\n",who.c_str());
+    bool  free = false;
+    float held = -1, firstHit = -1;
+    int   bursts = 0, hits = 0, putBacks = 0;
+    rc::Mat4 park;
+    for(int f=0; f<int(seconds*60.f); ++f) {
+      const float t  = float(f)/60.f;
+      const float dt = 1.f/60.f;
+      if(btr!=nullptr && bursts==0)
+        round = std::floor(t/2.f)*30.f;
+      if(!free) {
+        if(parking(park))
+          car.place(park,{},{});
+        }
+      rc::Vehicle::Input in;
+      in.handbrake = true;
+      car.update(in,dt);
+      world.step(dt);
+      chars.update(dt,&car,none);
+      traffic.update(dt,true,&car,car.pose().translation()+rc::Vec3{0,3,0},none);
+      std::vector<rc::fx::Gunfire::Order> orders;
+      for(auto& s:chars.shooting())
+        if(guard!=nullptr)
+          orders.push_back({s.gun,0});
+      for(auto& s:traffic.shots())
+        if(btr!=nullptr && s.car==rc::Characters::PlayerCar)
+          orders.push_back({s.gun,0});
+      for(auto& o:orders) {
+        ++bursts;
+        std::printf("  %5.2f burst from %.1f m\n",t,(o.gun-car.pose().translation()).length());
+        }
+      rc::fx::Gunfire::Target tg;
+      tg.pose     = car.pose();
+      tg.velocity = car.velocity();
+      tg.boxMin   = geom.bodyMin;
+      tg.boxMax   = geom.bodyMax;
+      tg.chance   = rc::fx::Gunfire::chanceFor(true,carNo-1);
+      gun.update(orders,{tg},coll,dt,rnd);
+      gun.sounds();
+      for(auto& h:gun.hits()) {
+        ++hits;
+        free = true;
+        car.shotFrom(h.gun);
+        const rc::Vec3 v = car.velocity();
+        std::printf("  %5.2f hit%s: the car flies off at %.1f m/s (%.1f up)\n",t,held<0 ? ", held" : "",
+                    std::sqrt(v.x*v.x+v.z*v.z),v.y);
+        if(held<0)
+          held = 0;
+        if(firstHit<0)
+          firstHit = t;
+        }
+      if(held>=0) {
+        held += dt;
+        if(held>rc::Vehicle::ShotHold) {
+          const rc::Vec3 p = car.pose().translation()-park.translation();
+          std::printf("  %5.2f put back (%.2f m from where it was hit)\n",t,p.length());
+          held = -1;
+          free = false;
+          ++putBacks;
+          }
+        }
+      }
+    std::printf("  %d bursts, %d hits, first at %.2f s, put back %d times\n",bursts,hits,firstHit,putBacks);
+    }
+  return 0;
+  }
+
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|nodes|coll|objects|check|drive|race|gates|ai|fx|fog|ram|chars|drown|traffic ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|nodes|coll|objects|check|drive|race|gates|ai|fx|fog|ram|chars|drown|traffic|shots ...\n");
     return 1;
     }
   try {
@@ -1548,6 +1691,8 @@ int main(int argc, char** argv) {
                     argc>6 && std::strcmp(argv[6],"side")==0);
     if(cmd=="traffic" && argc>3)
       return cmdTraffic(game,argv[3],pack,argc>4 ? float(std::atof(argv[4])) : 60.f);
+    if(cmd=="shots" && argc>3)
+      return cmdShots(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1,argc>5 ? float(std::atof(argv[5])) : 10.f);
     if(cmd=="drown" && argc>3)
       return cmdDrown(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1);
     if(cmd=="gates" && argc>3)

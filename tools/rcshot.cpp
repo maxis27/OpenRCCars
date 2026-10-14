@@ -262,9 +262,8 @@ int main(int argc, const char** argv) {
       if(car)
         veh = std::make_unique<rc::Vehicle>(world,rc::carGeometry(carSb,"Car1"),rc::CarParams::load(res.pack(),1),carPose);
       const rc::fx::View     view = {cam.position,cam.viewProj(float(w)/float(h))};
-      static const std::vector<rc::Vec3> noGuns;
       const float time = float(std::atof(f));
-      int shots = 0;
+      int bursts = 0, hits = 0;
       for(float t=0; t<time; t+=1.f/60.f) {
         const float water = waterTime()+t;
         if(veh) {
@@ -273,14 +272,28 @@ int main(int argc, const char** argv) {
           }
         if(chars && veh)
           chars->update(1.f/60.f,veh.get());
+        // the guards shoot at the parked car (target 0)
+        std::vector<rc::fx::Gunfire::Order>  orders;
+        std::vector<rc::fx::Gunfire::Target> targets;
+        if(veh) {
+          for(auto& s:chars ? chars->shooting() : std::vector<rc::Characters::Shot>{})
+            orders.push_back({s.gun,0});
+          rc::fx::Gunfire::Target tg;
+          tg.pose   = veh->pose();
+          tg.boxMin = veh->geometry().bodyMin;
+          tg.boxMax = veh->geometry().bodyMax;
+          tg.chance = rc::fx::Gunfire::chanceFor(true,0);
+          targets.push_back(tg);
+          }
+        bursts += int(orders.size());
         fx->tickWorld(1.f/60.f,view,water,[&level,water](const rc::Vec3& p){ return level.waterHeight(p,10.f,water); },
-                      chars ? chars->shooting() : noGuns,veh.get(),level.collision());
-        for(auto& s:fx->gunSounds())
-          shots += s.kind==rc::fx::Gunfire::Sound::Bullet;
+                      orders,targets,level.collision());
+        fx->gunSounds();
+        hits += int(fx->gunHits().size());
         }
       fxTime = time;
       const rc::Vec3 at = carPose.translation();
-      Log::i("effects: ",time," s, ",shots," bullets at the car (",at.x," ",at.y," ",at.z,")");
+      Log::i("effects: ",time," s, ",bursts," bursts at the car (",at.x," ",at.y," ",at.z,"), ",hits," hits");
       }
 
     auto color = device.attachment(TextureFormat::RGBA8,w,h);

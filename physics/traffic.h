@@ -74,9 +74,11 @@ class Traffic {
       int32_t                     sound = -1;
       };
 
-    // a burst the BTR fires this update (message 0x261: where it aims)
+    // a burst the BTR fires this update (message 0x261): from its gun at a car, Characters::PlayerCar or an index
+    // of the opponents (Characters::Car)
     struct Shot {
       Vec3 gun, target;
+      int  car = Characters::PlayerCar;
       };
 
     // no traffic (size() 0) on tracks without Settings\rdc_<track>.ini

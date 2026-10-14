@@ -42,12 +42,14 @@ class Effects {
     // after the physics; `gas`/`brake`: the player's keys
     void tick(float dt, const rc::Vehicle& player, const rc::Opponents* opponents, const rc::CollisionMesh& track,
               const rc::Vec3& camera, bool gas, bool brake);
-    // the track's effects, seen through `view`; `time`: the water's animation, `water` its surface; `guns`: the guards
-    // shooting (Characters::shooting) at `car`
+    // the track's effects, seen through `view`; `time`: the water's animation, `water` its surface; `bursts`: the
+    // guards and the BTR shooting (Characters::shooting, Traffic::shots) at `cars`
     void tickWorld(float dt, const rc::fx::View& view, float time, const rc::fx::ShoreWaves::Water& water,
-                   const std::vector<rc::Vec3>& guns, const rc::Vehicle* car, const rc::CollisionMesh& track);
-    // the gunfire's sounds since the last call
+                   const std::vector<rc::fx::Gunfire::Order>& bursts,
+                   const std::vector<rc::fx::Gunfire::Target>& cars, const rc::CollisionMesh& track);
+    // the gunfire's sounds and the cars it hit since the last call
     std::vector<rc::fx::Gunfire::Sound> gunSounds() { return gunfire.sounds(); }
+    std::vector<rc::fx::Gunfire::Hit>   gunHits()   { return gunfire.hits(); }
     // the track's fog (formats/fog.h) for what is drawn next: density and 0x00RRGGBB
     void setFog(float density, uint32_t color) { fogDensity = density; fogColor = color; }
     // the tyre tracks, after the opaque scene and before the translucent pass (water over them hides them)

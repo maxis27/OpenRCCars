@@ -158,33 +158,51 @@ class ShoreWaves {
     std::vector<Wave>     pool = std::vector<Wave>(32);   // 0x165ade8: 32 waves
   };
 
-// A guard shooting at the player's car (RCCars.exe BURST_MNG, 0x52d570 .. 0x52df20): shots TimeShoot apart sweep
-// across the car; a bullet that hits the ground throws up a cone of grit (bullet_explode) and a puff of dust
-// (bullet_dust) and leaves a hole (bullet_footprint, 8 s); one that hits the car makes it smoke (bullet_smoke).
+// Guards and the BTR shooting at cars (RCCars.exe BURST_MNG, 0x52d570 .. 0x52df20). Every message 0x261 starts a
+// burst at one car (0x52de30), the last one wins: shots TimeShoot apart sweep across the car; a bullet that hits
+// the ground throws up a cone of grit (bullet_explode) and a puff of dust (bullet_dust) and leaves a hole
+// (bullet_footprint, 8 s). One that passes through the car on its way, twice the size of its body, hits it with
+// Target::chance percent (0x508290): the car smokes (bullet_smoke) and the game gets a Hit (0x508560).
 class Gunfire {
   public:
-    // the player's car, as the bullets see it
+    // a car the bullets can hit
     struct Target {
-      Mat4 pose;              // model -> world
-      Vec3 velocity;          // m/s
-      Vec3 boxMin, boxMax;    // its body, model space
+      Mat4  pose;             // model -> world
+      Vec3  velocity;         // m/s
+      Vec3  boxMin, boxMax;   // its body, model space
+      float chance = 15;      // percent of the bullets through the box that hit it
       };
-    // what the game should play: the gun (burst) at a guard, a bullet (bullet) where it hit
+    // a burst to fire (message 0x261): from `gun` at targets[target]
+    struct Order {
+      Vec3   gun;
+      size_t target = 0;
+      };
+    // a bullet hit targets[target], fired from `gun`
+    struct Hit {
+      size_t target = 0;
+      Vec3   gun;
+      };
+    // what the game should play: the gun (burst) as a burst starts, its bullets (bullet) where the first one hit
     struct Sound {
       enum Kind : uint8_t { Burst, Bullet } kind;
       Vec3 at;
       };
 
+    // the percent of RCCars.exe 0x508290: the player's Overkill and Hummer 20, Buggy 10; the computer's cars 15
+    static float chanceFor(bool player, int32_t car) { return !player ? 15.f : car==1 ? 10.f : 20.f; }
+
     Gunfire() = default;
     explicit Gunfire(const WorldSettings& settings);
 
-    // `guns`: the muzzles shooting now (Characters::shooting); `car` null: nobody to shoot at
-    void update(const std::vector<Vec3>& guns, const Target* car, const CollisionMesh& track, float dt,
-                Random& rnd);
+    // `orders`: the bursts started in this update; `targets`: the cars, the same every update (the smoke stays
+    // with its car)
+    void update(const std::vector<Order>& orders, const std::vector<Target>& targets, const CollisionMesh& track,
+                float dt, Random& rnd);
     void collect(std::vector<Billboard>& out) const;
     void collect(std::vector<Mark>& out) const;
-    // the sounds since the last call
+    // the sounds and the hits since the last call
     std::vector<Sound> sounds();
+    std::vector<Hit>   hits();
     void clear();
 
   private:
@@ -203,20 +221,23 @@ class Gunfire {
       };
 
     void shoot(const Target& car, const CollisionMesh& track, Random& rnd);
+    void hole(const Vec3& at, const Vec3& normal, Random& rnd);
     void puffs(Puffs& p, const WorldSettings::Puff& s, const Vec3& at, float dt, Random& rnd);
 
     const WorldSettings*  set = nullptr;
-    // the burst going on (0x52de30): its gun, the sweep's ends, the time left, the last shot
+    // the burst going on (0x52de30): its gun and car, the sweep's ends, the time left, the last shot
     Vec3                  gun;
+    size_t                target = 0;
     Vec3                  sweepA, sweepB;
     float                 timer = -1;
     int                   shot  = -1;
     std::vector<Grit>     grit  = std::vector<Grit>(8);    // 8 of each (0x52d8b3)
     std::vector<Puffs>    dust  = std::vector<Puffs>(8);
     std::vector<Vec3>     dustAt = std::vector<Vec3>(8);
-    Puffs                 smoke;                           // the car's (0x52cf90)
+    std::vector<Puffs>    smoke;                           // each car's (0x52cf90), by target
     std::vector<Hole>     holes;                           // at most 256 (0x478440)
     std::vector<Sound>    heard;
+    std::vector<Hit>      struck;
   };
 
 }

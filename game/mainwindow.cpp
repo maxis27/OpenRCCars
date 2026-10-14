@@ -146,6 +146,7 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
   vehicle  = std::make_unique<rc::Vehicle>(*physics,geom,prm,carPose);
   arrow->reset();
   effects->clear();
+  shotTime = -1;
   if(restartRace) {
     race->restart(carPose,again);
     sounds->stopAll();
@@ -180,8 +181,47 @@ void MainWindow::respawnCar() {
     opponents->playerMoved();
   lastCarPos = carPose.translation();
   upsideDown = 0;
+  shotTime   = -1;
   resetVolumes.reset();
   chase.reset(chaseCar());
+  }
+
+std::vector<rc::fx::Gunfire::Order> MainWindow::gunOrders() const {
+  // the guards' and the BTR's bursts (message 0x261); cars: 0 the player's, 1.. the opponents
+  std::vector<rc::fx::Gunfire::Order> r;
+  auto add = [&r](const rc::Vec3& gun, int car) {
+    r.push_back({gun,car==rc::Characters::PlayerCar ? size_t(0) : size_t(car)+1});
+    };
+  if(characters)
+    for(auto& s:characters->shooting())
+      add(s.gun,s.car);
+  if(traffic)
+    for(auto& s:traffic->shots())
+      add(s.gun,s.car);
+  return r;
+  }
+
+std::vector<rc::fx::Gunfire::Target> MainWindow::gunTargets() const {
+  std::vector<rc::fx::Gunfire::Target> r;
+  if(vehicle==nullptr)
+    return r;
+  rc::fx::Gunfire::Target t;
+  t.pose     = vehicle->pose();
+  t.velocity = vehicle->velocity();
+  t.boxMin   = vehicle->geometry().bodyMin;
+  t.boxMax   = vehicle->geometry().bodyMax;
+  t.chance   = rc::fx::Gunfire::chanceFor(true,int32_t(carId));
+  r.push_back(t);
+  for(size_t i=0; opponents && i<opponents->size(); ++i) {
+    const auto& o = (*opponents)[i];
+    t.pose     = o.pose();
+    t.velocity = o.velocity();
+    t.boxMin   = o.geometry().bodyMin;
+    t.boxMax   = o.geometry().bodyMax;
+    t.chance   = rc::fx::Gunfire::chanceFor(false,o.car);
+    r.push_back(t);
+    }
+  return r;
   }
 
 ChaseCamera::Car MainWindow::chaseCar() const {
@@ -387,8 +427,8 @@ void MainWindow::tick(float dt) {
   fog.tick(dt);
   if(vehicle!=nullptr) {
     rc::Vehicle::Input in;
-    if(race->holdCar()) {
-      in.handbrake = true;  // waiting for the start
+    if(race->holdCar() || shotTime>=0) {
+      in.handbrake = true;  // waiting for the start, or shot (RCCars.exe 0x4f6b20: no keys, Brake held)
       }
     else if(!freeCamera) {
       const bool up    = keys[Event::K_W] || keys[Event::K_Up];
@@ -459,11 +499,25 @@ void MainWindow::tick(float dt) {
       const bool gas     = driving && (keys[Event::K_W] || keys[Event::K_Up]);
       const bool brake   = driving && (keys[Event::K_S] || keys[Event::K_Down]);
       effects->tick(dt,*vehicle,opponents.get(),level->collision(),camera.position,gas,brake);
-      static const std::vector<rc::Vec3> noGuns;
       const rc::fx::View view = {camera.position,camera.viewProj(float(w())/float(std::max(1,h())))};
       effects->tickWorld(dt,view,time,[this](const rc::Vec3& p){ return level->waterHeight(p,10.f,time); },
-                         characters ? characters->shooting() : noGuns,vehicle.get(),level->collision());
+                         gunOrders(),gunTargets(),level->collision());
     }
+    // what the bullets hit (RCCars.exe 0x508560): the player's car is held and put back 2 s after the first hit
+    // (0x508ae0), an opponent is knocked off its recording and put back alike
+    for(auto& h:effects->gunHits()) {
+      if(h.target==0) {
+        vehicle->shotFrom(h.gun);
+        if(shotTime<0) {
+          shotTime = 0;
+          Log::i("shot at ",Hud::formatTime(race->time()));
+          }
+        }
+      else if(opponents && h.target-1<opponents->size())
+        (*opponents)[h.target-1].shotFrom(h.gun);
+      }
+    if(shotTime>=0)
+      shotTime += dt;
 
     // on its roof or side for a while: back on the wheels
     upsideDown = carPose.vector({0,1,0}).y<0.3f ? upsideDown+dt : 0;
@@ -477,7 +531,7 @@ void MainWindow::tick(float dt) {
     const rc::Vec3 pos  = carPose.translation();
     const bool     out  = !grid.empty() && (pos.x<grid.min.x || pos.x>grid.max.x || pos.z<grid.min.z ||
                                             pos.z>grid.max.z || pos.y<grid.min.y-0.1f);
-    if(out || vehicle->drowned() || resetVolumes.tick(pos,dt)) {
+    if(out || vehicle->drowned() || resetVolumes.tick(pos,dt) || shotTime>rc::Vehicle::ShotHold) {
       respawnCar();
       }
     tickSounds(dt);

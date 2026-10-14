@@ -57,6 +57,7 @@ void MainWindow::loadLevel(const std::string& name) {
     resetVolumes = rc::ResetVolumes(level->scene());
     hud->setTrack(name);
     sounds->setTrack(level->scene());
+    effects->setTrack(level->scene(),level->mesh().mainSea());
     camera  = level->startCamera();
     setupPhysics();
     }
@@ -431,6 +432,10 @@ void MainWindow::tick(float dt) {
       const bool gas     = driving && (keys[Event::K_W] || keys[Event::K_Up]);
       const bool brake   = driving && (keys[Event::K_S] || keys[Event::K_Down]);
       effects->tick(dt,*vehicle,opponents.get(),level->collision(),camera.position,gas,brake);
+      static const std::vector<rc::Vec3> noGuns;
+      const rc::fx::View view = {camera.position,camera.viewProj(float(w())/float(std::max(1,h())))};
+      effects->tickWorld(dt,view,time,[this](const rc::Vec3& p){ return level->waterHeight(p,10.f,time); },
+                         characters ? characters->shooting() : noGuns,vehicle.get(),level->collision());
     }
 
     // on its roof or side for a while: back on the wheels
@@ -510,6 +515,8 @@ void MainWindow::tickSounds(float dt) {
   sounds->tickAmbient(ear,right,dt);
   if(characters)
     sounds->tickCharacters(*characters,ear,right);
+  for(auto& g:effects->gunSounds())
+    sounds->playAt(g.kind==rc::fx::Gunfire::Sound::Burst ? "burst" : "bullet",g.at,ear,right);
   for(size_t i=0; opponents && i<opponents->size() && i<aiSounds.size(); ++i) {
     const auto&    o  = (*opponents)[i];
     const rc::Vec3 to = o.pose().translation()-ear;

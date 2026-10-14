@@ -11,18 +11,22 @@
 #include <vector>
 
 #include "fx/careffects.h"
+#include "fx/worldfx.h"
 
 class Resources;
 
 namespace rc {
 class CollisionMesh;
+class SbScene;
+struct WaterWaves;
 class Opponents;
 class Vehicle;
 }
 
 // The cars' effects (fx/careffects.h), for the player's car and the opponents: dust behind the wheels, spray in water
-// and exhaust smoke, drawn as sprites facing the camera, sorted far to near; tyre tracks, the wake and the foam as
-// quads in the world: the tracks before the translucent pass of the track, the rest after it. All tested against the
+// and exhaust smoke, and the track's own (fx/worldfx.h): splashes, breaking waves, gunfire; drawn as sprites facing
+// the camera, sorted far to near; tyre tracks, the wake, the foam, the waves and the bullet holes as quads in the
+// world: the tracks before the translucent pass of the track, the rest after it. All tested against the
 // scene's depth without writing it.
 class Effects {
   public:
@@ -32,9 +36,18 @@ class Effects {
     void clear(bool keep = false);
     // how dirty the player's car is: 0 clean .. 2 (CarEffects::dirt)
     float dirt() const;
+    // the track's own effects (fx/worldfx.h): splashes at its water_splash_N markers, waves breaking at its
+    // water_wave_N markers on `sea` (the main sea's waves, null: none), the guards' gunfire
+    void setTrack(const rc::SbScene& scene, const rc::WaterWaves* sea);
     // after the physics; `gas`/`brake`: the player's keys
     void tick(float dt, const rc::Vehicle& player, const rc::Opponents* opponents, const rc::CollisionMesh& track,
               const rc::Vec3& camera, bool gas, bool brake);
+    // the track's effects, seen through `view`; `time`: the water's animation, `water` its surface; `guns`: the guards
+    // shooting (Characters::shooting) at `car`
+    void tickWorld(float dt, const rc::fx::View& view, float time, const rc::fx::ShoreWaves::Water& water,
+                   const std::vector<rc::Vec3>& guns, const rc::Vehicle* car, const rc::CollisionMesh& track);
+    // the gunfire's sounds since the last call
+    std::vector<rc::fx::Gunfire::Sound> gunSounds() { return gunfire.sounds(); }
     // the tyre tracks, after the opaque scene and before the translucent pass (water over them hides them)
     void drawTracks(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frame, const rc::Mat4& viewProj,
                     const rc::Vec3& eye);
@@ -67,6 +80,11 @@ class Effects {
     rc::fx::Random                      rnd;
     std::unique_ptr<rc::fx::CarEffects> player;
     std::vector<Opponent>               opponents;
+    rc::fx::WorldSettings               world;
+    bool                                worldLoaded = false;
+    rc::fx::WaterSplashes               splashes;
+    rc::fx::ShoreWaves                  shore;
+    rc::fx::Gunfire                     gunfire;
 
     // `tracks`: the tyre tracks, otherwise the wake and the foam
     void drawMarks(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frame, const rc::Mat4& viewProj,
@@ -77,6 +95,9 @@ class Effects {
     const Tempest::Texture2d*           tyre[4] = {};    // t_halfdry_tire2_<1..4>
     const Tempest::Texture2d*           wake[2] = {};    // wtr_trace, wtr_trace_alpha
     const Tempest::Texture2d*           foam[2] = {};    // whr_horse, whr_horse_alpha
+    const Tempest::Texture2d*           wave[2] = {};    // water_wave, water_wave_alpha
+    const Tempest::Texture2d*           hole    = nullptr; // bullet_footprint
+    const Tempest::Texture2d*           white   = nullptr;
     Tempest::RenderPipeline             pso;
     Tempest::RenderPipeline             psoTrack, psoWake;
     Tempest::VertexBuffer<Vertex>       vbo[2];

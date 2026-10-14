@@ -109,6 +109,9 @@ class LevelMesh {
     // (CollisionMesh::waterSurface) at `p`, `time` seconds in, as the shaders move it; 0 for water without waves
     float        waveLift(uint32_t mesh, const rc::Vec3& p, float time) const;
 
+    // the waves of the main sea (the node "more1", else the first sea with waves), null if none
+    const rc::WaterWaves* mainSea() const;
+
     // low detail copies (_LOD<n>) that are not drawn, per SbScene::meshes
     static std::vector<bool> hiddenMeshes(const rc::SbScene& scene);
 

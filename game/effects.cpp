@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "formats/scene.h"
 #include "physics/opponents.h"
 #include "physics/vehicle.h"
 #include "resources.h"
@@ -60,6 +61,14 @@ Effects::Effects(Device& device, Resources& res)
   catch(const std::exception& e) {
     Log::e("effects: ",e.what(),": no dust or spray");
     }
+  try {
+    world       = rc::fx::WorldSettings::load([&res](const std::string& f){ return res.pack().read(f); });
+    worldLoaded = true;
+    gunfire     = rc::fx::Gunfire(world);
+    }
+  catch(const std::exception& e) {
+    Log::e("effects: ",e.what(),": no splashes, waves or gunfire");
+    }
   if(auto t = res.texture("dust"))
     dust = &t->tex;
   if(auto t = res.texture("particle"))
@@ -89,6 +98,10 @@ Effects::Effects(Device& device, Resources& res)
   wake[1] = find(res,"wtr_trace_alpha");
   foam[0] = find(res,"whr_horse");
   foam[1] = find(res,"whr_horse_alpha");
+  wave[0] = find(res,"water_wave");
+  wave[1] = find(res,"water_wave_alpha");
+  hole    = find(res,"bullet_footprint");
+  white   = &res.white();
   sh   = AppShader::get("marks.vert.sprv");
   vert = device.shader(sh.data,sh.len);
   sh   = AppShader::get("marks.frag.sprv");
@@ -103,6 +116,11 @@ Effects::Effects(Device& device, Resources& res)
 void Effects::clear(bool keep) {
   if(player)
     player->clear(keep);
+  gunfire.clear();
+  if(!keep) {
+    splashes.clear();
+    shore.clear();
+    }
   if(keep) {
     for(auto& o:opponents)
       if(o.fx)
@@ -158,6 +176,44 @@ void Effects::tick(float dt, const rc::Vehicle& car, const rc::Opponents* ai, co
     }
   }
 
+void Effects::setTrack(const rc::SbScene& scene, const rc::WaterWaves* sea) {
+  splashes = {};
+  shore    = {};
+  gunfire.clear();
+  if(!worldLoaded)
+    return;
+  // numbered from 1 until one is missing: at most 16 splashes (0x5277a0) and 8 waves (0x5255c0)
+  auto markers = [&scene](const std::string& name, int max) {
+    std::vector<rc::Vec3> r;
+    for(int i=1; i<=max; ++i) {
+      const rc::SbMarker* m = scene.marker(name+std::to_string(i));
+      if(m==nullptr)
+        break;
+      r.push_back(m->position());
+      }
+    return r;
+    };
+  splashes = rc::fx::WaterSplashes(world,markers("water_splash_",16));
+  if(sea!=nullptr)
+    shore = rc::fx::ShoreWaves(world,markers("water_wave_",8),*sea);
+  }
+
+void Effects::tickWorld(float dt, const rc::fx::View& view, float time, const rc::fx::ShoreWaves::Water& water,
+                        const std::vector<rc::Vec3>& guns, const rc::Vehicle* car, const rc::CollisionMesh& track) {
+  if(!worldLoaded || dt<=0)
+    return;
+  splashes.update(view,dt,rnd);
+  shore.update(view,time,dt,water,rnd);
+  rc::fx::Gunfire::Target target;
+  if(car!=nullptr) {
+    target.pose     = car->pose();
+    target.velocity = car->velocity();
+    target.boxMin   = car->geometry().bodyMin;
+    target.boxMax   = car->geometry().bodyMax;
+    }
+  gunfire.update(guns,car!=nullptr ? &target : nullptr,track,dt,rnd);
+  }
+
 void Effects::drawTracks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Mat4& vp, const rc::Vec3& eye) {
   drawMarks(enc,frame,vp,eye,true);
   }
@@ -169,13 +225,15 @@ void Effects::drawMarks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Ma
   for(auto& o:opponents)
     if(o.fx)
       o.fx->collect(marks,eye);
+  shore.collect(marks,eye);
+  gunfire.collect(marks);
   marks.erase(std::remove_if(marks.begin(),marks.end(),[tracks](const rc::fx::Mark& m){
     return (m.kind==rc::fx::Mark::Track)!=tracks;
     }),marks.end());
   markVerts.clear();
   if(marks.empty())
     return;
-  // the wake before the foam (0x531ab0); each kind and texture in a run of its own
+  // the wake before the foam (0x531ab0), the waves, the bullet holes; each kind and texture in a run of its own
   std::stable_sort(marks.begin(),marks.end(),[](const rc::fx::Mark& a, const rc::fx::Mark& b){
     return a.kind<b.kind || (a.kind==b.kind && a.kind==rc::fx::Mark::Track && a.texture<b.texture);
     });
@@ -210,6 +268,8 @@ void Effects::drawMarks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Ma
       case rc::fx::Mark::Track: t[0] = t[1] = tyre[std::min<size_t>(r.texture,3)]; break;
       case rc::fx::Mark::Wake:  t[0] = wake[0]; t[1] = wake[1]; break;
       case rc::fx::Mark::Foam:  t[0] = foam[0]; t[1] = foam[1]; break;
+      case rc::fx::Mark::Wave:  t[0] = wave[0]; t[1] = wave[1]; break;
+      case rc::fx::Mark::Decal: t[0] = hole;    t[1] = white;   break;
       }
     push.mode = r.kind==rc::fx::Mark::Track ? 0u : 1u;
     enc.setPipeline(r.kind==rc::fx::Mark::Track ? psoTrack : psoWake);
@@ -228,6 +288,8 @@ void Effects::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, con
   for(auto& o:opponents)
     if(o.fx)
       o.fx->collect(sprites);
+  splashes.collect(sprites);
+  gunfire.collect(sprites);
   if(sprites.empty() || w<=0 || h<=0)
     return;
 

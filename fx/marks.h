@@ -21,6 +21,8 @@ struct Mark {
     Track,   // t_halfdry_tire2_<1..4>: multiplies what is under it by twice its colour (see game/effects.cpp)
     Wake,    // wtr_trace, its opacity times wtr_trace_alpha's
     Foam,    // whr_horse, its opacity times whr_horse_alpha's
+    Wave,    // water_wave, its opacity times water_wave_alpha's (the waves breaking on the shore)
+    Decal,   // bullet_footprint: a bullet hole, blended over what is under it
     };
   Kind       kind    = Track;
   uint8_t    texture = 0;      // Track: the tyre (0..3)

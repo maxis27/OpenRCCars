@@ -92,6 +92,7 @@ add_library(rcfx STATIC
   fx/marks.h
   fx/tracks.h     fx/tracks.cpp
   fx/wake.h       fx/wake.cpp
+  fx/worldfx.h    fx/worldfx.cpp
   )
 target_link_libraries(rcfx PUBLIC rcformats)
 

@@ -30,6 +30,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name)
   effects  = std::make_unique<Effects>(device,res);
   sounds   = std::make_unique<Sounds>(res);
   characterView = std::make_unique<CharacterView>(device);
+  trafficView   = std::make_unique<TrafficView>(device,res);
   chase    = ChaseCamera(ChaseCamera::Settings::load([&res](const std::string& f){ return res.pack().read(f); }));
   loadCar(0);
   loadLevel(name);
@@ -47,6 +48,7 @@ void MainWindow::loadLevel(const std::string& name) {
     auto next = std::make_unique<Level>(device,resources,name);
     vehicle.reset();
     opponents.reset();
+    traffic.reset();
     characters.reset();
     objects.reset();
     physics.reset();
@@ -123,6 +125,14 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
     catch(const std::exception& e) {
       Log::e("characters: ",e.what());
       }
+    try {
+      traffic = std::make_unique<rc::Traffic>(*physics,library,level->scene(),level->name(),
+                                              [this](const std::string& f){ return resources.pack().read(f); });
+      Log::i("road cars: ",traffic->size());
+      }
+    catch(const std::exception& e) {
+      Log::e("road cars: ",e.what());
+      }
     }
   if(opponents==nullptr)
     setupOpponents();
@@ -146,6 +156,8 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
       opponents->restart();
     if(characters)
       characters->restart();
+    if(traffic)
+      traffic->restart();
     playerFinish = -1;
     paused       = false;
     }
@@ -401,22 +413,23 @@ void MainWindow::tick(float dt) {
       opponents->update(dt,!race->holdCar(),carPose.translation(),checkpoints->laps(),playerFinish>=0,race->time(),
                         race->laps());
     physics->step(dt);
-    // the people and animals, after the step: a person holding the car puts it in the hand
-    if(characters) {
-      std::vector<rc::Characters::Car> others;
-      for(size_t i=0; opponents && i<opponents->size(); ++i) {
-        const rc::Mat4 p = (*opponents)[i].pose();
-        others.push_back({p.translation(),p.vector({0,0,1})*(*opponents)[i].speed()});
-        }
-      if(characters->update(dt,vehicle.get(),others)) {
-        hud->hit(true);
-        Log::i("great hit (character) at ",Hud::formatTime(race->time()));
-        }
-      // an opponent that ran into someone drives on by itself (RCCars.exe 0x534340 .. -> 0x4fd9d0)
-      for(size_t i=0; i<others.size(); ++i)
-        if(others[i].hit)
-          (*opponents)[i].knock();
+    // the people and animals and the road cars, after the step: a person holding the car puts it in the hand
+    std::vector<rc::Characters::Car> others;
+    for(size_t i=0; opponents && i<opponents->size(); ++i) {
+      const rc::Mat4 p = (*opponents)[i].pose();
+      others.push_back({p.translation(),p.vector({0,0,1})*(*opponents)[i].speed()});
       }
+    if(characters && characters->update(dt,vehicle.get(),others)) {
+      hud->hit(true);
+      Log::i("great hit (character) at ",Hud::formatTime(race->time()));
+      }
+    if(traffic)
+      traffic->update(dt,!race->holdCar(),vehicle.get(),camera.position,others);
+    // an opponent that ran into someone or something drives on by itself (RCCars.exe 0x534340, 0x534880 ..
+    // -> 0x4fd9d0)
+    for(size_t i=0; i<others.size(); ++i)
+      if(others[i].hit)
+        (*opponents)[i].knock();
     carPose = vehicle->pose();
     const rc::Vec3 at = carPose.translation();
     const size_t   was = checkpoints->next();
@@ -516,6 +529,8 @@ void MainWindow::tickSounds(float dt) {
   sounds->tickAmbient(ear,right,dt,level->collision().highestWater(ear,10.f));
   if(characters)
     sounds->tickCharacters(*characters,ear,right);
+  if(traffic)
+    sounds->tickTraffic(*traffic,ear,right);
   for(size_t i=0; opponents && i<opponents->size() && i<aiSounds.size(); ++i) {
     const auto&    o  = (*opponents)[i];
     const rc::Vec3 to = o.pose().translation()-ear;
@@ -589,6 +604,8 @@ void MainWindow::render() {
         objects->draw(enc,viewProj,push);
       if(characters)
         characterView->draw(enc,frameId,resources,*characters,push);
+      if(traffic)
+        trafficView->draw(enc,*traffic,viewProj,push);
       if(car) {
         const auto parts = carPartPoses();
         car->setDirt(effects->dirt());

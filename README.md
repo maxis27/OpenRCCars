@@ -96,8 +96,13 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
   baloniki, łuski, toczące się kłębki) stoją tam, gdzie kładzie je trasa (od 8 do 17 na trasie), i są bryłami
   sztywnymi: auto je potrąca, przewraca i pcha, a koła po nich przejeżdżają. Masa, sprężystość, tarcie, kształt
-  (kula, walec albo otoczka wypukła modelu) i środek masy pochodzą ze skryptu `SCRI` każdego modelu. Ruch uliczny
-  (`Roadcar.sb`) jeszcze się nie pojawia
+  (kula, walec albo otoczka wypukła modelu) i środek masy pochodzą ze skryptu `SCRI` każdego modelu
+- **ruch uliczny** (`Roadcar.sb`) jak w `RCCars.exe`: na beach_2 i beach_3 po drodze jeżdżą w obie strony hummer,
+  dwa kampery i trzy pikapy (w kilku malowaniach), na urban_1 hummer, a na beach_4 pływający BTR, który obraca
+  wieżę do aut przed sobą i strzela do nich seriami. Auta ruszają od startu wyścigu co kilka sekund po nagranych
+  ścieżkach (`Profiles/rdc_<trasa>_forw.gpf`, `_back.gpf`), skręcają przednimi kołami, pochylają się na
+  wzniesieniach, w tunelach zapalają światła, trąbią albo włączają syrenę, gdy kamera jest blisko. Auto gracza
+  potrącone przez samochód odlatuje w bok i w górę, a przeciwnik wypada z nagrania
 - **ludzie i zwierzęta** (`people.sb`, `AIChars.sb`) zachowują się jak w `RCCars.exe`: plażowicze chodzą po
   nagranych ścieżkach (`Profiles/<nazwa>.dat`), kopią auto albo podnoszą je i rzucają; strażnicy obracają się do
   gracza, celują i kopią; mewy chodzą i odlatują z krzykiem, gdy ktoś podejdzie; kraby wychodzą z dziur i uciekają
@@ -231,6 +236,8 @@ rcinfo <folder_gry> fx                            # ustawienia efektów, ile cz�
 rcinfo <folder_gry> ram RCCarsDB/beach_1.sb [przeciwnik] [s] [side]  # gracz wjeżdża w przeciwnika: wypadnięcie z nagrania, powrót, „Łup!”
 rcinfo <folder_gry> drown RCCarsDB/beach_1.sb [auto 1-3]  # strefy powrotu, pudło kolizji, czas tonięcia na kilku głębokościach (też przeciwnika)
 rcinfo <folder_gry> fog beach_1                   # mgła trasy: gęstość, kolor, ile koloru zostaje w danej odległości
+rcinfo <folder_gry> traffic beach_2 [s]           # ruch uliczny: odjazdy, wysokość kół nad drogą, światła, potrącenie gracza
+rcinfo <folder_gry> nodes RCCarsDB/Roadcar.sb Btr # drzewo węzłów modelu: położenie, osie, wierzchołki, tekstury
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
 rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
 rcshot <folder_gry> beach_1 shot.png [w h] [x y z yaw pitch]   # render offscreen, z autem i kamerą za nim
@@ -243,6 +250,7 @@ RCSHOT_START="-8 -41 90" RCSHOT_DRIVE=1.6 rcshot ...            # auto najpierw 
 RCSHOT_TIME=2.5 rcshot ...                                       # chwila animacji wody (fale, piana)
 RCSHOT_OBJECTS=0 rcshot ...                                      # bez rekwizytów
 RCSHOT_FOG=0 rcshot ...                                          # bez mgły
+RCSHOT_TRAFFIC=20 RCSHOT_TRAFFIC_CAR=0 rcshot ...                # 20 s ruchu ulicznego, kamera na pierwszym aucie na drodze
 ```
 
 ## Struktura
@@ -267,6 +275,7 @@ physics/        fizyka jazdy (Bullet, bez GPU)
   race.*        wyścig: odliczanie, okrążenia, czasy, zły kierunek, meta
   props.*       rekwizyty: parametry ze skryptu SCRI, kształt, bryła sztywna
   characters.*  ludzie i zwierzęta: zachowanie każdego rodzaju, kopnięcia i rzuty autem, „Wielkie Łup!”
+  traffic.*     ruch uliczny: odjazdy, jazda po ścieżce, koła, światła, odpychanie aut, wieża BTR
   opponents.*   przeciwnicy: odtwarzanie nagrań w tempie z gumką, okrążenia, kolejność w wyścigu
 fx/             efekty cząsteczkowe, bez GPU
   particles.*   emiter i cząsteczki jak system cząsteczek RCCars.exe
@@ -281,7 +290,7 @@ game/           gra (Tempest)
   hud.*         kokpit wyścigu (obrazki i czcionka z Language/<język>)
   effects.*     efekty aut gracza i przeciwników: sprite'y zwrócone do kamery, posortowane, z testem głębi
   world/        Level (trasa), LevelMesh (geometria na GPU, batche po teksturach), ModelMesh (auto, obiekt),
-                Objects (rekwizyty trasy), CollisionView (nakładka kolizji)
+                Objects (rekwizyty trasy), TrafficView (ruch uliczny), CollisionView (nakładka kolizji)
   mainwindow.*  okno, pętla, wejście
 shader/         GLSL kompilowany do SPIR-V i wbudowywany w plik wykonywalny
 tools/          rcinfo, rcshot
@@ -494,6 +503,23 @@ lib/Tempest     silnik (submoduł git)
   przeciwnika, wytrąca to auto z nagrania (0x4fd9d0): przeciwnik, który potrąci człowieka, psa albo rozjedzie kraba,
   jedzie dalej sam.
   Sępy lecą po `Profiles/vlt_<trasa>_<1|2>.gpf` (nagłówek 0x28 bajtów, potem pozycja, przód i góra na klucz).
+- **Ruch uliczny** (klasa `RDCR`, 0x516650; `physics/traffic.h`): wszystkie auta stoją w jednym miejscu poza
+  trasą. `Settings/rdc_<trasa>.ini` (bez pliku nie ma ruchu): `Freq`/100 s między autami, `Disp`/100 tego w obie
+  strony losowo, `Accel`/10 tempo odtwarzania nagrania, `Wheel` obrót kół w °/s, `Slow` (hummer z urban_1 i BTR:
+  słabsze odepchnięcie i dźwięk `roadcar_slow`). Od startu (komunikat 0x259) co `Freq`±`Disp` rusza pierwsze
+  stojące auto, na zmianę po `rdc_<trasa>_forw.gpf` i `_back.gpf` (8 liczb na klucz: pozycja 0,75 m nad
+  początkiem modelu, kierunek, skręt, pochylenie; nagrania beach_2 i beach_3 zaczynają się kluczami cofającymi się
+  w czasie, które gra przeskakuje), a na końcu ścieżki wraca do kolejki. Model z `Roadcar.sb` ma obrócony węzeł
+  główny, który gra zastępuje pozą auta. Do 60 m od kamery auto jest rysowane i animowane: przechylone o
+  −atan(pochylenie/4,2), opuszczone o 0,75·cos tego kąta, przednie koła skręcone o 150·skręt (do 30°), koła kręcą
+  się, gdy auto jedzie. Tabela modeli (0x574230) podaje pudło kolizji (z całym poddrzewem) i koła; pudło i
+  `<koło>_body` dostają flagę 4 i nie są rysowane. Malowanie ze skryptu `INST` (`body` 1/2: `trailer_txt_0N`,
+  `box`). Światła (`fara*_body`, tekstura z połówką zgaszoną i zapaloną) świecą w bryłach `roadcar_*` (tunele).
+  Zderzenie (0x534880 → 0x5165a0 → 0x4f3470): przeciwnik wypada z nagrania, auto gracza dostaje 6 m/s od
+  samochodu i 1,5 m/s w górę (`Slow`: 2 i 0,5) przy każdym dotknięciu; hummer stoi 0,6 m nad drogą, więc autko
+  zmieści się pod nim między kołami. BTR (`roadcar.ini`: `TowerVel`, `TowerShootT`) celuje w auto w klinie 20 m
+  ±15° przed lufą, po 0,33 s strzela serią (komunikat 0x261, kanał `burst`), potem co 1,25 s, cztery razy, dopóki
+  cel jest bliżej niż 25 m; zgubiwszy cel, wodzi wieżą ±50°.
 - `SCRI` modelu w `stone.sb` (tekst `u32 długość` + treść w formacie `Section Keys`): `Geom` `type` (1 kula,
   2 walec, 3 stożek, 4 butelka, 5 wiadro, 6 łuska, 7 czajnik, 8 balonik), `shiftCenterMassOY` (środek masy nad
   węzłem głównym, m); `Params` `mass` (kg), `coeffHookNorm` (odbicie: 0,7 piłki, 0,3 reszta), `coeffFrict`;
@@ -622,12 +648,13 @@ lib/Tempest     silnik (submoduł git)
      spaliny, brudzenie auta~~ (zrobione)
 4. Węzły `INST` (instancje obiektów): ~~rekwizyty~~ (zrobione: bryły sztywne z parametrami ze skryptów; brakuje
    wiatru dla kłębków i dźwięków uderzeń `SNCH`); ~~postacie i zwierzęta~~ (zrobione; brakuje efektu strzału
-   strażnika, śladów stóp i rozgniecenia kraba); ruch uliczny czeka. Do tego `HHID` (widoczność/sektory)
+   strażnika, śladów stóp i rozgniecenia kraba); ~~ruch uliczny~~ (zrobione; brakuje cieni kół, poświaty
+   reflektorów i tekstów z `RCCars.tbl` przy potrąceniu). Do tego `HHID` (widoczność/sektory)
 5. ~~Dźwięk~~ (zrobione według `RCCars.exe`: kanały `SNCH` z `RCCars.sb` i `Sound\*.wav` z archiwum we własnym
    mikserze, silnik gracza i rywali, punkty kontrolne, turbo, hamulec, lot i lądowanie, toczenie się po
    nawierzchniach, uderzenia i otarcia, buksowanie, fale przy brzegu `water_splash_N`, wodospady `WATER_FALL_N`,
-   szum morza `water`, muzyka MP3 z `Tracks/` w kolejności z `Autoexec.gm`, głosy ludzi, mew i psów; brakuje
-   ruchu ulicznego)
+   szum morza `water`, muzyka MP3 z `Tracks/` w kolejności z `Autoexec.gm`, głosy ludzi, mew i psów, ruch
+   uliczny)
 6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
    menu i zapisu rekordów)
 7. ~~Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`)~~

@@ -50,4 +50,26 @@ struct FlightPath {
   static FlightPath load(const std::vector<uint8_t>& file); // throws FormatError
   };
 
+// Profiles\rdc_<track>_forw.gpf and rdc_<track>_back.gpf: the two ways the road traffic drives (name "ROADCAR"),
+// the same file layout as FlightPath with 8 values per key: position, the direction the car faces (level), the
+// steering (x 150 = the front wheels' angle in degrees, at most 30) and a tilt (RCCars.exe 0x516f50: the body is
+// pitched by atan(tilt/4.2) and let down by 0.75*cos of that). The position is 0.75 m above the car's origin.
+// RCCars.exe (0x472db0) interpolates the values of the two keys around a time linearly; a car is done with the path
+// once the time goes past the last key (0x472d70, 0x472d40), it does not go round.
+struct RoadPath {
+  struct Key {
+    float time  = 0;
+    Vec3  pos, dir;
+    float steer = 0;
+    float tilt  = 0;
+    };
+  std::vector<Key> keys;
+
+  bool  empty()    const { return keys.empty(); }
+  float duration() const { return keys.empty() ? 0.f : keys.back().time; }
+  Key   at(float time) const;   // clamped to the first and the last key
+
+  static RoadPath load(const std::vector<uint8_t>& file); // throws FormatError
+  };
+
 }

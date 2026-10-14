@@ -6,6 +6,8 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "audio/ambient.h"
 #include "audio/carsound.h"
@@ -15,7 +17,7 @@
 
 class Resources;
 
-namespace rc { class Characters; }
+namespace rc { class Characters; class Traffic; }
 
 // The game's sound: the channels of RCCars.sb (Sound\*.wav from RCCars.pack) and the music (Tracks\*.mp3), mixed by
 // rc::Mixer and played through one Tempest sound effect. Without a sound device the game goes on silent.
@@ -45,6 +47,10 @@ class Sounds {
     // heard from `ear`
     void tickCharacters(const rc::Characters& chars, const rc::Vec3& ear, const rc::Vec3& right);
 
+    // the road traffic (RCCars.exe 0x517530): each car's engine (channel Roadcar_slow, all the time) or horn and
+    // siren (channel Roadcar, when rc::Traffic asks), the BTR's bursts (channel burst), heard from `ear`
+    void tickTraffic(const rc::Traffic& traffic, const rc::Vec3& ear, const rc::Vec3& right);
+
     // call once per frame
     void tick();
 
@@ -64,6 +70,8 @@ class Sounds {
     std::unique_ptr<rc::SoundLibrary>            peopleLib, animalLib;
     // by model and the actor's number among those of its model; the mixer keeps its channels, so they are reused
     std::map<std::pair<std::string,int>,rc::BankChannel> actorChannels;
+    // per road car: its own sound and its gun
+    std::vector<std::pair<rc::BankChannel,rc::BankChannel>> trafficChannels;
     bool                                         musicOn = false;
 
     std::unique_ptr<Tempest::SoundDevice>        device;

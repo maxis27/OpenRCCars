@@ -108,6 +108,9 @@ class LevelMesh {
     // how far the waves lift the sea that `mesh` (SbScene::meshes) belongs to above its still level
     // (CollisionMesh::waterSurface) at `p`, `time` seconds in, as the shaders move it; 0 for water without waves
     float        waveLift(uint32_t mesh, const rc::Vec3& p, float time) const;
+    // where the sea sound may sit: the corners of the outline of the track's sea (the last one, as RCCars.exe has
+    // it), at the height of that sea's offset; empty without a sea
+    const std::vector<rc::Vec3>& seaCoast() const;
 
     // low detail copies (_LOD<n>) that are not drawn, per SbScene::meshes
     static std::vector<bool> hiddenMeshes(const rc::SbScene& scene);

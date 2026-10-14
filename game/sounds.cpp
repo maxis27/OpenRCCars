@@ -76,7 +76,7 @@ void Sounds::setPaused(bool p) {
   mix.setPaused(p);
   }
 
-void Sounds::setTrack(const rc::SbScene& scene) {
+void Sounds::setTrack(const rc::SbScene& scene, const std::vector<rc::Vec3>& coast) {
   ambient.stop();
   rc::SliderFile ini;
   try {
@@ -86,11 +86,11 @@ void Sounds::setTrack(const rc::SbScene& scene) {
   catch(const std::exception& e) {
     Log::e("water_splash_mng.ini: ",e.what());
     }
-  ambient = rc::AmbientSounds(mix,*lib,scene,ini);
+  ambient = rc::AmbientSounds(mix,*lib,scene,ini,coast);
   }
 
-void Sounds::tickAmbient(const rc::Vec3& ear, const rc::Vec3& right, float dt) {
-  ambient.update(ear,right,dt);
+void Sounds::tickAmbient(const rc::Vec3& ear, const rc::Vec3& right, float dt, std::optional<float> waterAtEar) {
+  ambient.update(ear,right,dt,waterAtEar);
   }
 
 void Sounds::tickCharacters(const rc::Characters& chars, const rc::Vec3& ear, const rc::Vec3& right) {

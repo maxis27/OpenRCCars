@@ -4,10 +4,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <functional>
 #include <map>
 #include <optional>
+#include <set>
 #include <tuple>
 #include <unordered_map>
 
@@ -81,6 +83,17 @@ class SeaOutline {
 
     size_t outlineEdges() const { return edges.size(); }
 
+    // the corners of the outline, each once
+    std::vector<rc::Vec2> points() const {
+      std::set<std::pair<float,float>> seen;
+      std::vector<rc::Vec2>            ret;
+      for(auto& [a,b]:edges)
+        for(const rc::Vec2& p:{a,b})
+          if(seen.insert({p.x,p.y}).second)
+            ret.push_back(p);
+      return ret;
+      }
+
   private:
     static constexpr float triCell = 4.f, edgeCell = 2.f;
     using Tri = std::array<rc::Vec3,3>;
@@ -148,6 +161,7 @@ struct LevelMesh::SeaSurface {
   std::vector<SeaOutline>       outlines;
   std::vector<int32_t>          ofMesh;   // per SbScene::meshes, -1 none
   std::optional<rc::SbVolume>   waterBox;
+  std::vector<rc::Vec3>         coast;    // seaCoast()
   };
 
 std::vector<bool> LevelMesh::hiddenMeshes(const rc::SbScene& scene) {
@@ -459,6 +473,34 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
   if(waterBox!=nullptr)
     seaSurface->waterBox = *waterBox;
 
+  // the sea sound follows the coast of the last sea RCCars.exe finds (0x522ed0). It looks for nodes named *more*
+  // depth first (0x51eff0), and a node lists its children newest first (0x44ed80), so the last one it finds is the
+  // first in the file among siblings: "more1" on beach_1, not the lagoon "more2". The sound sits at the height of
+  // that sea's offset (0x523140).
+  std::vector<std::vector<int32_t>> children(scene.meshes.size()+1);
+  for(size_t mi=0; mi<scene.meshes.size(); ++mi) {
+    const int32_t p = scene.meshes[mi].parent;
+    children[p>=0 && size_t(p)<scene.meshes.size() ? size_t(p) : scene.meshes.size()].push_back(int32_t(mi));
+    }
+  int32_t soundSea = -1;
+  std::function<void(size_t)> visit = [&](size_t n) {
+    for(auto it=children[n].rbegin(); it!=children[n].rend(); ++it) {
+      std::string lower = scene.meshes[size_t(*it)].name;
+      for(auto& c:lower)
+        c = char(std::tolower(static_cast<unsigned char>(c)));
+      if(lower.find("more")==std::string::npos) {
+        visit(size_t(*it));
+        continue;
+        }
+      auto sea = seaNode.find(*it);
+      soundSea = sea!=seaNode.end() ? sea->second : -1;
+      }
+    };
+  visit(scene.meshes.size());
+  if(soundSea>=0)
+    for(const rc::Vec2& p:seaSurface->outlines[size_t(soundSea)].points())
+      seaSurface->coast.push_back({p.x,seaSurface->waves[size_t(soundSea)].offset,p.y});
+
   vbo            = device.vbo(all);
   info.triangles = all.size()/3;
   info.batches   = batches.size();
@@ -567,6 +609,11 @@ void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass, 
     enc.setBinding(5,*env);
     enc.draw(vbo,b.first,b.count);
     }
+  }
+
+const std::vector<rc::Vec3>& LevelMesh::seaCoast() const {
+  static const std::vector<rc::Vec3> none;
+  return seaSurface ? seaSurface->coast : none;
   }
 
 float LevelMesh::waveLift(uint32_t mesh, const rc::Vec3& p, float time) const {

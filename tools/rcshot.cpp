@@ -14,6 +14,8 @@
 //   env RCSHOT_ACTOR=<instance name> looks at a person or animal from RCSHOT_ACTOR_DIST m (default 2.5) after
 //   RCSHOT_ACTOR_TIME seconds (default 1) with the car parked RCSHOT_ACTOR_CAR m in front of it (default 2), and
 //   RCSHOT_ACTOR_SIDE degrees round it (default 30).
+//   env RCSHOT_FX=<seconds> runs the track's effects (splashes, breaking waves, the guards' gunfire at the parked car)
+//   that long, seen from the final camera, and draws them; the water's time goes on from RCSHOT_TIME.
 //   env RCSHOT_TRAFFIC=<seconds> lets the road traffic run that long after the start of the race and, with
 //   RCSHOT_TRAFFIC_CAR=<n>, looks at the n-th car on the road from RCSHOT_ACTOR_DIST m (default 8) and
 //   RCSHOT_ACTOR_SIDE degrees round it (default 30).
@@ -30,6 +32,7 @@
 #include <memory>
 #include <string>
 
+#include "game/effects.h"
 #include "game/chasecamera.h"
 #include "game/resources.h"
 #include "game/world/modelmesh.h"
@@ -247,6 +250,39 @@ int main(int argc, const char** argv) {
       }
     Log::i("camera: ",cam.position.x," ",cam.position.y," ",cam.position.z," yaw=",cam.yaw," pitch=",cam.pitch);
 
+    // the track's effects, run for a while in front of the camera
+    std::unique_ptr<Effects> fx;
+    float                    fxTime = 0;
+    if(const char* f = std::getenv("RCSHOT_FX")) {
+      fx = std::make_unique<Effects>(device,res);
+      fx->setTrack(level.scene(),level.mesh().mainSea());
+      if(carSb.models.empty())
+        carSb = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
+      std::unique_ptr<rc::Vehicle> veh;
+      if(car)
+        veh = std::make_unique<rc::Vehicle>(world,rc::carGeometry(carSb,"Car1"),rc::CarParams::load(res.pack(),1),carPose);
+      const rc::fx::View     view = {cam.position,cam.viewProj(float(w)/float(h))};
+      static const std::vector<rc::Vec3> noGuns;
+      const float time = float(std::atof(f));
+      int shots = 0;
+      for(float t=0; t<time; t+=1.f/60.f) {
+        const float water = waterTime()+t;
+        if(veh) {
+          veh->hold(carPose);
+          world.step(1.f/60.f);
+          }
+        if(chars && veh)
+          chars->update(1.f/60.f,veh.get());
+        fx->tickWorld(1.f/60.f,view,water,[&level,water](const rc::Vec3& p){ return level.waterHeight(p,10.f,water); },
+                      chars ? chars->shooting() : noGuns,veh.get(),level.collision());
+        for(auto& s:fx->gunSounds())
+          shots += s.kind==rc::fx::Gunfire::Sound::Bullet;
+        }
+      fxTime = time;
+      const rc::Vec3 at = carPose.translation();
+      Log::i("effects: ",time," s, ",shots," bullets at the car (",at.x," ",at.y," ",at.z,")");
+      }
+
     auto color = device.attachment(TextureFormat::RGBA8,w,h);
     auto depth = device.zbuffer(TextureFormat::Depth32F,w,h);
 
@@ -268,7 +304,7 @@ int main(int argc, const char** argv) {
       const rc::Vec3 at = carPose.translation();
       push.carPos[0] = at.x; push.carPos[1] = at.y; push.carPos[2] = at.z;
       }
-    push.time = waterTime();
+    push.time = waterTime()+fxTime;
 
     CommandBuffer cmd;
     {
@@ -282,9 +318,13 @@ int main(int argc, const char** argv) {
         car->draw(enc,viewProj,push,carPose,parts.empty() ? nullptr : &parts);
       if(chars)
         charView.draw(enc,0,res,*chars,push);
+      if(fx)
+        fx->drawTracks(enc,0,viewProj,cam.position);
       if(traffic)
         trafficView.draw(enc,*traffic,viewProj,push);
       level.mesh().draw(enc,push,LevelMesh::Pass::Translucent,sky);
+      if(fx)
+        fx->draw(enc,0,int(w),int(h),viewProj,cam.position);
       if(std::getenv("RCSHOT_COLL")!=nullptr)
         level.collisionView().draw(enc,push);
     }

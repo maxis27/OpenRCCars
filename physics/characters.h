@@ -88,6 +88,8 @@ class Characters {
     void                        restart();
 
     const std::vector<Actor*>&  actors() const { return view; }
+    // the guns of the guards shooting at the player's car in this update (fx::Gunfire)
+    const std::vector<Vec3>&    shooting() const { return guns; }
     size_t                      size()   const { return view.size(); }
 
   private:
@@ -137,6 +139,7 @@ class Characters {
     std::map<const ObjectLibrary::Model*,std::unique_ptr<Skeleton>> skeletons;
     std::vector<std::unique_ptr<State>>           states;
     std::vector<Actor*>                           view;
+    std::vector<Vec3>                             guns;
     std::mt19937                                  rng{20061013};
     float                                         sincePerson = 1e3f; // s since the last "Wielkie Łup!" per kind
     float                                         sinceDog    = 1e3f;

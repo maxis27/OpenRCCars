@@ -112,6 +112,9 @@ class LevelMesh {
     // it), at the height of that sea's offset; empty without a sea
     const std::vector<rc::Vec3>& seaCoast() const;
 
+    // the waves of the main sea (the node "more1", else the first sea with waves), null if none
+    const rc::WaterWaves* mainSea() const;
+
     // low detail copies (_LOD<n>) that are not drawn, per SbScene::meshes
     static std::vector<bool> hiddenMeshes(const rc::SbScene& scene);
 

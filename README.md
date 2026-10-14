@@ -119,6 +119,10 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   i karoserią w wodzie ciągnie się kilwater i piana (`wtr_trace.crs`, `whr_horse.ini`), z końcówki dopalacza lecą
   spaliny z dużym ciemnym kłębem przy włączeniu turbo (`exhausted_gas.ini`, `eg_int.spl`), a kurz spod kół
   powoli brudzi karoserię auta gracza, woda ją zmywa (tekstury `dirt_car*`)
+- **efekty trasy**, też z `RCCars.exe`: rozbryzgi fal o skały przy znacznikach `water_splash_N`, fale łamiące się
+  przy brzegu przy znacznikach `water_wave_N` (płyną z falą morza do brzegu, tekstury `water_wave` i
+  `water_wave_alpha`) oraz strzały strażników: seria kul przechodzi w poprzek auta, trafienie w ziemię wyrzuca
+  grudki i kurz i zostawia na 8 s dziurę (`bullet_footprint`), trafione auto dymi; dźwięki `burst` i `bullet`
 - **narzędzia**: `rcinfo` (inspekcja/eksport danych i jazda testowa, bez GPU) i `rcshot` (render offscreen do PNG)
 
 ![Auto na starcie (beach_1)](docs/car_beach_1.jpg)
@@ -133,6 +137,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 ![Przeciwnicy: start, wyścig, meta (beach_1)](docs/opponents_beach_1.jpg)
 
 ![Efekty: kurz za przeciwnikami na starcie, bryzgi spod kół w morzu (beach_1)](docs/effects_beach_1.jpg)
+
+![Efekty trasy: rozbryzg przy wodospadzie (beach_1), fale przy brzegu (beach_1), strażnik strzela do auta (beach_4)](docs/worldfx.jpg)
 
 ![Ślady opon na piasku, kilwater i piana w morzu, brud na karoserii: czysta, w połowie, najbrudniejsza (beach_1)](docs/effects2_beach_1.jpg)
 
@@ -249,6 +255,8 @@ RCSHOT_DRIVE=3 RCSHOT_BOOST=1 rcshot ...                        # z dopalaczem
 RCSHOT_START="-8 -41 90" RCSHOT_DRIVE=1.6 rcshot ...            # auto najpierw w punkcie x z, obrócone o yaw (tu: do morza)
 RCSHOT_TIME=2.5 rcshot ...                                       # chwila animacji wody (fale, piana)
 RCSHOT_OBJECTS=0 rcshot ...                                      # bez rekwizytów
+RCSHOT_FX=2 rcshot ...                                           # najpierw 2 s efektów trasy (rozbryzgi, fale, strzały)
+RCSHOT_ACTOR=Guard RCSHOT_ACTOR_CAR=4 RCSHOT_FX=1 rcshot <gra> beach_4 ...  # strażnik strzela do auta
 RCSHOT_FOG=0 rcshot ...                                          # bez mgły
 RCSHOT_TRAFFIC=20 RCSHOT_TRAFFIC_CAR=0 rcshot ...                # 20 s ruchu ulicznego, kamera na pierwszym aucie na drodze
 ```
@@ -282,13 +290,14 @@ fx/             efekty cząsteczkowe, bez GPU
   careffects.*  efekty auta: ustawienia, kurz, bryzgi, spaliny, brud; sprite'y i czworokąty do narysowania
   tracks.*      ślady opon: pierścień punktów na koło, łączenie w pasy, zanikanie
   wake.*        kilwater i piana na wodzie wokół kół i karoserii
-  marks.h       czworokąty leżące w świecie (ślady, kilwater, piana)
+  marks.h       czworokąty leżące w świecie (ślady, kilwater, piana, fale, dziury po kulach)
+  worldfx.*     efekty trasy: rozbryzgi przy water_splash_N, fale przy water_wave_N, strzały strażników
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
   camera.*      kamera (oko, kierunek, rzutowanie); kamera swobodna
   chasecamera.* kamera za autem według RCCars.exe i Settings/Camera.ini
   hud.*         kokpit wyścigu (obrazki i czcionka z Language/<język>)
-  effects.*     efekty aut gracza i przeciwników: sprite'y zwrócone do kamery, posortowane, z testem głębi
+  effects.*     efekty aut i trasy: sprite'y zwrócone do kamery, posortowane, z testem głębi
   world/        Level (trasa), LevelMesh (geometria na GPU, batche po teksturach), ModelMesh (auto, obiekt),
                 Objects (rekwizyty trasy), TrafficView (ruch uliczny), CollisionView (nakładka kolizji)
   mainwindow.*  okno, pętla, wejście
@@ -582,6 +591,33 @@ lib/Tempest     silnik (submoduł git)
   czystym autem a teksturami `dirt_car<auto>_1` i `_2` (auta 2 i 3 mają osobne `a`/`b` dla dwóch tekstur
   karoserii `car_askin*` i `car_bskin*`) i miesza sąsiednie; brud kładzie się na lakier według swojej
   przezroczystości. Tylko auta graczy.
+- **Rozbryzgi fal** (`WATER_SPLASH` 0x5272f0, `WATER_SPLASH_MNG` 0x527d80, znaczniki 0x5277a0, co klatkę
+  0x527a40): znacznik `water_splash_N` (do 16) bliżej niż `ActiveRad` (20 m w poziomie) od kamery i na ekranie
+  co `TimeDelay ± TimeDelayDisp` s (1 ± 0,25) rozbryzguje się w losowym miejscu `Radius` (5 cm) od siebie; na
+  znacznik są dwa emitery. Rozbryzg przez `EmitLife` (0,15 s) wyrzuca 540 kropli na sekundę wachlarzem w
+  płaszczyźnie zwróconej do kamery: krople startują obok siebie w odstępie do `SplashLen` (5 cm) i lecą w górę i na
+  boki najwyżej `AngleSpan` (45°) od pionu z prędkością `VelLen ± VelLenDisp`, bez grawitacji, zwalniając do
+  `VelAttenuation` na koniec życia; maleją do `Scale` (0,5) i bledną od połowy życia. Tekstura `particle`, rozmiar
+  zależny od odległości (flaga 0x800), więc to drobne krople. Dźwięk to `water_splash` z `AmbientSounds`.
+- **Fale przy brzegu** (`WaterLOD_Wave` 0x525c10, liczby całkowite; `Water_Wave_New` 0x52a550; znaczniki
+  0x5255c0, co klatkę 0x525700, fale 0x529dd0, rysowanie 0x52a030): tylko na morzu `more1` (albo pierwszym z
+  falami). Znacznik `water_wave_N` (do 8) w promieniu `ActiveRad` (40 m) i na ekranie co `TimeLong` (2 s) puszcza
+  długą falę na grzbiecie fali 2 morza tuż za znacznikiem, obróconą losowo o `Angle` (5°), a co `TimeShort`
+  (0,5 s) krótką w losowym miejscu do `Len` (3,5 m) od niego; jest ich najwyżej 32. Każda płynie z falą 2 do
+  środka morza z prędkością `period2 × length2` m/s, leży na wodzie (znika, gdy wody nie ma) i żyje
+  `TimeLifeLong` albo `TimeLifeShort ± Disp` s. To czworokąt na grzbiecie, `Len` (1,7 m) w każdą stronę, stojący
+  `Height` (0,58 m) × jasność nad wodą i obrócony wokół grzbietu do kamery; całość zanurza się wzdłuż normalnej
+  wody o `DHeight − 1`. Tekstura `water_wave` przesuwa się wzdłuż grzbietu skokami (`AnimSpeed` co `AnimWait`),
+  `water_wave_alpha` wygasza brzegi; jasność rośnie do `IncTime` życia i maleje od `DecTime`.
+- **Strzały strażnika** (`BURST_MNG` 0x52d570–0x52df20): strażnik (0x51a950), gdy auto jest w jego
+  `guardVolume`, wysyła co klatkę komunikat 0x261 z broni 1,5 m nad stopami, a każdy komunikat zaczyna serię od
+  nowa (0x52de30). Seria to `NShoots` (6) strzałów co `TimeShoot` (0,1 s), przechodzących w poprzek auta od `+r`
+  do `−r` × `Radius` (losowy kierunek `r`), celowanych w auto z wyprzedzeniem `prędkość × Offset / 2`; promień
+  sięga 1,5 raza dalej (co najmniej 10 m). Kula w karoserii (prostopadłościan auta, 0x508290) zapala dym
+  `BULLET_SMOKE` na 2 s i w oryginale wyłącza sterowanie auta do powrotu na trasę (u nas nie); kula w ziemi
+  wyrzuca stożek grudek `BULLET_EXPLODE`, kłąb `BULLET_DUST` i zostawia dziurę `bullet_footprint` (10 cm, 8 s,
+  blednie przez ostatnie 4 s, najwyżej 256). Dźwięki: `burst` przy strażniku, `bullet` w miejscu trafienia. U nas
+  nowa seria zaczyna się po końcu poprzedniej, a nie co klatkę, żeby tempo strzałów nie zależało od liczby klatek.
 - **Mapa otoczenia (odbicia)** (`RCCars.exe` 0x463360, 0x465aa0, 0x48f530): siatki, które ją mają, rysuje drugi
   raz z teksturą `cubemap_racer` (sześć jednakowych ścian sześcianu: miękka biała plama na czarnym), dodaną do obrazu
   (`SrcAlpha, One`) z siłą równą alfie `TEXTUREFACTOR` razy krycie siatki. Współrzędne to wektor odbicia w przestrzeni
@@ -647,9 +683,9 @@ lib/Tempest     silnik (submoduł git)
      ostatniego punktu kontrolnego, strefy `car_reset_volume_*`); ~~kurz i bryzgi spod kół, ślady opon, kilwater,
      spaliny, brudzenie auta~~ (zrobione)
 4. Węzły `INST` (instancje obiektów): ~~rekwizyty~~ (zrobione: bryły sztywne z parametrami ze skryptów; brakuje
-   wiatru dla kłębków i dźwięków uderzeń `SNCH`); ~~postacie i zwierzęta~~ (zrobione; brakuje efektu strzału
-   strażnika, śladów stóp i rozgniecenia kraba); ~~ruch uliczny~~ (zrobione; brakuje cieni kół, poświaty
-   reflektorów i tekstów z `RCCars.tbl` przy potrąceniu). Do tego `HHID` (widoczność/sektory)
+   wiatru dla kłębków i dźwięków uderzeń `SNCH`); ~~postacie i zwierzęta~~ (zrobione; brakuje śladów stóp
+   i rozgniecenia kraba; ~~efekt strzału strażnika~~ zrobiony); ~~ruch uliczny~~ (zrobione; brakuje cieni kół,
+   poświaty reflektorów i tekstów z `RCCars.tbl` przy potrąceniu). Do tego `HHID` (widoczność/sektory)
 5. ~~Dźwięk~~ (zrobione według `RCCars.exe`: kanały `SNCH` z `RCCars.sb` i `Sound\*.wav` z archiwum we własnym
    mikserze, silnik gracza i rywali, punkty kontrolne, turbo, hamulec, lot i lądowanie, toczenie się po
    nawierzchniach, uderzenia i otarcia, buksowanie, fale przy brzegu `water_splash_N`, wodospady `WATER_FALL_N`,

@@ -68,6 +68,18 @@ void Sounds::play(const std::string& channel, const std::string& sound) {
   it->second.play(sound);
   }
 
+void Sounds::playAt(const std::string& channel, const rc::Vec3& at, const rc::Vec3& ear, const rc::Vec3& right) {
+  auto it = channels.find(channel);
+  if(it==channels.end())
+    it = channels.emplace(channel,rc::BankChannel(mix,*lib,channel)).first;
+  auto&          ch = it->second;
+  const rc::Vec3 to = at-ear;
+  const float    d  = to.length();
+  ch.setPlace(d,d>1e-3f ? rc::Vec3::dot(to,right)/d : 0.f);
+  if(ch.size()>0)
+    ch.play(0);
+  }
+
 void Sounds::stopAll() {
   mix.stopAll();
   }

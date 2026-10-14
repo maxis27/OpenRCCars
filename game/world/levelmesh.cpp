@@ -160,9 +160,16 @@ struct LevelMesh::SeaSurface {
   std::vector<rc::WaterWaves>   waves;
   std::vector<SeaOutline>       outlines;
   std::vector<int32_t>          ofMesh;   // per SbScene::meshes, -1 none
+  int32_t                       main = -1; // "more1", else the first one
   std::optional<rc::SbVolume>   waterBox;
   std::vector<rc::Vec3>         coast;    // seaCoast()
   };
+
+const rc::WaterWaves* LevelMesh::mainSea() const {
+  if(seaSurface==nullptr || seaSurface->main<0)
+    return nullptr;
+  return &seaSurface->waves[size_t(seaSurface->main)];
+  }
 
 std::vector<bool> LevelMesh::hiddenMeshes(const rc::SbScene& scene) {
   // "_LOD<n>" copies of the same thing are siblings under one parent. Objects keep their full detail mesh
@@ -462,6 +469,7 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
   seaSurface = std::make_shared<SeaSurface>();
   seaSurface->waves    = std::move(seas);
   seaSurface->outlines = std::move(outlines);
+  seaSurface->main     = foamSea;
   // every mesh under a sea's node, the hidden LODs too: the collision has them
   seaSurface->ofMesh.assign(scene.meshes.size(),-1);
   for(size_t mi=0; mi<scene.meshes.size(); ++mi)

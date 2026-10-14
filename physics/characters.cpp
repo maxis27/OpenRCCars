@@ -487,6 +487,7 @@ bool Characters::touches(Car& c, const Vec3& at, float radius, float height) {
 
 bool Characters::update(float dt, Vehicle* player, std::vector<Car>& cars) {
   greatHit = false;
+  guns.clear();
   // the speed the car hit with: the step that brought it into contact has already stopped it
   const float nowKmh = player ? player->velocity().length()*3.6f : 0.f;
   carKmh   = std::max(nowKmh,lastKmh);
@@ -669,6 +670,9 @@ void Characters::guard(State& s, float dt, Vehicle* player, std::vector<Car>& ca
     // turns to face the car (0x510a40, 360 degrees per second) and shoots while it is in the guard volume
     turnTo(s,car-s.pos,TurnToCar*dt);
     play(s,aims && s.sShoot>=0 ? s.sShoot : s.sStand,true);
+    // the gun, 1.5 m above its feet (0x51a950 sends BURST_MNG the message 0x261 from there)
+    if(aims)
+      guns.push_back(s.pos+Vec3{0,1.5f,0});
     }
   else if(s.done) {
     s.act = State::Act::None;

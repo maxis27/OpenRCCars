@@ -31,6 +31,8 @@ class Sounds {
 
     // a sound of a channel of RCCars.sb, e.g. ("Checkpoint","cp_start"); each channel plays one sound at a time
     void play(const std::string& channel, const std::string& sound);
+    // the first sound of a positioned channel (e.g. "burst", "bullet") at `at`, heard from `ear`
+    void playAt(const std::string& channel, const rc::Vec3& at, const rc::Vec3& ear, const rc::Vec3& right);
     // stops every sound effect (not the music)
     void stopAll();
     void setPaused(bool p);

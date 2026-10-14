@@ -15,6 +15,7 @@
 #include "arrow.h"
 #include "formats/fog.h"
 #include "camera.h"
+#include "chasecamera.h"
 #include "effects.h"
 #include "hud.h"
 #include "physics/characters.h"
@@ -61,6 +62,7 @@ class MainWindow : public Tempest::Window {
     std::vector<rc::Mat4> carPartPoses() const;
     std::vector<rc::Mat4> opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const;
     Hud::Info             hudInfo() const;
+    ChaseCamera::Car      chaseCar() const;
     // the way on for the arrow: the point it shows, relative to the car's heading, radians, positive = left
     float                 wayDirection() const;
     DirectionArrow::Input arrowInput() const;
@@ -111,7 +113,7 @@ class MainWindow : public Tempest::Window {
     bool                    jumpPressed = false;
     float                   upsideDown = 0; // seconds on the roof or side, then the car is put back
     Camera                  camera;
-    float                   chaseYaw = 0;   // smoothed heading for the chase camera, degrees
+    ChaseCamera             chase;          // the camera behind the car (Settings\Camera.ini)
     bool                    freeCamera = false;
     bool                    showCollision = false; // K: collision debug overlay
     bool                    showGates     = false; // G: checkpoint gates outlined (debug)

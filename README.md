@@ -20,7 +20,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   przełączanie 10 tras
 - **auto**: model z `Car.sb` (Overkill, Buggy, Hummer) stoi na pozycji startowej gracza (`INST 'Player'`), osadzony
   na ziemi; nadwozie i koła są osobnymi częściami (pod obrót i skręt kół); kamera za autem albo kamera swobodna;
-  kamera za autem nie schodzi pod wodę, a karoseria, szyby i chromy mają odbicia z mapy otoczenia jak w oryginale
+  kamera za autem działa jak w oryginale (`Settings/Camera.ini`: odległość, opóźnienie wysokości i kąta, odsuwanie
+  przy prędkości i turbo, unoszenie, gdy teren zasłania auto), nie schodzi pod wodę, a karoseria, szyby i chromy mają odbicia z mapy otoczenia jak w oryginale
 - **kolizje trasy** z węzła `COLL`: siatka komórek nad trasą, w każdej lista ścian siatek renderu, które ją przecinają;
   z tego powstaje siatka kolizji (trójkąty w przestrzeni świata) z raycastem po komórkach (DDA). Auto staje na
   ziemi wyznaczonej raycastem. Klawisz **K** pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
@@ -284,7 +285,8 @@ fx/             efekty cząsteczkowe, bez GPU
   marks.h       czworokąty leżące w świecie (ślady, kilwater, piana)
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
-  camera.*      kamera swobodna
+  camera.*      kamera (oko, kierunek, rzutowanie); kamera swobodna
+  chasecamera.* kamera za autem według RCCars.exe i Settings/Camera.ini
   hud.*         kokpit wyścigu (obrazki i czcionka z Language/<język>)
   effects.*     efekty aut gracza i przeciwników: sprite'y zwrócone do kamery, posortowane, z testem głębi
   world/        Level (trasa), LevelMesh (geometria na GPU, batche po teksturach), ModelMesh (auto, obiekt),
@@ -591,6 +593,24 @@ lib/Tempest     silnik (submoduł git)
   chromy) `EnvMapGRE1` 255/255, `*GRE2*` (lampy, zderzaki) `EnvMapGRE2` 137/255; reszta z flagą (np. rekwizyty ze
   `stone.sb`) całą mapę. `EnvMapUpgrades` (156) dotyczy ulepszeń, których jeszcze nie pokazujemy. U nas to jeden
   przebieg `shader/level.frag` (`environment()`), który dodaje mapę do koloru; takie siatki oryginał rysuje bez mgły.
+- **Kamera za autem** (`game/chasecamera.*`; 0x5007a0 co klatkę, 0x501180 przy rysowaniu, ustawienia
+  `Settings/Camera.ini` czyta 0x4f9da0, suwaki 1..100 liniowo na zakresy wpisane w kod): kamera trzyma własne oko
+  i co klatkę ogląda je z układu auta: środek auta (stan bryły, +0x5884) z kierunkiem nosa położonym płasko (gdy nos
+  celuje mniej niż 30° od pionu w górę, nos i tył dachu razem, 0x500840). W tym układzie oko ma odległość po
+  ziemi, wysokość i kąt wokół auta (0 = prosto z tyłu); każdą ciągnie „sprężyna” 0x4722c0 (cel, tolerancja, pasmo
+  pod i nad celem, z którego wartość wraca od razu, tempo powrotu w paśmie, opcjonalnie × (odległość/pasmo)^wykładnik),
+  a oko wraca tam, gdzie mówią, patrząc na środek auta (0x471ca0). Odległość `defDistXZ` (30 → 0,79 m) bez
+  opóźnienia, plus do połowy więcej od 4 m/s (całość przy 8 m/s, narasta 1 m/s) i 1/5 więcej przy wciśniętym turbo
+  z gazem (0,5 m/s, wraca 0,3 m/s); wysokość `defDistY` (0,36 m) w paśmie ±75% wraca `accDistY` (0,71 m/s); kąt
+  w paśmie ±20° wraca z `accAlpha`×200 (99°/s) × (kąt/20)², ale 30°/s, gdy auto kręci się szybciej niż 180°/s
+  (0x500a80). Po resecie auta wszystko staje na celu (dt = 2e6, 0x508b50). Rysowany widok (bez wpływu na
+  sprężyny, 0x500e60): gdy teren przecina odcinek od 15 cm nad autem do 6 cm pod okiem (0x500d60), oko obraca się
+  w górę wokół auta do `CDT_AngleUp` (29°) z `CDT_AngleUpSpeed` (29°/s), a widok podnosi się o `VisTurn`
+  (70 → 11,8°) plus do `CDT_AngleUp_DIR_ADD` (13°) proporcjonalnie do tego obrotu, z
+  `CDT_AngleUp_SPEED_DIR_ADD` (suwak 151 poza 1..100, 1,51°/s). `CDT_DistSpeed*` i `CDT_radius` gra pomija.
+  Domyślna kamera gry ma poziome pole widzenia 80° przy 4:3 (pionowe 64,4°, 0x405d40). Założone: punkt, na który
+  kamera patrzy (macierz obiektu +0xf8), to też środek bryły; tryb z flagą 0x147d254 i zamrożenie kamery przez 3 s
+  po wyłączeniu auta (+0xe828/0xe830) nie są przeniesione.
 - **Kamera nad wodą** (0x501180, ostatni krok kamery za autem): jeśli punkt 7 cm pod okiem kamery jest pod wodą
   (promień tylko po wodzie, 0x5350d0), oko idzie na 14 cm nad jej powierzchnię; kierunek patrzenia zostaje.
   Powierzchnia to animowana siatka morza (0x5353b0 bierze bieżące wierzchołki), więc liczymy ją z falami
@@ -606,6 +626,14 @@ lib/Tempest     silnik (submoduł git)
   takiego obiektu nie ma. W oryginale wyłącza ją `VIDEO_UseFog 0` w `Config.gm`, u nas jest zawsze. Efekty
   aut (kurz, bryzgi, spaliny, ślady opon, kilwater, piana) oryginał rysuje z włączoną mgłą, więc u nas też;
   ślady opon, mieszane „x2”, idą ku połowie koloru mgły, jak przebieg 0x463e70 dla takich mieszań.
+- **Szum morza** (kanał `water` z `RCCars.sb`: pętla `water.wav`, pełna głośność do 3 m, -20 dB w 10 m, dalej cisza;
+  0x522ed0, 0x522f60, 0x523140): gra bierze ostatnie znalezione morze (węzły z „more” w nazwie szukane w głąb,
+  dzieci węzła od najnowszego, 0x51eff0, 0x44ed80), czyli `more1`, a nie lagunę `more2` na beach_1. Dźwięk stoi
+  w narożniku obrysu tego morza najbliższym kamerze w płaszczyźnie xz, na wysokości `offset` z `WLOD_*` (oryginał
+  bierze to przesunięcie jako wysokość, więc na beach_2, gdzie morze leży na 1,54 m, dźwięk jest 1,5 m pod wodą).
+  Gdy promień tylko po wodzie (morze, strumienie, kałuże) z 10 m nad kamerą w dół na 20 m trafi wodę (0x535130),
+  dźwięk idzie pod kamerę: na tę wodę albo na kamerę, jeśli jest pod nią. Trasy bez morza (country_1/2/4, urban)
+  nie mają tego dźwięku, także nad strumieniami.
 - Rozpoznane, jeszcze nieprzeniesione: pluski w stałych miejscach tras (markery `water_splash_N` na beach_1,
   beach_3, country_3; 0x5272f0), fale `Water_Wave_New` i `BURST_MNG`.
 
@@ -625,8 +653,8 @@ lib/Tempest     silnik (submoduł git)
 5. ~~Dźwięk~~ (zrobione według `RCCars.exe`: kanały `SNCH` z `RCCars.sb` i `Sound\*.wav` z archiwum we własnym
    mikserze, silnik gracza i rywali, punkty kontrolne, turbo, hamulec, lot i lądowanie, toczenie się po
    nawierzchniach, uderzenia i otarcia, buksowanie, fale przy brzegu `water_splash_N`, wodospady `WATER_FALL_N`,
-   muzyka MP3 z `Tracks/` w kolejności z `Autoexec.gm`, głosy ludzi, mew i psów, ruch uliczny; brakuje szumu
-   morza `water`)
+   szum morza `water`, muzyka MP3 z `Tracks/` w kolejności z `Autoexec.gm`, głosy ludzi, mew i psów, ruch
+   uliczny)
 6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
    menu i zapisu rekordów)
 7. ~~Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`)~~

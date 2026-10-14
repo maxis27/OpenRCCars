@@ -117,6 +117,7 @@ add_subdirectory(shader)
 # --- renderer shared by the game and tools ---
 add_library(rcengine STATIC
   game/camera.h            game/camera.cpp
+  game/chasecamera.h       game/chasecamera.cpp
   game/resources.h         game/resources.cpp
   game/hud.h               game/hud.cpp
   game/arrow.h             game/arrow.cpp

@@ -27,6 +27,7 @@
 #include <memory>
 #include <string>
 
+#include "game/chasecamera.h"
 #include "game/resources.h"
 #include "game/world/modelmesh.h"
 #include "game/world/level.h"
@@ -63,6 +64,8 @@ int main(int argc, const char** argv) {
     Resources res(device,argv[1]);
     Level     level(device,res,argv[2]);
     Camera    cam = level.startCamera();
+    ChaseCamera chase(ChaseCamera::Settings::load([&res](const std::string& f){ return res.pack().read(f); }));
+    ChaseCamera::Car chaseCar;
 
     // objects first: they settle on the track before the car drives in
     rc::PhysicsWorld         world(level.collision());
@@ -95,6 +98,9 @@ int main(int argc, const char** argv) {
         const float      time  = float(std::atof(drive));
         const int        carNo = std::atoi(car->name().c_str()+3);
         rc::Vehicle      veh(world,rc::carGeometry(carSb,car->name()),rc::CarParams::load(res.pack(),carNo),carPose);
+        chaseCar.pose   = carPose;
+        chaseCar.centre = carPose.translation();
+        chase.reset(chaseCar);
         for(float t=0; t<time; t+=1.f/60.f) {
           rc::Vehicle::Input in;
           in.throttle = 1;
@@ -106,6 +112,14 @@ int main(int argc, const char** argv) {
           if(veh.hit()!=rc::Vehicle::Hit::None)
             Log::i(veh.hit()==rc::Vehicle::Hit::Great ? "great hit" : "hit"," at ",t," s, ",veh.boostTank()," turbo");
           world.step(1.f/60.f);
+          chaseCar.pose     = veh.pose();
+          chaseCar.centre   = veh.centre();
+          chaseCar.velocity = veh.velocity();
+          chaseCar.spin     = veh.localSpin().length();
+          chaseCar.boost    = in.boost;
+          chase.update(chaseCar,1.f/60.f);
+          if(t+1.f/60.f<time)
+            chase.apply(chaseCar,&level.collision(),1.f/60.f,cam);
           }
         carPose = veh.pose();
         for(auto& p:car->parts()) {
@@ -120,10 +134,13 @@ int main(int argc, const char** argv) {
                at.x," ",at.y," ",at.z,", on ",rc::surfaceName(veh.surface()),", ",int(veh.submerged()*100.f),
                "% under water");
         }
-      // chase view from behind, level with the horizon
-      const rc::Vec3 f = carPose.vector({0,0,1});
-      cam.chase(rc::Mat4::translate(carPose.translation())*rc::Mat4::rotate(1,std::atan2(f.x,f.z)*57.29578f),
-                ChaseDistance,ChaseHeight);
+      // the game's chase camera (game/chasecamera.h), settled behind a parked car
+      if(std::getenv("RCSHOT_DRIVE")==nullptr) {
+        chaseCar.pose   = carPose;
+        chaseCar.centre = carPose.translation();
+        chase.reset(chaseCar);
+        }
+      chase.apply(chaseCar,&level.collision(),1.f/60.f,cam);
       level.keepAboveWater(cam,waterTime());
       }
     // people and animals

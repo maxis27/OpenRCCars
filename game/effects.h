@@ -35,6 +35,8 @@ class Effects {
     // after the physics; `gas`/`brake`: the player's keys
     void tick(float dt, const rc::Vehicle& player, const rc::Opponents* opponents, const rc::CollisionMesh& track,
               const rc::Vec3& camera, bool gas, bool brake);
+    // the track's fog (formats/fog.h) for what is drawn next: density and 0x00RRGGBB
+    void setFog(float density, uint32_t color) { fogDensity = density; fogColor = color; }
     // the tyre tracks, after the opaque scene and before the translucent pass (water over them hides them)
     void drawTracks(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frame, const rc::Mat4& viewProj,
                     const rc::Vec3& eye);
@@ -48,6 +50,7 @@ class Effects {
       float uv[2];
       float color[4];
       float depth = 0;
+      float fog   = 1;   // how much of the colour the fog leaves
       };
     struct MarkVertex {
       float pos[3];
@@ -66,6 +69,8 @@ class Effects {
     bool                                loaded = false;
     rc::fx::Random                      rnd;
     std::unique_ptr<rc::fx::CarEffects> player;
+    float                               fogDensity = 0;
+    uint32_t                            fogColor   = 0;
     std::vector<Opponent>               opponents;
 
     // `tracks`: the tyre tracks, otherwise the wake and the foam

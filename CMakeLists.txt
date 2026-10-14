@@ -28,6 +28,7 @@ add_library(rcformats STATIC
   formats/settings.h  formats/settings.cpp
   formats/objects.h   formats/objects.cpp
   formats/water.h     formats/water.cpp
+  formats/fog.h       formats/fog.cpp
   formats/carprofile.h formats/carprofile.cpp
   formats/soundbank.h  formats/soundbank.cpp
   formats/skeleton.h   formats/skeleton.cpp

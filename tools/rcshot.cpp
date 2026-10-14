@@ -9,6 +9,7 @@
 //   (positive = left) for the last half of that time, RCSHOT_JUMP=<seconds> jumps at that moment,
 //   RCSHOT_BOOST=1 holds the boost, RCSHOT_START="x z yaw" puts the car somewhere else first.
 //   env RCSHOT_TIME=<seconds> is the moment of the water animation (default: the drive time, else 0).
+//   env RCSHOT_FOG=0 draws without the track's fog (Settings\fog_<track>.ini).
 //   env RCSHOT_OBJECTS=0 hides the objects placed on the track (props, characters, road cars).
 //   env RCSHOT_ACTOR=<instance name> looks at a person or animal from RCSHOT_ACTOR_DIST m (default 2.5) after
 //   RCSHOT_ACTOR_TIME seconds (default 1) with the car parked RCSHOT_ACTOR_CAR m in front of it (default 2), and
@@ -33,6 +34,7 @@
 #include "physics/characters.h"
 #include "physics/vehicle.h"
 #include "game/world/characters.h"
+#include "formats/fog.h"
 
 using namespace Tempest;
 
@@ -193,7 +195,12 @@ int main(int argc, const char** argv) {
     push.cameraPos[0] = cam.position.x;
     push.cameraPos[1] = cam.position.y;
     push.cameraPos[2] = cam.position.z;
-    push.cameraPos[3] = 250.f;
+    if(const char* f = std::getenv("RCSHOT_FOG"); f==nullptr || std::string(f)!="0") {
+      // the fog as it is once its fade-in is over (no fade here)
+      const auto fog = rc::FogParams::load(res.pack(),argv[2]);
+      push.cameraPos[3] = fog.density;
+      push.fogColor     = fog.color & 0xffffffu;
+      }
     push.sunDir[0] = 0.4f; push.sunDir[1] = 0.8f; push.sunDir[2] = 0.3f;
     push.sunDir[3] = 1.0f;
     if(car) {

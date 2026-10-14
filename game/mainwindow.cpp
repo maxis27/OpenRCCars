@@ -55,6 +55,7 @@ void MainWindow::loadLevel(const std::string& name) {
     checkpoints = std::make_unique<rc::Checkpoints>(level->scene(),level->collision());
     race        = std::make_unique<rc::Race>(*checkpoints,laps);
     resetVolumes = rc::ResetVolumes(level->scene());
+    fog.setTarget(rc::FogParams::load(resources.pack(),name));
     hud->setTrack(name);
     sounds->setTrack(level->scene());
     camera  = level->startCamera();
@@ -358,6 +359,7 @@ void MainWindow::tick(float dt) {
   sounds->setPaused(paused);
   if(paused)
     return;
+  fog.tick(dt);
   if(vehicle!=nullptr) {
     rc::Vehicle::Input in;
     if(race->holdCar()) {
@@ -563,7 +565,8 @@ void MainWindow::render() {
     push.cameraPos[0] = camera.position.x;
     push.cameraPos[1] = camera.position.y;
     push.cameraPos[2] = camera.position.z;
-    push.cameraPos[3] = 250.f;                 // fog distance
+    push.cameraPos[3] = fog.current().density;
+    push.fogColor     = fog.current().color & 0xffffffu;
     push.sunDir[0] = 0.4f; push.sunDir[1] = 0.8f; push.sunDir[2] = 0.3f;
     push.sunDir[3] = 1.0f;                     // lightmap scale
     push.time      = time;
@@ -597,6 +600,7 @@ void MainWindow::render() {
           m->second->draw(enc,viewProj,push,o.pose(),&parts);
           }
         }
+      effects->setFog(push.cameraPos[3],push.fogColor);
       if(vehicle)
         effects->drawTracks(enc,frameId,viewProj,camera.position);
       if(level)

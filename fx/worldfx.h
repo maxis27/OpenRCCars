@@ -70,6 +70,13 @@ struct WorldSettings {
     float animSpeed = 1.86f, animWait = 0.1f; // its texture moves animSpeed a second, in steps of animWait s
     float incTime = 0.49f, decTime = 0.55f; // shares of the life: fading in until incTime, out from decTime
     } waves;
+  // peop_sole.ini (0x50fcb0): people's footprints
+  struct Sole {
+    float delay  = 0.68f;   // TimeDelay: s between two steps
+    float shiftX = 0.12f;   // m to the side of the feet
+    float shiftY = 0.03f;   // m above them
+    float size   = 0.18f;   // m: half the side of the square
+    } sole;
 
   using Reader = std::function<std::vector<uint8_t>(const std::string&)>;
   // `read` gets files from RCCars.pack; throws if a file is missing
@@ -217,6 +224,45 @@ class Gunfire {
     Puffs                 smoke;                           // the car's (0x52cf90)
     std::vector<Hole>     holes;                           // at most 256 (0x478440)
     std::vector<Sound>    heard;
+  };
+
+// The footprints people leave as they walk (RCCars.exe 0x50f930, PEOP): every TimeDelay s a walking person puts
+// down a footprint (sole_footprint) ShiftX m to the right of their feet, then one to the left (mirrored), and so on;
+// ShiftY m above the feet, lying flat (the normal is straight up), the toes pointing where the person faces. A
+// footprint is a shine decal (0x478440, 256 at most, shared there with the bullet holes): it comes in over 0.2 s,
+// stays 30 s and fades out over the last 10 s, its colour going to the grey that leaves the ground as it is under
+// the tyre tracks' blend (0x50fbc0, render flags as car_trace's).
+class Footprints {
+  public:
+    // a character that could leave footprints (Characters::actors, in the same order every update)
+    struct Walker {
+      Mat4 world;              // model -> world: the feet at the origin, facing +Z
+      bool walking = false;    // Characters::Actor::soles
+      };
+
+    Footprints() = default;
+    explicit Footprints(const WorldSettings& settings);
+
+    void   update(const std::vector<Walker>& walkers, float dt);
+    void   collect(std::vector<Mark>& out) const;
+    void   clear();
+    size_t size() const { return prints.size(); }
+
+  private:
+    struct Foot {
+      float timer = 0;      // s to the next step
+      bool  left  = false;  // the next one is the left foot
+      };
+    struct Print {
+      Mark  quad;
+      float age = 0;
+      };
+
+    void place(const Mat4& world, bool left);
+
+    const WorldSettings*  set = nullptr;
+    std::vector<Foot>     feet;
+    std::vector<Print>    prints;   // at most 256
   };
 
 }

@@ -461,8 +461,12 @@ void MainWindow::tick(float dt) {
       effects->tick(dt,*vehicle,opponents.get(),level->collision(),camera.position,gas,brake);
       static const std::vector<rc::Vec3> noGuns;
       const rc::fx::View view = {camera.position,camera.viewProj(float(w())/float(std::max(1,h())))};
+      std::vector<rc::fx::Footprints::Walker> walkers;
+      if(characters)
+        for(auto* a:characters->actors())
+          walkers.push_back({a->world,a->soles});
       effects->tickWorld(dt,view,time,[this](const rc::Vec3& p){ return level->waterHeight(p,10.f,time); },
-                         characters ? characters->shooting() : noGuns,vehicle.get(),level->collision());
+                         characters ? characters->shooting() : noGuns,vehicle.get(),level->collision(),walkers);
     }
 
     // on its roof or side for a while: back on the wheels

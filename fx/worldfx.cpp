@@ -203,6 +203,13 @@ WorldSettings WorldSettings::load(const Reader& read) {
   wv.animWait      = val(n,"AnimWait",100);
   wv.decTime       = val(n,"DecTime",100);
   wv.incTime       = val(n,"IncTime",100);
+
+  // read as whole numbers over 100 (0x50fcb0)
+  const auto p = sliders(read,"peop_sole");
+  s.sole.delay  = val(p,"TimeDelay",100);
+  s.sole.shiftX = val(p,"ShiftX",100);
+  s.sole.shiftY = val(p,"ShiftY",100);
+  s.sole.size   = val(p,"Size",100);
   return s;
   }
 
@@ -721,4 +728,92 @@ void Gunfire::collect(std::vector<Billboard>& out) const {
 void Gunfire::collect(std::vector<Mark>& out) const {
   for(auto& h:holes)
     out.push_back(h.quad);
+  }
+
+namespace {
+// what 0x50fb91 hands the shine decal of a footprint: 30 s, in over 0.2 s, out over the last 10 s
+constexpr float SoleLife    = 30.f;
+constexpr float SoleFadeIn  = 0.2f;
+constexpr float SoleFadeOut = 10.f;
+constexpr size_t Decals     = 256;    // 0x478440
+}
+
+Footprints::Footprints(const WorldSettings& settings)
+  :set(&settings) {
+  }
+
+void Footprints::update(const std::vector<Walker>& walkers, float dt) {
+  // the decals age first (0x4789f0), a new one starts at 0
+  for(auto& p:prints)
+    p.age += dt;
+  prints.erase(std::remove_if(prints.begin(),prints.end(),[](const Print& p){ return p.age>SoleLife; }),prints.end());
+  if(set==nullptr)
+    return;
+  feet.resize(walkers.size());
+  for(size_t i=0; i<walkers.size(); ++i) {
+    // the timer runs down all the time; a step once it is out and the person walks (0x50f94c)
+    Foot& f = feet[i];
+    f.timer -= dt;
+    if(f.timer>0 || !walkers[i].walking)
+      continue;
+    place(walkers[i].world,f.left);
+    f.timer = set->sole.delay;
+    f.left  = !f.left;
+    }
+  }
+
+void Footprints::place(const Mat4& world, bool left) {
+  if(prints.size()>=Decals)   // all the slots taken: no footprint (0x47846e)
+    return;
+  const auto& s = set->sole;
+  const Vec3 up{0,1,0};
+  // the feet, ShiftX along the model's X axis (as it is in the matrix, scale and all) to the right or the left, and
+  // ShiftY up
+  Vec3 at = world.translation()+world.vector({1,0,0})*(left ? -s.shiftX : s.shiftX)+up*s.shiftY;
+  // the decal's "t": the model's Z axis laid flat and turned round (0x50fa5c); (1,0,0) if it points straight up
+  Vec3 z = world.vector({0,0,1});
+  z = z-up*Vec3::dot(z,up);
+  const float len = z.length();
+  const Vec3 t = len>Eps ? z*(-1.f/len) : Vec3{-1,0,0};
+  const Vec3 b = Vec3::cross(up,t);
+  // 0x478770: the corners at +-size along t and b; the texture's v runs along t (the toes, v = 0, where the person
+  // faces), u against b; the left foot is the right one mirrored (0x50fbc0)
+  const float h = s.size;
+  const Vec3  corner[4] = {at+t*h+b*h, at-t*h+b*h, at-t*h-b*h, at+t*h-b*h};
+  const float u[4] = {0,0,1,1}, v[4] = {1,0,0,1};
+  Print p;
+  p.quad.kind = Mark::Sole;
+  for(int i=0; i<4; ++i) {
+    auto& c = p.quad.v[i];
+    c.pos    = corner[i];
+    c.uv[0]  = c.uv2[0] = left ? 1.f-u[i] : u[i];
+    c.uv[1]  = c.uv2[1] = v[i];
+    }
+  prints.push_back(p);
+  }
+
+void Footprints::collect(std::vector<Mark>& out) const {
+  for(auto& p:prints) {
+    // the decal's opacity (0x4789f0): up over the first 0.2 s, down over the last 10 s, as a byte
+    float a = 1;
+    if(p.age<SoleFadeIn)
+      a = p.age/SoleFadeIn;
+    else if(p.age>SoleLife-SoleFadeOut)
+      a = 1.f-(p.age-(SoleLife-SoleFadeOut))/SoleFadeOut;
+    const float f = std::floor(std::clamp(a,0.f,1.f)*255.f)/255.f;
+    // 0x50fbc0: the grey (1 - opacity) x 128 with the opacity, which the tracks' shader and blend turn into the
+    // texture where the footprint is new and the ground as it is where it has faded
+    const float g = std::floor((1.f-f)*128.f)/255.f;
+    Mark m = p.quad;
+    for(auto& c:m.v) {
+      c.rgba[0] = c.rgba[1] = c.rgba[2] = g;
+      c.rgba[3] = f;
+      }
+    out.push_back(m);
+    }
+  }
+
+void Footprints::clear() {
+  prints.clear();
+  feet.clear();
   }

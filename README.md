@@ -108,6 +108,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   gracza, celują i kopią; mewy chodzą i odlatują z krzykiem, gdy ktoś podejdzie; kraby wychodzą z dziur i uciekają
   bokiem do morza; pająki biegają między dziurami, uciekają przed autem i giną pod kołami; psy gonią auto i
   szczekają; sępy krążą nad country_2. Potrącenie człowieka, strażnika albo psa to „Wielkie Łup!” i ich głos.
+  Idący plażowicze zostawiają na piasku ślady stóp (`sole_footprint`), na zmianę prawej i lewej, które po 20 s
+  zaczynają blednąć i znikają po 30 s
   Animacje szkieletowe są liczone na CPU
 - **efekty spod kół**: kurz na piasku, mokrym piasku, głębokim piasku i żwirze oraz bryzgi wody, gdy koło tnie
   lustro wody, jak w `RCCars.exe`: ustawienia z `Settings/car_dustx.ini`, `surf_*.crs` i `water_spray.crs`, krzywe
@@ -141,6 +143,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 ![Efekty trasy: rozbryzg przy wodospadzie (beach_1), fale przy brzegu (beach_1), strażnik strzela do auta (beach_4)](docs/worldfx.jpg)
 
 ![Ślady opon na piasku, kilwater i piana w morzu, brud na karoserii: czysta, w połowie, najbrudniejsza (beach_1)](docs/effects2_beach_1.jpg)
+
+![Ślady stóp plażowicza wzdłuż brzegu, z góry (beach_1)](docs/footprints_beach_1.jpg)
 
 ![Rekwizyty: pachołek (beach_2), butelki (urban_1), kłębek przy werandzie (country_3), czajnik (country_1)](docs/objects.jpg)
 
@@ -257,6 +261,7 @@ RCSHOT_TIME=2.5 rcshot ...                                       # chwila animac
 RCSHOT_OBJECTS=0 rcshot ...                                      # bez rekwizytów
 RCSHOT_FX=2 rcshot ...                                           # najpierw 2 s efektów trasy (rozbryzgi, fale, strzały)
 RCSHOT_ACTOR=Guard RCSHOT_ACTOR_CAR=4 RCSHOT_FX=1 rcshot <gra> beach_4 ...  # strażnik strzela do auta
+RCSHOT_ACTOR=Man RCSHOT_ACTOR_CAR=8 RCSHOT_FX=42 rcshot <gra> beach_1 out.png 960 540 -12 1.6 -95.2 -90 -80  # ślady stóp
 RCSHOT_FOG=0 rcshot ...                                          # bez mgły
 RCSHOT_TRAFFIC=20 RCSHOT_TRAFFIC_CAR=0 rcshot ...                # 20 s ruchu ulicznego, kamera na pierwszym aucie na drodze
 ```
@@ -290,8 +295,8 @@ fx/             efekty cząsteczkowe, bez GPU
   careffects.*  efekty auta: ustawienia, kurz, bryzgi, spaliny, brud; sprite'y i czworokąty do narysowania
   tracks.*      ślady opon: pierścień punktów na koło, łączenie w pasy, zanikanie
   wake.*        kilwater i piana na wodzie wokół kół i karoserii
-  marks.h       czworokąty leżące w świecie (ślady, kilwater, piana, fale, dziury po kulach)
-  worldfx.*     efekty trasy: rozbryzgi przy water_splash_N, fale przy water_wave_N, strzały strażników
+  marks.h       czworokąty leżące w świecie (ślady, kilwater, piana, fale, dziury po kulach, ślady stóp)
+  worldfx.*     efekty trasy: rozbryzgi przy water_splash_N, fale przy water_wave_N, strzały strażników, ślady stóp
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
   camera.*      kamera (oko, kierunek, rzutowanie); kamera swobodna
@@ -499,6 +504,15 @@ lib/Tempest     silnik (submoduł git)
   `seahole1`, `hole1..N`, `flightDir`) oraz `clother` (podmiana tekstur, np. `man_1`→`man1_1`). Siatki są
   związane ze szkieletem w pozie z elementu `0x38` węzła (pozycja, obrót w stopniach, skala; ręce w bok), a nie
   w pozie `0x0b`; `ANIM` węzła ma dla każdej sekwencji pozę spoczynkową i kanały `SPLN` (`ROTX` … w stopniach).
+  Ślady stóp (0x50f930, ustawienia `peop_sole.ini` 0x50fcb0, wartości przez 100): człowiek, który się rusza
+  (szybciej niż 0,01 m/s) w miejscu ścieżki o stanie 1, 2, 3 albo 5 (ścieżki mają 1, 2, 5, 7, na beach_3 0, 5, 6, 8),
+  co `TimeDelay` (0,68 s) kładzie ślad `ShiftX` (0,12 m) na prawo od stóp wzdłuż osi X modelu, potem na lewo (lustrzany
+  w poziomie), `ShiftY` (0,03 m) nad stopami, płasko (normalna w górę), palcami w stronę, w którą patrzy; `RepairMan`
+  śladów nie zostawia. Ślad to kwadrat o boku 2 × `Size` (0,36 m) z teksturą `sole_footprint`, „naklejka”
+  0x478440 (najwyżej 256 naraz, wspólne z dziurami po kulach): pojawia się przez 0,2 s, żyje 30 s, blednie przez
+  ostatnie 10 s. Rysuje się jak ślady opon (flagi `0x80000021`, mieszanie „x2”): kolor przechodzi w szarość 128,
+  która zostawia ziemię bez zmian (0x50fbc0). U nas ślady kładą tylko widoczni ludzie (do 50 m od gracza), a pula
+  256 jest osobna od dziur po kulach.
   Ludzie: ścieżka `.dat` to rekordy co drugi (0, 2, 4 …), są tylko do 50 m od gracza; auto bliżej niż 0,8 m od
   stóp (albo szybsze niż 15 km/h do 4 m przed nimi, w kącie 25°) dostaje kopniaka (`Pendal`, 4 m/s od nich i
   7 m/s w górę) albo raz na pięć, gdy jest 2,2 m miejsca, zostaje podniesione i rzucone (`Brosok`). Mewa odlatuje,
@@ -683,8 +697,8 @@ lib/Tempest     silnik (submoduł git)
      ostatniego punktu kontrolnego, strefy `car_reset_volume_*`); ~~kurz i bryzgi spod kół, ślady opon, kilwater,
      spaliny, brudzenie auta~~ (zrobione)
 4. Węzły `INST` (instancje obiektów): ~~rekwizyty~~ (zrobione: bryły sztywne z parametrami ze skryptów; brakuje
-   wiatru dla kłębków i dźwięków uderzeń `SNCH`); ~~postacie i zwierzęta~~ (zrobione; brakuje śladów stóp
-   i rozgniecenia kraba; ~~efekt strzału strażnika~~ zrobiony); ~~ruch uliczny~~ (zrobione; brakuje cieni kół,
+   wiatru dla kłębków i dźwięków uderzeń `SNCH`); ~~postacie i zwierzęta~~ (zrobione, ze śladami stóp;
+   brakuje rozgniecenia kraba; ~~efekt strzału strażnika~~ zrobiony); ~~ruch uliczny~~ (zrobione; brakuje cieni kół,
    poświaty reflektorów i tekstów z `RCCars.tbl` przy potrąceniu). Do tego `HHID` (widoczność/sektory)
 5. ~~Dźwięk~~ (zrobione według `RCCars.exe`: kanały `SNCH` z `RCCars.sb` i `Sound\*.wav` z archiwum we własnym
    mikserze, silnik gracza i rywali, punkty kontrolne, turbo, hamulec, lot i lądowanie, toczenie się po

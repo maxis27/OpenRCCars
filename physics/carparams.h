@@ -71,6 +71,11 @@ struct CarParams {
   // axis is dropped
   float   springPitch    = 1.05f;  // coeffMomentOX (0.5..2)
   float   springRoll     = 1.87f;  // coeffMomentOZ (1..3)
+  // drawing only (CarRig): how far the axles swing for a wheel's height (the Overkill's and the Hummer's rigid
+  // axles, 0x504820) and how far the Buggy's arms may turn up and down from where they are modelled (0x505780)
+  float   axleLength     = 0.089f; // m, lenAxe (0.05..0.2 m)
+  float   armUpMax       = 0.f;    // degrees, angleProcUpMax (0..90)
+  float   armDownMax     = 0.f;    // degrees, angleProcDownMax (0..90)
 
   // tires (RCCars.exe, tires<N>.ini, 0x4f7fa0): grip as the sideways acceleration the tires can stop, 5 x grip at
   // the front and 10 x grip at the rear (see Vehicle::tires), times the TIRES upgrade

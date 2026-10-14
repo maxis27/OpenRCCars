@@ -23,9 +23,9 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
   bbox[1] = {-1e9f,-1e9f,-1e9f};
   partList.push_back(Part{});
 
-  // part of each mesh: body (0) or the WHEEL_* node above it; -1 = hidden
+  // part of each mesh: body (0) or the WHEEL_* or suspension node above it (rc::carNode); -1 = hidden
   auto partOf = [&](size_t mesh) -> int32_t {
-    auto name = rc::carPart(sb,mesh);
+    auto name = rc::carNode(sb,mesh);
     if(!name)
       return -1;
     if(name->empty())
@@ -81,7 +81,7 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
       }
     }
 
-  // 2. wheel pivots: centre of the wheel's bounding box
+  // 2. part pivots: centre of the part's bounding box (a wheel's hub)
   for(size_t p=1; p<partList.size(); ++p) {
     rc::Vec3 mn = { 1e9f, 1e9f, 1e9f}, mx = {-1e9f,-1e9f,-1e9f};
     for(auto& [key,verts]:buckets) {
@@ -142,7 +142,7 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
     });
 
   vbo = device.vbo(all);
-  Log::d("model \"",modelName,"\": ",all.size()/3," triangles, ",partList.size()-1," wheels, size ",
+  Log::d("model \"",modelName,"\": ",all.size()/3," triangles, ",partList.size()-1," moving parts, size ",
          bbox[1].x-bbox[0].x," x ",bbox[1].y-bbox[0].y," x ",bbox[1].z-bbox[0].z);
   }
 
@@ -157,10 +157,8 @@ void ModelMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
   for(size_t i=0; i<partList.size(); ++i) {
     const bool     own = partPoses!=nullptr && i<partPoses->size();
     const rc::Mat4 m   = world*(own ? (*partPoses)[i] : rc::Mat4::translate(partList[i].pivot));
-    // uniform scale (objects placed larger, e.g. crabs): undo it, then invert the rigid rest
-    const float    k   = rc::Vec3{m.m[0][0],m.m[1][0],m.m[2][0]}.length();
-    const rc::Mat4 inv = k>0 && std::abs(k-1.f)>1e-4f ? rc::Mat4::scale({1/k,1/k,1/k})*(m*rc::Mat4::scale({1/k,1/k,1/k})).inverseRigid()
-                                                      : m.inverseRigid();
+    // general inverse: objects placed larger (crabs) and the cars' stretched springs (CarRig) are scaled
+    const rc::Mat4 inv = m.inverse();
     (viewProj*m).toColumnMajor(push[i].viewProj);
     const rc::Vec3 c = inv.point(camera);
     const rc::Vec3 s = inv.vector(sun);

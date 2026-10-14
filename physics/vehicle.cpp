@@ -79,7 +79,7 @@ void PhysicsWorld::step(float dt) {
   }
 
 Vehicle::Vehicle(PhysicsWorld& w, const CarGeometry& g, const CarParams& p, const Mat4& start)
-  : owner(w), geom(g), prm(p) {
+  : owner(w), geom(g), prm(p), rig(g,p) {
   // RCCars.exe (0x4f2270): the centre of mass CenterMassOY above the model's origin
   com = {0,prm.comHeight,0};
 
@@ -708,7 +708,7 @@ void Vehicle::surfaces(float dt) {
   for(int i=0; i<n; ++i) {
     const Wheel& wh  = wheels[size_t(i)];
     const float r    = wh.radius;
-    const Vec3  hub  = m.point(wheelPose(size_t(i)).translation());
+    const Vec3  hub  = m.point({geom.wheels[size_t(i)].center.x,wh.mount.y-wh.length,geom.wheels[size_t(i)].center.z});
     float       inWater = 0;  // how deep the wheel is, 0 .. 1 of its diameter
     float       depth   = 0;  // m of the wheel under the surface, from its bottom
     if(auto level = track.waterLevel(hub,0.5f)) {
@@ -879,11 +879,16 @@ bool Vehicle::drifting() const {
   return brakeKey && std::abs(steerDeg)>prm.driftAngle;
   }
 
+CarRig::Pose Vehicle::rigPose() const {
+  std::vector<CarRig::Wheel> in(wheels.size());
+  for(size_t i=0; i<wheels.size(); ++i) {
+    in[i].lift  = wheels[i].mount.y-wheels[i].length-geom.wheels[i].center.y;
+    in[i].steer = steerAngle(wheels[i]);
+    in[i].spin  = wheels[i].spin*(180.f/Pi);
+    }
+  return rig.pose(in);
+  }
+
 Mat4 Vehicle::wheelPose(size_t i) const {
-  const auto& gw = geom.wheels[i];
-  const auto& wh = wheels[i];
-  const float deg = 180.f/Pi;
-  return Mat4::translate({gw.center.x,wh.mount.y-wh.length,gw.center.z}) *
-         Mat4::rotate(1,steerAngle(wh)) *
-         Mat4::rotate(0,wh.spin*deg);
+  return rigPose().wheel(i);
   }

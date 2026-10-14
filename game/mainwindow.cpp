@@ -225,32 +225,31 @@ DirectionArrow::Input MainWindow::arrowInput() const {
   return in;
   }
 
-std::vector<rc::Mat4> MainWindow::carPartPoses() const {
+std::vector<rc::Mat4> MainWindow::partPoses(const ModelMesh& mesh, const rc::CarGeometry& geom,
+                                            const rc::CarRig::Pose& pose) {
   std::vector<rc::Mat4> ret;
-  for(auto& p:car->parts()) {
-    rc::Mat4 m = rc::Mat4::translate(p.pivot);
-    if(vehicle!=nullptr && !p.name.empty()) {
-      auto& wheels = vehicle->geometry().wheels;
-      for(size_t i=0; i<wheels.size(); ++i)
-        if(wheels[i].name==p.name)
-          m = vehicle->wheelPose(i);
-      }
+  for(auto& p:mesh.parts()) {
+    rc::Mat4 m = pose.part(p.name,p.pivot);
+    for(size_t i=0; i<geom.wheels.size() && !p.name.empty(); ++i)
+      if(geom.wheels[i].name==p.name)
+        m = pose.wheel(i);
     ret.push_back(m);
     }
   return ret;
   }
 
-std::vector<rc::Mat4> MainWindow::opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const {
-  std::vector<rc::Mat4> ret;
-  auto& wheels = o.geometry().wheels;
-  for(auto& p:mesh.parts()) {
-    rc::Mat4 m = rc::Mat4::translate(p.pivot);
-    for(size_t i=0; i<wheels.size() && !p.name.empty(); ++i)
-      if(wheels[i].name==p.name)
-        m = o.wheelPose(i);
-    ret.push_back(m);
+std::vector<rc::Mat4> MainWindow::carPartPoses() const {
+  if(vehicle==nullptr) {
+    std::vector<rc::Mat4> ret;
+    for(auto& p:car->parts())
+      ret.push_back(rc::Mat4::translate(p.pivot));
+    return ret;
     }
-  return ret;
+  return partPoses(*car,vehicle->geometry(),vehicle->rigPose());
+  }
+
+std::vector<rc::Mat4> MainWindow::opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const {
+  return partPoses(mesh,o.geometry(),o.rigPose());
   }
 
 void MainWindow::resetSwapchain() {

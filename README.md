@@ -238,6 +238,7 @@ RCSHOT_COLL=1 rcshot ...                                        # z nakładką k
 RCSHOT_DRIVE=3 RCSHOT_STEER=1 rcshot ...                        # najpierw 3 s jazdy na pełnym gazie, druga połowa ze skrętem
 RCSHOT_DRIVE=2 RCSHOT_JUMP=1.6 rcshot ...                       # skok w 1,6 s, zdjęcie w 2 s
 RCSHOT_DRIVE=3 RCSHOT_BOOST=1 rcshot ...                        # z dopalaczem
+RCSHOT_DRIVE=1 RCSHOT_JUMP=0.8 RCSHOT_VIEW=90,0.6 rcshot ...   # z bliska, z lewego boku auta (0 = z tyłu), z 0,6 m
 RCSHOT_START="-8 -41 90" RCSHOT_DRIVE=1.6 rcshot ...            # auto najpierw w punkcie x z, obrócone o yaw (tu: do morza)
 RCSHOT_TIME=2.5 rcshot ...                                       # chwila animacji wody (fale, piana)
 RCSHOT_OBJECTS=0 rcshot ...                                      # bez rekwizytów
@@ -260,6 +261,7 @@ formats/        formaty danych, czyste C++ bez zależności
 physics/        fizyka jazdy (Bullet, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
+  carrig.*      jak oryginał rysuje koła i zawieszenie: wychylenie osi, wahacze, skręt, amortyzatory
   vehicle.*     świat Bulleta trasy, auto jak w RCCars.exe (sprężyny, opony, kule kół), nawierzchnie i woda
   checkpoints.* punkty kontrolne w kolejności, zaliczanie (1,6 m), postęp auta, powrót do ostatniego punktu
   race.*        wyścig: odliczanie, okrążenia, czasy, zły kierunek, meta
@@ -348,6 +350,14 @@ lib/Tempest     silnik (submoduł git)
     Koło wciśnięte w ziemię od razu idzie w górę (najwyżej do `lenMin`), w dół opada do spoczynku (`length`, a
     wolniej niż 5 km/h `length − 0,95·kPos`) z szybkością rosnącą z czasem jazdy (0x4fb340). Tę szybkość
     w oryginale mnoży nieznany nam czynnik; przyjęliśmy 30 (wolniej koła nie nadążały za autem);
+  - rysowanie kół (0x504820 Overkill, 0x505780 Buggy, 0x5068e0 Hummer): gra nigdy nie przesuwa koła o długość
+    sprężyny, tylko obraca węzły, na których koła wiszą, więc koła zostają na osiach. Sztywna oś (`FRONT_AXLE`,
+    `REAR_AXLE`) wychyla się o atan(opad kół / `lenAxe`) (0,05..0,2 m), najwyżej 30° w dół (Hummer 20°) i 90°
+    w górę, i przechyla o atan(4 · różnica wysokości lewego i prawego koła); środkowa oś Hummera przesuwa się
+    w pionie (jej granicy nie znamy, przyjęliśmy opad przedniej osi). Wahacze Buggy (`AXLE_*_UP`, `AXLE_*_DOWN`)
+    obracają się tak, by zwrotnica z kołem (`AXLE_*_WHEEL`) była na wysokości koła, najwyżej `angleProcUpMax`
+    w górę i `angleProcDownMax` w dół (0..90°, 35,5° i 26,4°). Przednie koła skręcają z wspornikami
+    (`AXLE_FRONT_*_SUPPORT`), a amortyzatory między nadwoziem a osią lub wahaczem obracają się i rozciągają;
   - napęd (0x4eea50): siła silnika (najwyżej 20 × przyczepność tyłu) po połowie na tylne koła stojące na
     podłożu nachylonym mniej niż 46°, wzdłuż podłoża. Klawisz hamulca hamuje i przy |v| ≤ 2 m/s wrzuca wsteczny,
     gaz tak samo w drugą stronę (0x4ee5e0); hamując silnik nie ciągnie;

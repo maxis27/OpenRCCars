@@ -99,6 +99,11 @@ CarParams CarParams::load(PackFile& pack, int32_t car, int32_t upgrade) {
   p.springMount   = {mapped(spr,"dx",0,1,0),mapped(spr,"touchPoint",0,1,0.101f),mapped(spr,"dz",0,1,0)};
   p.springPitch   = mapped(spr,"coeffMomentOX",0.5f,2.f,1.05f);
   p.springRoll    = mapped(spr,"coeffMomentOZ",1.f,3.f,1.87f);
+  // lenAxe 27/26/27 -> 0.089/0.088/0.089 m, angleProcUpMax 0/40/0 and angleProcDownMax 0/30/0 -> 35.5 and 26.4
+  // degrees for the Buggy
+  p.axleLength    = mapped(spr,"lenAxe",0.05f,0.2f,0.089f);
+  p.armUpMax      = mapped(spr,"angleProcUpMax",0,90,0);
+  p.armDownMax    = mapped(spr,"angleProcDownMax",0,90,0);
 
   // tires<N>.ini (0x4f7fa0): CoeffFrontTires / CoeffRearTires 7/9/7 of 1..10 -> 0.7/0.9/0.7, angleDriftOn 10 -> 10
   // degrees, coeffDriftRear 49 -> 0.56

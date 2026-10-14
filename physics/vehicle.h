@@ -7,6 +7,7 @@
 #include "formats/math3d.h"
 #include "cargeometry.h"
 #include "carparams.h"
+#include "carrig.h"
 
 class btBroadphaseInterface;
 class btCollisionDispatcher;
@@ -162,7 +163,9 @@ class Vehicle {
 
     const CarGeometry&         geometry() const { return geom; }
     const CarParams&           params()   const { return prm; }
-    // pose of geometry().wheels[i] in model space: hub position after suspension, steering and spin
+    // how the wheels and the suspension are drawn now, model space (CarRig)
+    CarRig::Pose               rigPose() const;
+    // pose of geometry().wheels[i] in model space as drawn: hub position, steering and spin
     Mat4                       wheelPose(size_t i) const;
 
   private:
@@ -202,6 +205,7 @@ class Vehicle {
     PhysicsWorld&                         owner;
     CarGeometry                           geom;
     CarParams                             prm;
+    CarRig                                rig;
     Vec3                                  com;       // centre of mass, model space
     std::vector<Wheel>                    wheels;    // in the order of geometry().wheels
     int                                   frontPair[2] = {-1,-1};  // the original's wheels 0, 1 (front) ...

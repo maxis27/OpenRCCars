@@ -50,13 +50,16 @@ Mat4 CarRig::Pose::part(std::string_view name, const Vec3& pivot) const {
 CarRig::CarRig(const CarGeometry& g, const CarParams& prm)
   :geom(g), axleLength(prm.axleLength), armUp(prm.armUpMax), armDown(prm.armDownMax) {
   // 0x504820 lets the Overkill's axles swing 30 degrees down, 0x5068e0 the Hummer's 20
-  droopMax = prm.car==3 ? 20.f : 30.f;
-  // the Hummer's middle axle moves by at most a limit that the game sets elsewhere (0x14edd4c); we let it go as
-  // far as the front axle's wheels can (a guess)
+  hummer   = prm.car==3;
+  droopMax = hummer ? 20.f : 30.f;
+  // 0x5065c0 sweeps the Hummer's axles through -90..90 degrees when it loads the car, and takes the middle axle's
+  // travel from the front one: how far its left wheel is from the node's height at 20 degrees
   middleTravel = 0;
-  for(auto& w:geom.wheels)
-    if(w.axle>=0 && w.front)
-      middleTravel = std::abs(w.center.z-geom.axles[size_t(w.axle)].pivot.z)*std::sin(droopMax/Deg);
+  for(auto& a:geom.axles)
+    if(!a.middle && a.left>=0 && geom.wheels[size_t(a.left)].front) {
+      const Vec3 d = geom.wheels[size_t(a.left)].center-a.pivot;
+      middleTravel = std::abs(d.y*std::cos(droopMax/Deg)-std::abs(d.z)*std::sin(droopMax/Deg));
+      }
   }
 
 CarRig::Pose CarRig::pose(const std::vector<Wheel>& in) const {
@@ -71,17 +74,23 @@ CarRig::Pose CarRig::pose(const std::vector<Wheel>& in) const {
 
   // rigid axles: swing and roll about the node
   for(auto& a:geom.axles) {
-    const float l    = lift(a.left), r = lift(a.right);
-    const float roll = std::atan((l-r)*4.f)*Deg;
+    const float l     = lift(a.left), r = lift(a.right);
+    const int   w     = a.left>=0 ? a.left : a.right;
+    const Vec3  d     = w>=0 ? geom.wheels[size_t(w)].center-a.pivot : Vec3{};
+    const float track = std::abs(d.x), lever = std::abs(d.z);
+    // the Hummer looks the angles up in tables of the wheel's height over the angle (0x507050), which is
+    // asin(height / distance from the node); the Overkill uses atan(4 * difference) and atan(drop / lenAxe)
+    auto        ik    = [](float h, float len) { return len>0 ? std::asin(std::clamp(h/len,-1.f,1.f))*Deg : 0.f; };
+    const float roll  = hummer ? ik((l-r)*0.5f,track) : std::atan((l-r)*4.f)*Deg;
     Mat4 m;
     if(a.middle) {
       const float y = std::clamp((l+r)*0.5f,-middleTravel,middleTravel);
       m = Mat4::translate({0,y,0})*turnAbout(a.pivot,2,roll);
       } else {
       // + = the wheels go down; the front axle's wheels are ahead of its node, the rear one's behind
-      const float droop = std::clamp(-std::atan((l+r)*0.5f/axleLength)*Deg,-90.f,droopMax);
-      const int   w     = a.left>=0 ? a.left : a.right;
-      const bool  ahead = w<0 || geom.wheels[size_t(w)].center.z>a.pivot.z;
+      const float drop  = -(l+r)*0.5f;
+      const float droop = std::clamp(hummer ? ik(drop,lever) : std::atan(drop/axleLength)*Deg,-90.f,droopMax);
+      const bool  ahead = d.z>0;
       m = turnAbout(a.pivot,0,ahead ? droop : -droop)*turnAbout(a.pivot,2,roll);
       }
     ret.nodes.emplace_back(a.name,m);

@@ -351,9 +351,11 @@ lib/Tempest     silnik (submoduł git)
     w oryginale mnoży nieznany nam czynnik; przyjęliśmy 30 (wolniej koła nie nadążały za autem);
   - rysowanie kół (0x504820 Overkill, 0x505780 Buggy, 0x5068e0 Hummer): gra nigdy nie przesuwa koła o długość
     sprężyny, tylko obraca węzły, na których koła wiszą, więc koła zostają na osiach. Sztywna oś (`FRONT_AXLE`,
-    `REAR_AXLE`) wychyla się o atan(opad kół / `lenAxe`) (0,05..0,2 m), najwyżej 30° w dół (Hummer 20°) i 90°
-    w górę, i przechyla o atan(4 · różnica wysokości lewego i prawego koła); środkowa oś Hummera przesuwa się
-    w pionie (jej granicy nie znamy, przyjęliśmy opad przedniej osi). Wahacze Buggy (`AXLE_*_UP`, `AXLE_*_DOWN`)
+    `REAR_AXLE`) wychyla się o atan(opad kół / `lenAxe`) (0,05..0,2 m), najwyżej 30° w dół i 90° w górę, i przechyla
+    o atan(4 · różnica wysokości lewego i prawego koła). Hummer czyta kąty z tablic wysokości koła od kąta,
+    zbudowanych przy wczytaniu auta (0x5065c0), czyli osie obracają się dokładnie tak, by koła były tam, gdzie
+    sprężyny (najwyżej 20° w dół); środkowa oś przesuwa się w pionie najwyżej o tyle, o ile opada przednie koło
+    przy 20° (0x14edd4c). Wahacze Buggy (`AXLE_*_UP`, `AXLE_*_DOWN`)
     obracają się tak, by zwrotnica z kołem (`AXLE_*_WHEEL`) była na wysokości koła, najwyżej `angleProcUpMax`
     w górę i `angleProcDownMax` w dół (0..90°, 35,5° i 26,4°). Przednie koła skręcają z wspornikami
     (`AXLE_FRONT_*_SUPPORT`), a amortyzatory między nadwoziem a osią lub wahaczem obracają się i rozciągają;

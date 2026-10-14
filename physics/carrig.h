@@ -14,8 +14,10 @@ namespace rc {
 // never moves a wheel by its spring: it turns the nodes the wheels hang from, as far as they may turn, so that
 // the wheels come close to where the springs put them and stay on their axles:
 //  - a rigid axle (FRONT_AXLE, REAR_AXLE) swings about its node by atan(drop / lenAxe), drop = how far its two
-//    wheels are below where they are modelled, at most 30 degrees down (Hummer 20) and 90 up, and rolls by
-//    atan(4 * (left height - right height)); the Hummer's MIDDLE_AXLE moves up and down instead of swinging
+//    wheels are below where they are modelled, at most 30 degrees down and 90 up, and rolls by
+//    atan(4 * (left height - right height)); the Hummer's axles turn exactly as far as the wheels went (at most
+//    20 degrees down), and its MIDDLE_AXLE moves up and down instead of swinging, as far as the front axle's
+//    wheels go at 20 degrees
 //  - the Buggy's arms (AXLE_*_UP, AXLE_*_DOWN) turn so that the wheel carrier between them (AXLE_*_WHEEL) is at
 //    the wheel's height, within angleProcUpMax up and angleProcDownMax down; the carrier stays upright
 //  - the front wheels steer with their supports (AXLE_FRONT_*_SUPPORT) or, without them, by themselves
@@ -52,6 +54,7 @@ class CarRig {
     float              droopMax;       // degrees an axle may swing down
     float              armUp, armDown; // degrees
     float              middleTravel;   // m the middle axle may move up or down
+    bool               hummer = false;
   };
 
 }

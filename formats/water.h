@@ -23,7 +23,8 @@ struct SbScene;
 // where `edge` is the vertex's distance to the outline of the sea (only inside the scene's "water_box" volume,
 // elsewhere s = 1). Wave 1 comes from `angle`, wave 2 runs in to `center`. The vertex alpha grows from 35/255
 // at the outline to 1 at alphaRadius, near the cars only (distAlphaClamp*), and its grey from colorMin to colorMax
-// with the height of the waves.
+// with the height of the waves. The sea also gets the environment map (cubemap_racer, see shader/level.frag), added
+// with the strength alphaEnvMap.
 struct WaterWaves {
   float amp = 0, angle = 0, speed = 0, period = 0;   // amp/100 m, angle*10 deg, speed/100, period/10
   float amp2 = 0, period2 = 0, length2 = 1;          // amp2/100 m, period2/10, length2/100
@@ -32,6 +33,13 @@ struct WaterWaves {
   float magnetRadius = 0, alphaRadius = 0;           // value/20 m, value/10 m
   float distAlphaClampMin = 0, distAlphaClampMax = 0;
   float colorMin = 255, colorMax = 255;              // 0..255
+  float alphaEnvMap = 0;                             // int(value*2.55)/255 (RCCars.exe 0x521540, 0x524f80)
+
+  // wave1 + wave2 at x, z at `t` seconds, as shader/common.glsl seaWaves
+  float waves(float x, float z, float t) const;
+  // how far the waves lift the sea above its still level (y0 + offset) at a point `edge` metres from its outline,
+  // as shader/common.glsl seaHeight
+  float lift(float x, float z, float t, float edge) const;
 
   // nullopt for files without waves (e.g. WLOD_beach_1_wtr_fall.ini, a waterfall)
   static std::optional<WaterWaves> parse(const SliderFile& f);

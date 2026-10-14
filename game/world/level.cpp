@@ -62,3 +62,19 @@ rc::Mat4 Level::carStart(float carBottom) const {
 std::optional<float> Level::groundHeight(const rc::Vec3& from) const {
   return coll.groundHeight(from);
   }
+
+std::optional<float> Level::waterHeight(const rc::Vec3& at, float range, float time) const {
+  uint32_t mesh = 0;
+  auto     y    = coll.waterLevel(at,range,&mesh);
+  if(!y)
+    return std::nullopt;
+  return *y + gpu->waveLift(mesh,{at.x,*y,at.z},time);
+  }
+
+void Level::keepAboveWater(Camera& camera, float time) const {
+  constexpr float Probe = 0.07f;
+  const rc::Vec3  at    = camera.position-rc::Vec3{0,Probe,0};
+  // the original casts down from 10 m above, through 20 m
+  if(auto w = waterHeight(at,10.f,time); w && at.y<*w)
+    camera.position.y = *w+2.f*Probe;
+  }

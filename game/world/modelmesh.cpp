@@ -7,10 +7,45 @@
 #include <map>
 #include <stdexcept>
 
+#include "formats/settings.h"
 #include "game/resources.h"
 #include "physics/cargeometry.h"
 
 using namespace Tempest;
+
+namespace {
+
+// How strong the environment map (ScenePipelines::environment) is on a mesh, 0 = none. RCCars.exe gives it to the
+// meshes flagged so in the scene (SbMesh::flags 0x20000), to those named *GRE1* or *GRE2* and to the car's body,
+// ENVIR_CAR_BODY_body (else ENVIR_CAR_BODY) (0x48e4b0, 0x4df7b0, 0x507130). On the cars the name picks the strength
+// from Settings/carEnvMap.ini (0x4f9d00, 0x5080b0, 0x507d80): the body EnvMapBody, *GRE1* (chrome) EnvMapGRE1,
+// *GRE2* (lights, bumpers) EnvMapGRE2, each /255; anything else gets the full map.
+float environmentOf(const rc::SbMesh& m, bool car, rc::PackFile& pack) {
+  const bool gre1 = m.name.find("GRE1")!=std::string::npos;
+  const bool gre2 = m.name.find("GRE2")!=std::string::npos;
+  const bool body = m.name=="ENVIR_CAR_BODY_body" || m.name=="ENVIR_CAR_BODY";
+  if(!gre1 && !gre2 && !body && (m.flags & 0x20000)==0)
+    return 0;
+  if(!car)
+    return 1;
+  const int kind = (gre1 ? 2 : 0) | (gre2 ? 3 : 0) | (body ? 1 : 0);
+  if(kind==0)
+    return 1;
+  static const char* const keys[] = {"", "EnvMapBody", "EnvMapGRE1", "EnvMapGRE2"};
+  static const int         defs[] = {255, 112, 255, 137};
+  int v = defs[kind];
+  try {
+    auto d = pack.read("Settings\\carEnvMap.ini");
+    auto f = rc::SliderFile::parse(std::string_view(reinterpret_cast<const char*>(d.data()),d.size()));
+    if(auto k = f.find(keys[kind]))
+      v = std::clamp(k->value,0,255);
+    }
+  catch(const std::exception&) {
+    }
+  return float(v)/255.f;
+  }
+
+}
 
 ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
                      const rc::Vec3& origin, int skin)
@@ -38,8 +73,9 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
     return int32_t(it-partList.begin());
     };
 
-  // 1. model space triangles, bucketed by part and texture
-  std::map<std::pair<size_t,int32_t>,std::vector<LevelMesh::Vertex>> buckets;
+  // 1. model space triangles, bucketed by part, texture and environment map
+  const bool car = model.size()>3 && model.rfind("Car",0)==0 && model[3]>='1' && model[3]<='9';
+  std::map<std::tuple<size_t,int32_t,float>,std::vector<LevelMesh::Vertex>> buckets;
   for(size_t mi=0; mi<sb.meshes.size(); ++mi) {
     auto& m = sb.meshes[mi];
     if(m.model!=modelId || m.positions.empty())
@@ -48,13 +84,14 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
     if(part<0)
       continue;
     // mirrored nodes (scale -1) flip the winding
-    const bool mirrored = m.world.determinant3()<0;
+    const bool  mirrored = m.world.determinant3()<0;
+    const float env      = m.faces.empty() ? 0.f : environmentOf(m,car,res.pack());
     for(auto& f:m.faces) {
       const size_t n    = f.pos.size();
       auto         base = f.layer(rc::LayerTag::Base);
       if(n<3 || base==nullptr)
         continue;
-      auto& out  = buckets[{size_t(part),base->texture}];
+      auto& out  = buckets[{size_t(part),base->texture,env}];
       auto  vert = [&](size_t corner) {
         LevelMesh::Vertex v = {};
         const uint32_t pi = f.pos[corner];
@@ -85,7 +122,7 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
   for(size_t p=1; p<partList.size(); ++p) {
     rc::Vec3 mn = { 1e9f, 1e9f, 1e9f}, mx = {-1e9f,-1e9f,-1e9f};
     for(auto& [key,verts]:buckets) {
-      if(key.first!=p)
+      if(std::get<0>(key)!=p)
         continue;
       for(auto& v:verts) {
         mn = {std::min(mn.x,v.pos[0]),std::min(mn.y,v.pos[1]),std::min(mn.z,v.pos[2])};
@@ -98,12 +135,14 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
   // 3. one vertex buffer, part-relative positions
   std::vector<LevelMesh::Vertex> all;
   for(auto& [key,verts]:buckets) {
-    const rc::Vec3 pivot = partList[key.first].pivot;
+    const auto [part,texture,env] = key;
+    const rc::Vec3 pivot = partList[part].pivot;
     Batch b;
-    b.part  = key.first;
-    b.first = all.size();
-    b.count = verts.size();
-    if(auto t = sb.texture(key.second,modelId)) {
+    b.part   = part;
+    b.first  = all.size();
+    b.count  = verts.size();
+    b.envMap = env;
+    if(auto t = sb.texture(texture,modelId)) {
       std::string name = t->name;
       if(skin>0 && skin<4 && name.rfind("car_",0)==0 && name.find("skin")!=std::string::npos && name.back()=='1') {
         std::string other = name;
@@ -141,7 +180,8 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
     return (a.mode==rc::AlphaMode::Translucent) < (b.mode==rc::AlphaMode::Translucent);
     });
 
-  vbo = device.vbo(all);
+  envTex = &ScenePipelines::environment(res);
+  vbo    = device.vbo(all);
   Log::d("model \"",modelName,"\": ",all.size()/3," triangles, ",partList.size()-1," wheels, size ",
          bbox[1].x-bbox[0].x," x ",bbox[1].y-bbox[0].y," x ",bbox[1].z-bbox[0].z);
   }
@@ -176,7 +216,8 @@ void ModelMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
       current = &p;
       }
     LevelMesh::Push& pp = push[b.part];
-    pp.flags = (b.mode==rc::AlphaMode::Cutout) ? uint32_t(LevelMesh::F_Cutout) : 0u;
+    pp.flags  = (b.mode==rc::AlphaMode::Cutout) ? uint32_t(LevelMesh::F_Cutout) : 0u;
+    pp.envMap = b.envMap;
     const bool dirty = dirt>0 && b.dirt[0]!=nullptr;
     if(dirty) {
       pp.flags |= LevelMesh::F_Dirt;
@@ -188,6 +229,7 @@ void ModelMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
     enc.setBinding(2,dirty ? *b.dirt[0] : *b.tex);
     enc.setBinding(3,dirty ? *b.dirt[dirt<1 ? 0 : 1] : *b.tex);
     enc.setBinding(4,pso.noWater);
+    enc.setBinding(5,*envTex);
     enc.draw(vbo,b.first,b.count);
     }
   }

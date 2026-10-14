@@ -193,6 +193,9 @@ ChaseCamera::Car MainWindow::chaseCar() const {
   // RCCars.exe 0x500c1d: the boost and the gas keys, held
   const bool control = race && !race->holdCar() && !freeCamera;
   c.boost    = control && (keys[Event::K_LShift] || keys[Event::K_RShift]) && (keys[Event::K_W] || keys[Event::K_Up]);
+  // a person picking the car up holds the camera still (RCCars.exe 0x4f3640)
+  c.grabbed  = characters && characters->grabbedPlayer();
+  c.held     = characters && characters->holdingPlayer();
   return c;
   }
 

@@ -30,6 +30,9 @@ class CollisionMesh;
 // under the eye (0x500d60), the eye swings up round the car by CDT_AngleUp degrees (at CDT_AngleUpSpeed degrees/s),
 // and the view looks up by VisTurn degrees plus up to CDT_AngleUp_DIR_ADD while it is swung up (at
 // CDT_AngleUp_SPEED_DIR_ADD degrees/s). Those turns are only for the picture: the springs keep the unturned eye.
+// When a person picks the car up (0x5111f0 -> 0x4f3640), the eye jumps back to 2 m behind and at least 0.73 m up
+// for that one frame, then stands still (it only turns to follow the car) while the car is held and until 3 s after
+// it was taken; then the springs pull it back as usual (0x500a80).
 class ChaseCamera {
   public:
     // Settings\Camera.ini, "CAMERA" sliders
@@ -62,6 +65,8 @@ class ChaseCamera {
       rc::Vec3  velocity;      // m/s
       float spin  = 0;     // angular speed, rad/s
       bool  boost = false; // boost and gas held
+      bool  grabbed = false; // someone took the car in their hand in this update (Characters::grabbedPlayer)
+      bool  held    = false; // someone holds it (Characters::holdingPlayer)
       };
 
     ChaseCamera();
@@ -86,4 +91,7 @@ class ChaseCamera {
     float    extraBoost = 0;   // car +0x6e4
     float    swing      = 0;   // car +0x6ec, degrees the eye is swung up
     float    lookUp     = 0;   // car +0x6f0, degrees added to VisTurn
+    bool     held       = false; // car +0xe828: in someone's hand
+    bool     grabFrame  = false; // car +0xe82c: the update it was taken
+    float    sinceGrab  = 1e9f;  // car +0xe830, s
   };

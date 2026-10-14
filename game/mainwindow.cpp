@@ -612,7 +612,7 @@ void MainWindow::render() {
       if(characters)
         characterView->draw(enc,frameId,resources,*characters,push);
       if(traffic)
-        trafficView->draw(enc,*traffic,viewProj,push);
+        trafficView->draw(enc,frameId,*traffic,viewProj,push,level ? &level->collision() : nullptr);
       if(car) {
         const auto parts = carPartPoses();
         car->setDirt(effects->dirt());

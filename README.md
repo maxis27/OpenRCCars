@@ -580,6 +580,14 @@ lib/Tempest     silnik (submoduł git)
   takiego obiektu nie ma. W oryginale wyłącza ją `VIDEO_UseFog 0` w `Config.gm`, u nas jest zawsze. Efekty
   aut (kurz, bryzgi, spaliny, ślady opon, kilwater, piana) oryginał rysuje z włączoną mgłą, więc u nas też;
   ślady opon, mieszane „x2”, idą ku połowie koloru mgły, jak przebieg 0x463e70 dla takich mieszań.
+- **Szum morza** (kanał `water` z `RCCars.sb`: pętla `water.wav`, pełna głośność do 3 m, -20 dB w 10 m, dalej cisza;
+  0x522ed0, 0x522f60, 0x523140): gra bierze ostatnie znalezione morze (węzły z „more” w nazwie szukane w głąb,
+  dzieci węzła od najnowszego, 0x51eff0, 0x44ed80), czyli `more1`, a nie lagunę `more2` na beach_1. Dźwięk stoi
+  w narożniku obrysu tego morza najbliższym kamerze w płaszczyźnie xz, na wysokości `offset` z `WLOD_*` (oryginał
+  bierze to przesunięcie jako wysokość, więc na beach_2, gdzie morze leży na 1,54 m, dźwięk jest 1,5 m pod wodą).
+  Gdy promień tylko po wodzie (morze, strumienie, kałuże) z 10 m nad kamerą w dół na 20 m trafi wodę (0x535130),
+  dźwięk idzie pod kamerę: na tę wodę albo na kamerę, jeśli jest pod nią. Trasy bez morza (country_1/2/4, urban)
+  nie mają tego dźwięku, także nad strumieniami.
 - Rozpoznane, jeszcze nieprzeniesione: pluski w stałych miejscach tras (markery `water_splash_N` na beach_1,
   beach_3, country_3; 0x5272f0), fale `Water_Wave_New` i `BURST_MNG`.
 
@@ -598,8 +606,8 @@ lib/Tempest     silnik (submoduł git)
 5. ~~Dźwięk~~ (zrobione według `RCCars.exe`: kanały `SNCH` z `RCCars.sb` i `Sound\*.wav` z archiwum we własnym
    mikserze, silnik gracza i rywali, punkty kontrolne, turbo, hamulec, lot i lądowanie, toczenie się po
    nawierzchniach, uderzenia i otarcia, buksowanie, fale przy brzegu `water_splash_N`, wodospady `WATER_FALL_N`,
-   muzyka MP3 z `Tracks/` w kolejności z `Autoexec.gm`, głosy ludzi, mew i psów; brakuje szumu morza `water`
-   i ruchu ulicznego)
+   szum morza `water`, muzyka MP3 z `Tracks/` w kolejności z `Autoexec.gm`, głosy ludzi, mew i psów; brakuje
+   ruchu ulicznego)
 6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
    menu i zapisu rekordów)
 7. ~~Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`)~~

@@ -1,5 +1,6 @@
 #include "ambient.h"
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -8,7 +9,9 @@
 
 namespace rc {
 
-AmbientSounds::AmbientSounds(Mixer& mixer, SoundLibrary& lib, const SbScene& scene, const SliderFile& ini) {
+AmbientSounds::AmbientSounds(Mixer& mixer, SoundLibrary& lib, const SbScene& scene, const SliderFile& ini,
+                             std::vector<Vec3> coastPoints)
+  :coast(std::move(coastPoints)) {
   // RCCars.exe reads them in 1/100 (0x527d80 -> 0x532410)
   delay     = ini.real("TimeDelay",    100.f)/100.f;
   delayDisp = ini.real("TimeDelayDisp", 25.f)/100.f;
@@ -32,9 +35,11 @@ AmbientSounds::AmbientSounds(Mixer& mixer, SoundLibrary& lib, const SbScene& sce
       break;
     falls.push_back({m->position(),BankChannel(mixer,lib,"water_fall")});
     }
+  if(!coast.empty())
+    sea = BankChannel(mixer,lib,"water");
   }
 
-void AmbientSounds::update(const Vec3& ear, const Vec3& right, float dt) {
+void AmbientSounds::update(const Vec3& ear, const Vec3& right, float dt, std::optional<float> waterAtEar) {
   auto place = [&](BankChannel& ch, const Vec3& at) {
     const Vec3  to = at-ear;
     const float d  = to.length();
@@ -67,6 +72,26 @@ void AmbientSounds::update(const Vec3& ear, const Vec3& right, float dt) {
     place(f.channel,f.at);
     f.channel.play(0);
     }
+  if(sea.valid()) {
+    Vec3 at;
+    if(waterAtEar) {
+      // over water: right below the camera, on the water or on the camera if it is under water
+      at = {ear.x,std::min(ear.y,*waterAtEar),ear.z};
+      }
+    else {
+      // the nearest corner of the coast, by xz only
+      float best = -1;
+      for(auto& p:coast) {
+        const float dx = p.x-ear.x, dz = p.z-ear.z, d = dx*dx+dz*dz;
+        if(best<0 || d<best) {
+          best = d;
+          at   = p;
+          }
+        }
+      }
+    place(sea,at);
+    sea.play(0);
+    }
   }
 
 void AmbientSounds::stop() {
@@ -76,6 +101,8 @@ void AmbientSounds::stop() {
     }
   for(auto& f:falls)
     f.channel.stop(true);
+  if(sea.valid())
+    sea.stop(true);
   }
 
 }

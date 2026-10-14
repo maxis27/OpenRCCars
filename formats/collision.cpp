@@ -286,6 +286,14 @@ bool CollisionMesh::isWater(const Triangle& t) const {
   return t.surface==Surface::Water && !waterfall[t.mesh];
   }
 
+std::optional<float> CollisionMesh::highestWater(const Vec3& at, float range) const {
+  if(!water)
+    return std::nullopt;
+  if(auto h = raycast(at+Vec3{0,range,0},Vec3{0,-1,0},2.f*range,Layer::Water))
+    return waterSurface(tris[h->triangle].mesh,h->point);
+  return std::nullopt;
+  }
+
 std::optional<float> CollisionMesh::waterLevel(const Vec3& at, float range, uint32_t* mesh) const {
   if(!water)
     return std::nullopt;

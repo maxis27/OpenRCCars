@@ -13,10 +13,13 @@
 #include <memory>
 
 #include "arrow.h"
+#include "formats/fog.h"
 #include "camera.h"
+#include "chasecamera.h"
 #include "effects.h"
 #include "hud.h"
 #include "physics/characters.h"
+#include "physics/traffic.h"
 #include "physics/checkpoints.h"
 #include "physics/opponents.h"
 #include "physics/race.h"
@@ -25,6 +28,7 @@
 #include "resources.h"
 #include "sounds.h"
 #include "world/characters.h"
+#include "world/traffic.h"
 #include "world/modelmesh.h"
 #include "world/level.h"
 #include "world/objects.h"
@@ -58,6 +62,7 @@ class MainWindow : public Tempest::Window {
     std::vector<rc::Mat4> carPartPoses() const;
     std::vector<rc::Mat4> opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const;
     Hud::Info             hudInfo() const;
+    ChaseCamera::Car      chaseCar() const;
     // the way on for the arrow: the point it shows, relative to the car's heading, radians, positive = left
     float                 wayDirection() const;
     DirectionArrow::Input arrowInput() const;
@@ -79,10 +84,13 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<Objects>          objects; // props: bodies in `physics`
     std::unique_ptr<rc::Characters>   characters; // people and animals: bodies in `physics`
     std::unique_ptr<CharacterView>    characterView;
+    std::unique_ptr<rc::Traffic>      traffic;    // road cars: bodies in `physics`
+    std::unique_ptr<TrafficView>      trafficView;
     std::unique_ptr<rc::Vehicle>      vehicle;
     std::unique_ptr<rc::Checkpoints>  checkpoints;
     std::unique_ptr<rc::Race>         race;
     rc::ResetVolumes                  resetVolumes; // refers to the level's scene
+    rc::Fog                           fog;
     // declared after `checkpoints` and `physics`: they refer to both
     std::unique_ptr<rc::Opponents>    opponents;
     rc::Opponents::Level              aiLevel = rc::Opponents::Level::Normal; // O: off, easy, normal, hard
@@ -105,7 +113,7 @@ class MainWindow : public Tempest::Window {
     bool                    jumpPressed = false;
     float                   upsideDown = 0; // seconds on the roof or side, then the car is put back
     Camera                  camera;
-    float                   chaseYaw = 0;   // smoothed heading for the chase camera, degrees
+    ChaseCamera             chase;          // the camera behind the car (Settings\Camera.ini)
     bool                    freeCamera = false;
     bool                    showCollision = false; // K: collision debug overlay
     bool                    showGates     = false; // G: checkpoint gates outlined (debug)

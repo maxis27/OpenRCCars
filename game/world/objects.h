@@ -14,8 +14,8 @@ namespace rc { class PhysicsWorld; }
 
 // Objects placed on one track (INST nodes). For now the props from stone.sb: cans, bottles, balls, buckets,
 // cones ..., rigid bodies the car knocks around. Characters, animals and road traffic (people.sb, AIChars.sb,
-// Roadcar.sb) move in the original along paths, with animations and AI; they are left out until those are done
-// (their meshes stand in a bind pose and several of them share one spawn point).
+// Roadcar.sb) move along paths, with animations and AI: rc::Characters and rc::Traffic, drawn by CharacterView and
+// TrafficView.
 class Objects {
   public:
     Objects(Tempest::Device& device, Resources& res, rc::ObjectLibrary& library, const rc::SbScene& track,

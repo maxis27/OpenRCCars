@@ -13,11 +13,12 @@ const uint F_DIRT     = 128u; // a car's paint: texMask/texBase2 are its dirt te
 
 layout(push_constant, std430) uniform Push {
   mat4  viewProj;
-  vec4  cameraPos;    // xyz, w = fog distance
+  vec4  cameraPos;    // xyz, w = fog density (formats/fog.h)
   vec4  sunDir;       // xyz, w = lightmap scale
   uint  flags;
   float time;         // seconds; with F_DIRT how dirty the car is
   float envMap;       // strength of the environment map (texEnv), 0 = none
+  uint  fogColor;     // 0x00RRGGBB
   vec4  carPos;       // the player's car
   } push;
 

@@ -30,6 +30,8 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name)
   effects  = std::make_unique<Effects>(device,res);
   sounds   = std::make_unique<Sounds>(res);
   characterView = std::make_unique<CharacterView>(device);
+  trafficView   = std::make_unique<TrafficView>(device,res);
+  chase    = ChaseCamera(ChaseCamera::Settings::load([&res](const std::string& f){ return res.pack().read(f); }));
   loadCar(0);
   loadLevel(name);
   sounds->startMusic();
@@ -46,6 +48,7 @@ void MainWindow::loadLevel(const std::string& name) {
     auto next = std::make_unique<Level>(device,resources,name);
     vehicle.reset();
     opponents.reset();
+    traffic.reset();
     characters.reset();
     objects.reset();
     physics.reset();
@@ -55,8 +58,9 @@ void MainWindow::loadLevel(const std::string& name) {
     checkpoints = std::make_unique<rc::Checkpoints>(level->scene(),level->collision());
     race        = std::make_unique<rc::Race>(*checkpoints,laps);
     resetVolumes = rc::ResetVolumes(level->scene());
+    fog.setTarget(rc::FogParams::load(resources.pack(),name));
     hud->setTrack(name);
-    sounds->setTrack(level->scene());
+    sounds->setTrack(level->scene(),level->mesh().seaCoast());
     effects->setTrack(level->scene(),level->mesh().mainSea());
     camera  = level->startCamera();
     setupPhysics();
@@ -122,6 +126,14 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
     catch(const std::exception& e) {
       Log::e("characters: ",e.what());
       }
+    try {
+      traffic = std::make_unique<rc::Traffic>(*physics,library,level->scene(),level->name(),
+                                              [this](const std::string& f){ return resources.pack().read(f); });
+      Log::i("road cars: ",traffic->size());
+      }
+    catch(const std::exception& e) {
+      Log::e("road cars: ",e.what());
+      }
     }
   if(opponents==nullptr)
     setupOpponents();
@@ -145,12 +157,14 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
       opponents->restart();
     if(characters)
       characters->restart();
+    if(traffic)
+      traffic->restart();
     playerFinish = -1;
     paused       = false;
     }
   lastCarPos = carPose.translation();
   resetVolumes.reset();
-  chaseYaw = level->startCamera().yaw;
+  chase.reset(chaseCar());
   Log::i("car ",Cars[carId],", upgrade ",upgrade,": top speed ",prm.topSpeed*3.6f," km/h, grip ",prm.gripFront);
   }
 
@@ -167,8 +181,19 @@ void MainWindow::respawnCar() {
   lastCarPos = carPose.translation();
   upsideDown = 0;
   resetVolumes.reset();
-  const rc::Vec3 f = carPose.vector({0,0,1});
-  chaseYaw = std::atan2(f.x,f.z)*180.f/3.14159265f;
+  chase.reset(chaseCar());
+  }
+
+ChaseCamera::Car MainWindow::chaseCar() const {
+  ChaseCamera::Car c;
+  c.pose     = carPose;
+  c.centre   = vehicle ? vehicle->centre()   : carPose.translation();
+  c.velocity = vehicle ? vehicle->velocity() : rc::Vec3{};
+  c.spin     = vehicle ? vehicle->localSpin().length() : 0.f;
+  // RCCars.exe 0x500c1d: the boost and the gas keys, held
+  const bool control = race && !race->holdCar() && !freeCamera;
+  c.boost    = control && (keys[Event::K_LShift] || keys[Event::K_RShift]) && (keys[Event::K_W] || keys[Event::K_Up]);
+  return c;
   }
 
 Hud::Info MainWindow::hudInfo() const {
@@ -293,7 +318,7 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
   if(e.key==Event::K_V) {
     freeCamera = !freeCamera;
     if(freeCamera)
-      camera.chase(carPose,ChaseDistance,ChaseHeight); // free flight starts from the chase view
+      chase.apply(chaseCar(),nullptr,0,camera); // free flight starts from the chase view
     }
   if(e.key==Event::K_K)
     showCollision = !showCollision;
@@ -359,6 +384,7 @@ void MainWindow::tick(float dt) {
   sounds->setPaused(paused);
   if(paused)
     return;
+  fog.tick(dt);
   if(vehicle!=nullptr) {
     rc::Vehicle::Input in;
     if(race->holdCar()) {
@@ -388,22 +414,23 @@ void MainWindow::tick(float dt) {
       opponents->update(dt,!race->holdCar(),carPose.translation(),checkpoints->laps(),playerFinish>=0,race->time(),
                         race->laps());
     physics->step(dt);
-    // the people and animals, after the step: a person holding the car puts it in the hand
-    if(characters) {
-      std::vector<rc::Characters::Car> others;
-      for(size_t i=0; opponents && i<opponents->size(); ++i) {
-        const rc::Mat4 p = (*opponents)[i].pose();
-        others.push_back({p.translation(),p.vector({0,0,1})*(*opponents)[i].speed()});
-        }
-      if(characters->update(dt,vehicle.get(),others)) {
-        hud->hit(true);
-        Log::i("great hit (character) at ",Hud::formatTime(race->time()));
-        }
-      // an opponent that ran into someone drives on by itself (RCCars.exe 0x534340 .. -> 0x4fd9d0)
-      for(size_t i=0; i<others.size(); ++i)
-        if(others[i].hit)
-          (*opponents)[i].knock();
+    // the people and animals and the road cars, after the step: a person holding the car puts it in the hand
+    std::vector<rc::Characters::Car> others;
+    for(size_t i=0; opponents && i<opponents->size(); ++i) {
+      const rc::Mat4 p = (*opponents)[i].pose();
+      others.push_back({p.translation(),p.vector({0,0,1})*(*opponents)[i].speed()});
       }
+    if(characters && characters->update(dt,vehicle.get(),others)) {
+      hud->hit(true);
+      Log::i("great hit (character) at ",Hud::formatTime(race->time()));
+      }
+    if(traffic)
+      traffic->update(dt,!race->holdCar(),vehicle.get(),camera.position,others);
+    // an opponent that ran into someone or something drives on by itself (RCCars.exe 0x534340, 0x534880 ..
+    // -> 0x4fd9d0)
+    for(size_t i=0; i<others.size(); ++i)
+      if(others[i].hit)
+        (*opponents)[i].knock();
     carPose = vehicle->pose();
     const rc::Vec3 at = carPose.translation();
     const size_t   was = checkpoints->next();
@@ -457,17 +484,9 @@ void MainWindow::tick(float dt) {
     }
 
   if(!freeCamera) {
-    // follow the heading with a lag, ignoring roll and pitch
-    const rc::Vec3 f = carPose.vector({0,0,1});
-    if(std::abs(f.x)+std::abs(f.z)>1e-3f) {
-      const float yaw = std::atan2(f.x,f.z)*180.f/3.14159265f;
-      float d = yaw-chaseYaw;
-      while(d> 180.f) d -= 360.f;
-      while(d<-180.f) d += 360.f;
-      chaseYaw += d*std::min(1.f,dt*5.f);
-      }
-    const rc::Mat4 target = rc::Mat4::translate(carPose.translation())*rc::Mat4::rotate(1,chaseYaw);
-    camera.chase(target,ChaseDistance,ChaseHeight);
+    const ChaseCamera::Car c = chaseCar();
+    chase.update(c,dt);
+    chase.apply(c,&level->collision(),dt,camera);
     level->keepAboveWater(camera,time);
     return;
     }
@@ -512,11 +531,13 @@ void MainWindow::tickSounds(float dt) {
   // the computer's cars and the water, heard from the camera
   const rc::Vec3 ear   = camera.position;
   const rc::Vec3 right = camera.right();
-  sounds->tickAmbient(ear,right,dt);
+  sounds->tickAmbient(ear,right,dt,level->collision().highestWater(ear,10.f));
   if(characters)
     sounds->tickCharacters(*characters,ear,right);
   for(auto& g:effects->gunSounds())
     sounds->playAt(g.kind==rc::fx::Gunfire::Sound::Burst ? "burst" : "bullet",g.at,ear,right);
+  if(traffic)
+    sounds->tickTraffic(*traffic,ear,right);
   for(size_t i=0; opponents && i<opponents->size() && i<aiSounds.size(); ++i) {
     const auto&    o  = (*opponents)[i];
     const rc::Vec3 to = o.pose().translation()-ear;
@@ -570,7 +591,8 @@ void MainWindow::render() {
     push.cameraPos[0] = camera.position.x;
     push.cameraPos[1] = camera.position.y;
     push.cameraPos[2] = camera.position.z;
-    push.cameraPos[3] = 250.f;                 // fog distance
+    push.cameraPos[3] = fog.current().density;
+    push.fogColor     = fog.current().color & 0xffffffu;
     push.sunDir[0] = 0.4f; push.sunDir[1] = 0.8f; push.sunDir[2] = 0.3f;
     push.sunDir[3] = 1.0f;                     // lightmap scale
     push.time      = time;
@@ -589,6 +611,8 @@ void MainWindow::render() {
         objects->draw(enc,viewProj,push);
       if(characters)
         characterView->draw(enc,frameId,resources,*characters,push);
+      if(traffic)
+        trafficView->draw(enc,*traffic,viewProj,push);
       if(car) {
         const auto parts = carPartPoses();
         car->setDirt(effects->dirt());
@@ -604,6 +628,7 @@ void MainWindow::render() {
           m->second->draw(enc,viewProj,push,o.pose(),&parts);
           }
         }
+      effects->setFog(push.cameraPos[3],push.fogColor);
       if(vehicle)
         effects->drawTracks(enc,frameId,viewProj,camera.position);
       if(level)

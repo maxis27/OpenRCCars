@@ -76,6 +76,7 @@ struct CarParams {
   float   axleLength     = 0.089f; // m, lenAxe (0.05..0.2 m)
   float   armUpMax       = 0.f;    // degrees, angleProcUpMax (0..90)
   float   armDownMax     = 0.f;    // degrees, angleProcDownMax (0..90)
+  float   strutLength    = 0.0791f; // m the Overkill's shock absorbers reach (WheelsVisual.crs SpringLength, 0.01..0.1 m)
 
   // tires (RCCars.exe, tires<N>.ini, 0x4f7fa0): grip as the sideways acceleration the tires can stop, 5 x grip at
   // the front and 10 x grip at the rear (see Vehicle::tires), times the TIRES upgrade

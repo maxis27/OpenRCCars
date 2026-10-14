@@ -49,6 +49,9 @@ Mat4 CarRig::Pose::part(std::string_view name, const Vec3& pivot) const {
 
 CarRig::CarRig(const CarGeometry& g, const CarParams& prm)
   :geom(g), axleLength(prm.axleLength), armUp(prm.armUpMax), armDown(prm.armDownMax) {
+  for(auto& st:geom.struts)
+    if(st.axis.length()>0)
+      st.end = st.pivot+st.axis*prm.strutLength;
   // 0x504820 lets the Overkill's axles swing 30 degrees down, 0x5068e0 the Hummer's 20
   hummer   = prm.car==3;
   droopMax = hummer ? 20.f : 30.f;

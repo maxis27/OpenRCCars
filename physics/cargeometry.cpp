@@ -198,19 +198,11 @@ CarGeometry rc::carGeometry(const SbScene& sb, std::string_view model) {
           }
         }
       } else {
-      // SPRING_FRONT_<n> / SPRING_REAR_<n> (Overkill): along its Z axis, as long as its meshes, to the axle
-      const Vec3 axis = m.world.vector({0,0,1}).normalized();
-      float      ext  = 0;
-      for(size_t ci=0; ci<sb.meshes.size(); ++ci) {
-        auto& c = sb.meshes[ci];
-        if(c.model!=modelId || !under(int32_t(ci),int32_t(mi)))
-          continue;
-        for(auto& v:c.positions)
-          ext = std::max(ext,Vec3::dot(c.world.point(v)-st.pivot,axis));
-        }
-      st.end    = st.pivot+axis*ext;
+      // SPRING_FRONT_<n> / SPRING_REAR_<n> (Overkill): along its Z axis to the axle (CarRig gives the length)
+      st.axis   = m.world.vector({0,0,1}).normalized();
+      st.end    = st.pivot;
       st.anchor = m.name.find("FRONT")!=std::string::npos ? "FRONT_AXLE" : "REAR_AXLE";
-      if(ext<=0 || node(st.anchor)<0)
+      if(node(st.anchor)<0)
         st.anchor.clear();
       }
     if(!st.anchor.empty())

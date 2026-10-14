@@ -104,6 +104,9 @@ CarParams CarParams::load(PackFile& pack, int32_t car, int32_t upgrade) {
   p.axleLength    = mapped(spr,"lenAxe",0.05f,0.2f,0.089f);
   p.armUpMax      = mapped(spr,"angleProcUpMax",0,90,0);
   p.armDownMax    = mapped(spr,"angleProcDownMax",0,90,0);
+  // WheelsVisual.crs (0x504470, shipped only compiled): SpringLength 77 -> 0.0791 m
+  if(auto e = pack.find("Settings\\WheelsVisual.crs"))
+    p.strutLength = mapped(SliderFile::parseCrs(pack.read(*e)),"SpringLength",0.01f,0.1f,p.strutLength);
 
   // tires<N>.ini (0x4f7fa0): CoeffFrontTires / CoeffRearTires 7/9/7 of 1..10 -> 0.7/0.9/0.7, angleDriftOn 10 -> 10
   // degrees, coeffDriftRear 49 -> 0.56

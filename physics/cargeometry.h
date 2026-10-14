@@ -41,10 +41,11 @@ struct CarGeometry {
     };
   std::vector<Axle>  axles;
   // springs fixed to the body (SPRING_FRONT_1.., Spring1_2..) that reach from `pivot` to `end`, a point that moves
-  // with the node `anchor` (an axle or the Buggy's lower arm)
+  // with the node `anchor` (an axle or the Buggy's lower arm). The Overkill's have no end in the model: they reach
+  // CarParams::strutLength along `axis`, the node's Z axis (zero for the others)
   struct Strut {
     std::string name;
-    Vec3        pivot, end;
+    Vec3        pivot, end, axis;
     std::string anchor;
     };
   std::vector<Strut> struts;

@@ -358,7 +358,8 @@ lib/Tempest     silnik (submoduł git)
     przy 20° (0x14edd4c). Wahacze Buggy (`AXLE_*_UP`, `AXLE_*_DOWN`)
     obracają się tak, by zwrotnica z kołem (`AXLE_*_WHEEL`) była na wysokości koła, najwyżej `angleProcUpMax`
     w górę i `angleProcDownMax` w dół (0..90°, 35,5° i 26,4°). Przednie koła skręcają z wspornikami
-    (`AXLE_FRONT_*_SUPPORT`), a amortyzatory między nadwoziem a osią lub wahaczem obracają się i rozciągają;
+    (`AXLE_FRONT_*_SUPPORT`), a amortyzatory między nadwoziem a osią lub wahaczem obracają się i rozciągają
+    (Overkill: sięgają `SpringLength` z `WheelsVisual.crs`, 0,01..0,1 m, 77 → 0,079 m, wzdłuż osi Z węzła);
   - napęd (0x4eea50): siła silnika (najwyżej 20 × przyczepność tyłu) po połowie na tylne koła stojące na
     podłożu nachylonym mniej niż 46°, wzdłuż podłoża. Klawisz hamulca hamuje i przy |v| ≤ 2 m/s wrzuca wsteczny,
     gaz tak samo w drugą stronę (0x4ee5e0); hamując silnik nie ciągnie;

@@ -118,6 +118,9 @@ class Loader {
       else if(c.is("COLL")) {
         scene.collision = loadCollision(c);
         }
+      else if(c.is("ASEQ")) {
+        sequence(c);
+        }
       else if(c.is("MODL")) {
         const int32_t prev = model;
         model = int32_t(scene.models.size());
@@ -162,9 +165,29 @@ class Loader {
           case 0x03:
             m.name = std::string(ch.str());
             break;
+          case 0x08:
+            if(ch.size()>=8)
+              m.node = ch.i32(4);
+            break;
           case 0x0b:
+            for(int i=0; i<9; ++i)
+              m.trs[i] = ch.f32(4+size_t(i)*4);
             m.local = readTransform(ch);
             m.world = parentWorld*m.local;
+            break;
+          case 0x38:
+            if(ch.size()>=40) {
+              float v[9];
+              for(int i=0; i<9; ++i)
+                v[i] = ch.f32(4+size_t(i)*4);
+              m.bindLocal = Mat4::translate({v[0],v[1],v[2]}) *
+                            Mat4::rotate(2,v[5]) * Mat4::rotate(1,v[4]) * Mat4::rotate(0,v[3]) *
+                            Mat4::scale({v[6],v[7],v[8]});
+              m.hasBind   = true;
+              }
+            break;
+          case 0x2a:
+            skin(ch,m);
             break;
           case 0x11:
             readArray(ch,m.positions);
@@ -176,7 +199,9 @@ class Loader {
             faces(ch,m);
             break;
           case 0x00:
-            if(ch.type==0x92)
+            if(ch.type==0x92 && ch.is("ANIM"))
+              anim(ch,m);
+            else if(ch.type==0x92)
               childNodes.push_back(ch);
             break;
           }
@@ -184,6 +209,85 @@ class Loader {
       const Mat4 world = scene.meshes[size_t(self)].world;
       for(auto& ch:childNodes)
         node(ch,self,world);
+      }
+
+    static void skin(const Chunk& list, SbMesh& m) {
+      for(auto& v:list.children(4)) {
+        SbSkinVertex sv;
+        std::vector<uint32_t> nodes;
+        std::vector<float>    weights;
+        for(auto& e:v.children(4)) {
+          if(e.id==0x2c) readArray(e,nodes);
+          if(e.id==0x2d) readArray(e,weights);
+          }
+        float sum = 0;
+        for(size_t i=0; i<nodes.size() && i<weights.size() && sv.count<4; ++i) {
+          sv.node  [sv.count] = uint16_t(nodes[i]);
+          sv.weight[sv.count] = weights[i];
+          sum += weights[i];
+          ++sv.count;
+          }
+        for(uint8_t i=0; i<sv.count; ++i)
+          sv.weight[i] = sum>0 ? sv.weight[i]/sum : 1.f/float(sv.count);
+        m.skin.push_back(sv);
+        }
+      }
+
+    static void anim(const Chunk& c, SbMesh& m) {
+      SbAnim  a;
+      a.valid = true;
+      int32_t index = -1;
+      for(auto& ch:c.children()) {
+        if(ch.id==0x08 && ch.size()>=8)
+          index = ch.i32(4);
+        if(ch.id==0x10 && ch.size()>=40)
+          for(int i=0; i<9; ++i)
+            a.rest[i] = ch.f32(4+size_t(i)*4);
+        if(ch.type==0x92 && ch.is("SPLN")) {
+          SbChannel sc;
+          bool      known = false;
+          for(auto& e:ch.children()) {
+            if(e.id==0x57 && e.size()>=4) {
+              // FourCC stored reversed, like node tags
+              const uint8_t* d = e.data();
+              const char     n[4] = {char(d[3]),char(d[2]),char(d[1]),char(d[0])};
+              static const char* names[] = {"TRNX","TRNY","TRNZ","ROTX","ROTY","ROTZ","SCLX","SCLY","SCLZ"};
+              for(int i=0; i<SbChannel::Count; ++i)
+                if(std::memcmp(n,names[i],4)==0) {
+                  sc.target = SbChannel::Target(i);
+                  known     = true;
+                  }
+              }
+            if(e.id==0x5d && e.type==0x86)
+              for(auto& k:e.children(4)) {
+                if(k.id!=0x5b || k.size()<12)
+                  continue;
+                sc.times .push_back(k.f32(4));
+                sc.values.push_back(k.f32(8));
+                }
+            }
+          if(known && !sc.times.empty())
+            a.channels.push_back(std::move(sc));
+          }
+        }
+      if(index<0 || index>1024)
+        return;
+      if(m.anims.size()<=size_t(index))
+        m.anims.resize(size_t(index)+1);
+      m.anims[size_t(index)] = std::move(a);
+      }
+
+    void sequence(const Chunk& c) {
+      SbSequence q;
+      q.model = model;
+      for(auto& ch:c.children()) {
+        if(ch.id==0x03 && ch.type!=0x92) q.name = std::string(ch.str());
+        if(ch.id==0x08 && ch.size()>=8)  q.index  = ch.i32(4);
+        if(ch.id==0x50 && ch.size()>=4)  q.fps    = ch.u32();
+        if(ch.id==0x51 && ch.size()>=4)  q.frames = ch.u32();
+        if(ch.id==0x52 && ch.size()>=4)  q.speed  = ch.f32();
+        }
+      scene.sequences.push_back(std::move(q));
       }
 
     void faces(const Chunk& list, SbMesh& m) {
@@ -268,6 +372,8 @@ class Loader {
         if(ch.id==0xd4)
           for(size_t i=0; i+4<=ch.size(); i+=4)
             v.data.push_back(ch.f32(i));
+        if(ch.is("SCRI"))
+          v.script = scriptText(ch);
         }
       scene.volumes.push_back(std::move(v));
       }
@@ -281,22 +387,51 @@ class Loader {
         if(ch.id==0x0a && ch.size()>=4)  in.kind   = ch.u32();
         if(ch.id==0x72)                  in.model  = std::string(ch.str());
         if(ch.id==0x74)                  in.source = std::string(ch.str());
+        if(ch.type==0x92 && ch.is("MARK")) {
+          // the instance's own markers have world transforms
+          SbScene tmp;
+          Loader  ld(tmp);
+          ld.marker(ch,Mat4::identity());
+          for(auto& mk:tmp.markers)
+            in.markers.push_back(std::move(mk));
+          }
+        if(ch.type==0x92 && ch.is("EVOL")) {
+          SbScene tmp;
+          Loader  ld(tmp);
+          ld.volume(ch);
+          for(auto& v:tmp.volumes)
+            in.volumes.push_back(std::move(v));
+          }
+        if(ch.type==0x92 && ch.is("SCRI")) {
+          SbScene tmp;
+          Loader  ld(tmp);
+          ld.script(ch);
+          for(auto& sc:tmp.scripts)
+            in.script += sc.text;
+          }
         }
       scene.instances.push_back(std::move(in));
+      }
+
+    static std::string scriptText(const Chunk& c) {
+      std::string text;
+      for(auto& ch:c.children())
+        // u32 length, then the text
+        if(ch.id==0x7e && ch.size()>=4) {
+          const size_t n = std::min<size_t>(ch.u32(),ch.size()-4);
+          text.assign(reinterpret_cast<const char*>(ch.data()+4),n);
+          while(!text.empty() && text.back()=='\0')
+            text.pop_back();
+          }
+      return text;
       }
 
     void script(const Chunk& c) {
       SbScript s;
       s.model = model;
+      s.text  = scriptText(c);
       for(auto& ch:c.children()) {
         if(ch.id==0x03 && ch.type!=0x92) s.name = std::string(ch.str());
-        // u32 length, then the text
-        if(ch.id==0x7e && ch.size()>=4) {
-          const size_t n = std::min<size_t>(ch.u32(),ch.size()-4);
-          s.text.assign(reinterpret_cast<const char*>(ch.data()+4),n);
-          while(!s.text.empty() && s.text.back()=='\0')
-            s.text.pop_back();
-          }
         }
       scene.scripts.push_back(std::move(s));
       }
@@ -360,6 +495,33 @@ bool SbVolume::contains(const Vec3& p) const {
       in = !in;
     }
   return in;
+  }
+
+const SbMarker* SbInstance::marker(std::string_view name) const {
+  for(auto& m:markers)
+    if(m.name==name)
+      return &m;
+  return nullptr;
+  }
+
+const SbVolume* SbInstance::volume(std::string_view name) const {
+  for(auto& v:volumes)
+    if(v.name==name)
+      return &v;
+  return nullptr;
+  }
+
+float SbChannel::value(float t) const {
+  if(times.empty())
+    return 0;
+  if(t<=times.front())
+    return values.front();
+  if(t>=times.back())
+    return values.back();
+  const size_t i = size_t(std::upper_bound(times.begin(),times.end(),t)-times.begin());
+  const float  t0 = times[i-1], t1 = times[i];
+  const float  k  = t1>t0 ? (t-t0)/(t1-t0) : 0.f;
+  return values[i-1] + (values[i]-values[i-1])*k;
   }
 
 const SbInstance* SbScene::instance(std::string_view name) const {

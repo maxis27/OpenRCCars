@@ -29,6 +29,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name)
   arrow    = std::make_unique<DirectionArrow>(device,res);
   effects  = std::make_unique<Effects>(device,res);
   sounds   = std::make_unique<Sounds>(res);
+  characterView = std::make_unique<CharacterView>(device);
   loadCar(0);
   loadLevel(name);
   sounds->startMusic();
@@ -45,6 +46,7 @@ void MainWindow::loadLevel(const std::string& name) {
     auto next = std::make_unique<Level>(device,resources,name);
     vehicle.reset();
     opponents.reset();
+    characters.reset();
     objects.reset();
     physics.reset();
     race.reset();
@@ -52,6 +54,7 @@ void MainWindow::loadLevel(const std::string& name) {
     level   = std::move(next);
     checkpoints = std::make_unique<rc::Checkpoints>(level->scene(),level->collision());
     race        = std::make_unique<rc::Race>(*checkpoints,laps);
+    resetVolumes = rc::ResetVolumes(level->scene());
     hud->setTrack(name);
     sounds->setTrack(level->scene());
     camera  = level->startCamera();
@@ -89,6 +92,7 @@ void MainWindow::setupOpponents() {
     Log::e("opponents: ",e.what());
     return;
     }
+  opponents->setTrack(level->scene());
   for(size_t i=0; i<opponents->size(); ++i) {
     auto& o   = (*opponents)[i];
     auto& m   = aiMeshes[{o.car,o.skin}];
@@ -109,6 +113,14 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
   if(physics==nullptr) {
     physics = std::make_unique<rc::PhysicsWorld>(level->collision());
     objects = std::make_unique<Objects>(device,resources,library,level->scene(),*physics);
+    try {
+      characters = std::make_unique<rc::Characters>(*physics,library,level->scene(),level->name(),
+                                                    [this](const std::string& f){ return resources.pack().read(f); });
+      Log::i("characters: ",characters->size());
+      }
+    catch(const std::exception& e) {
+      Log::e("characters: ",e.what());
+      }
     }
   if(opponents==nullptr)
     setupOpponents();
@@ -130,10 +142,13 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
     besideDone  = true;
     if(opponents)
       opponents->restart();
+    if(characters)
+      characters->restart();
     playerFinish = -1;
     paused       = false;
     }
   lastCarPos = carPose.translation();
+  resetVolumes.reset();
   chaseYaw = level->startCamera().yaw;
   Log::i("car ",Cars[carId],", upgrade ",upgrade,": top speed ",prm.topSpeed*3.6f," km/h, grip ",prm.gripFront);
   }
@@ -143,13 +158,14 @@ void MainWindow::respawnCar() {
     return;
   carPose = checkpoints->respawn(car->bboxMin().y);
   vehicle->reset(carPose);
-  effects->clear();
+  effects->clear(true);
   sounds->play("Checkpoint","cp_reset");
   besideDone = true;
   if(opponents)
     opponents->playerMoved();
   lastCarPos = carPose.translation();
   upsideDown = 0;
+  resetVolumes.reset();
   const rc::Vec3 f = carPose.vector({0,0,1});
   chaseYaw = std::atan2(f.x,f.z)*180.f/3.14159265f;
   }
@@ -371,6 +387,22 @@ void MainWindow::tick(float dt) {
       opponents->update(dt,!race->holdCar(),carPose.translation(),checkpoints->laps(),playerFinish>=0,race->time(),
                         race->laps());
     physics->step(dt);
+    // the people and animals, after the step: a person holding the car puts it in the hand
+    if(characters) {
+      std::vector<rc::Characters::Car> others;
+      for(size_t i=0; opponents && i<opponents->size(); ++i) {
+        const rc::Mat4 p = (*opponents)[i].pose();
+        others.push_back({p.translation(),p.vector({0,0,1})*(*opponents)[i].speed()});
+        }
+      if(characters->update(dt,vehicle.get(),others)) {
+        hud->hit(true);
+        Log::i("great hit (character) at ",Hud::formatTime(race->time()));
+        }
+      // an opponent that ran into someone drives on by itself (RCCars.exe 0x534340 .. -> 0x4fd9d0)
+      for(size_t i=0; i<others.size(); ++i)
+        if(others[i].hit)
+          (*opponents)[i].knock();
+      }
     carPose = vehicle->pose();
     const rc::Vec3 at = carPose.translation();
     const size_t   was = checkpoints->next();
@@ -407,9 +439,13 @@ void MainWindow::tick(float dt) {
       vehicle->recover();
       upsideDown = 0;
       }
-    // drowned or fell off the world: back to the last checkpoint
-    auto& grid = level->scene().collision;
-    if(vehicle->drowned() || (!grid.empty() && carPose.translation().y<grid.min.y-20.f)) {
+    // back to the last checkpoint (RCCars.exe 0x508160): out of the track's collision box (sideways, or more
+    // than 0.1 m under it), drowned, or a while in a reset volume
+    const auto&    grid = level->scene().collision;
+    const rc::Vec3 pos  = carPose.translation();
+    const bool     out  = !grid.empty() && (pos.x<grid.min.x || pos.x>grid.max.x || pos.z<grid.min.z ||
+                                            pos.z>grid.max.z || pos.y<grid.min.y-0.1f);
+    if(out || vehicle->drowned() || resetVolumes.tick(pos,dt)) {
       respawnCar();
       }
     tickSounds(dt);
@@ -471,6 +507,8 @@ void MainWindow::tickSounds(float dt) {
   const rc::Vec3 ear   = camera.position;
   const rc::Vec3 right = camera.right();
   sounds->tickAmbient(ear,right,dt);
+  if(characters)
+    sounds->tickCharacters(*characters,ear,right);
   for(size_t i=0; opponents && i<opponents->size() && i<aiSounds.size(); ++i) {
     const auto&    o  = (*opponents)[i];
     const rc::Vec3 to = o.pose().translation()-ear;
@@ -541,8 +579,11 @@ void MainWindow::render() {
         level->mesh().draw(enc,push,LevelMesh::Pass::Opaque);
       if(objects)
         objects->draw(enc,viewProj,push);
+      if(characters)
+        characterView->draw(enc,frameId,resources,*characters,push);
       if(car) {
         const auto parts = carPartPoses();
+        car->setDirt(effects->dirt());
         car->draw(enc,viewProj,push,carPose,&parts);
         }
       if(opponents) {
@@ -555,6 +596,8 @@ void MainWindow::render() {
           m->second->draw(enc,viewProj,push,o.pose(),&parts);
           }
         }
+      if(vehicle)
+        effects->drawTracks(enc,frameId,viewProj,camera.position);
       if(level)
         level->mesh().draw(enc,push,LevelMesh::Pass::Translucent);
       if(vehicle)

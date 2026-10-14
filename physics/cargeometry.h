@@ -27,6 +27,13 @@ struct CarGeometry {
   Vec3               bodyMin, bodyMax; // bounding box of everything but the wheels
   Vec3               min, max;         // whole car
   float              roof = 0;         // top of the car without the thin antenna (how deep it sits in water)
+  // UPGRADES/booster_<n>_end, n = 1..4: where the exhaust leaves each of the four boosters (RCCars.exe 0x50c0e0
+  // keeps the node's position and its Z axis in car space; 0x50bcc0 hands them to the exhaust smoke)
+  struct Exhaust {
+    Vec3 pos;
+    Vec3 dir;              // unit
+    };
+  std::vector<Exhaust> exhausts;       // empty if the model has no such nodes
   };
 
 CarGeometry carGeometry(const SbScene& sb, std::string_view model);

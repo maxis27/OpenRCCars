@@ -57,15 +57,66 @@ struct SbFace {
     }
   };
 
+// Animated models (people.sb, AIChars.sb) are skeletons of MESH nodes ("bones": ROOT, CENTRE, LLEG1 ...),
+// some of them carrying geometry. Every node has
+//   0x08 header (u32 5, then the node's number in its MODL: `node`), 0x0b its transform in the file's pose,
+//   0x2a skin of a skinned mesh: list of 0x2b { 0x2c counted u32 node numbers, 0x2d counted float weights in % }
+//        per vertex, in vertex order; the vertices are bound in the file's pose (0x0b of every node),
+//   ANIM nodes, one per animation sequence (ASEQ, see SbSequence) by the number in their header: 0x10 rest pose
+//        (u32 9, pos xyz, rotation xyz in degrees, scale xyz) and SPLN channels, each 0x57 FourCC "ROTX" ... "TRNX"
+//        ... "SCLX" ..., 0x5d list of 0x5b keys: u32 type, time (s), value (degrees for rotations); type 0 adds an
+//        in and out tangent (Hermite), type 1 is linear. Keys come every frame (30 per second), starting at the
+//        sequence's first frame, so linear interpolation is enough. Channels without keys keep the rest pose.
+struct SbChannel {
+  enum Target : uint8_t { PosX, PosY, PosZ, RotX, RotY, RotZ, SclX, SclY, SclZ, Count };
+  Target             target = PosX;
+  std::vector<float> times;
+  std::vector<float> values;
+
+  float value(float t) const;
+  };
+
+struct SbAnim {
+  bool                   valid   = false;                 // the node has an ANIM for this sequence
+  float                  rest[9] = {0,0,0, 0,0,0, 1,1,1}; // pos, rotation (deg), scale
+  std::vector<SbChannel> channels;
+  };
+
+struct SbSkinVertex {
+  uint8_t  count = 0;
+  uint16_t node[4]   = {};
+  float    weight[4] = {};  // 0..1, sum 1
+  };
+
 struct SbMesh {
   std::string         name;
   int32_t             parent = -1;
   int32_t             model  = -1; // SbScene::models
+  int32_t             node   = -1; // number of the node in its MODL (header), referred to by skins
   Mat4                local;
   Mat4                world;
+  Mat4                bindLocal;           // 0x38: the pose the skins were bound in (pos, rotation, scale)
+  bool                hasBind = false;
+  float               trs[9] = {0,0,0, 1,1,1, 0,0,0}; // 0x0b: pos, scale, rotation (deg)
   std::vector<Vec3>   positions;
   std::vector<Vec2>   uvs;
   std::vector<SbFace> faces;
+  std::vector<SbSkinVertex> skin;  // per position, empty for rigid meshes
+  std::vector<SbAnim>       anims; // by sequence number (SbSequence::index); empty if the node isn't animated
+  };
+
+// ASEQ: animation sequence of a model, e.g. people.sb "Man": Walk, Pendal (kick), Stand, Brosok (throw), Hurt.
+//   0x03 name, 0x08 header (u32 5, then the sequence number used by ANIM), 0x50 frames per second (30),
+//   0x51 frame count, 0x52 float (1; 0.638 for Man's Walk: unknown).
+struct SbSequence {
+  std::string name;
+  int32_t     model  = -1;
+  int32_t     index  = -1;
+  uint32_t    fps    = 30;
+  uint32_t    frames = 0;
+  float       speed  = 1;
+
+  float       duration() const { return fps>0 ? float(frames)/float(fps) : 0.f; }
   };
 
 // MARK: named point. 0x04 holds properties set in the level editor as text pairs (list of 0x05 { 0x06 key,
@@ -80,7 +131,24 @@ struct SbMarker {
   float       number(std::string_view key, float def) const;
   };
 
-// INST: placed object or actor (children - markers, volumes, scripts of AI characters - are ignored for now).
+// EVOL: named volume (trigger), e.g. "water_box", "car_shortcut", "car_reset_volume_*".
+//   0x03 name, 0xd0 u32 shape, 0xd4 shape data (floats, world space), SCRI child: its script (car_reset_volume_*:
+//   Section Keys "Params" FilterTime(int) = <ms> End). All volumes in the tracks are shape 2, a vertical prism:
+//   y min, y max, then the corners of its outline (x, z).
+struct SbVolume {
+  std::string        name;
+  uint32_t           shape = 0;
+  std::vector<float> data;
+  std::string        script;
+
+  // inside the prism (shape 2); false for other shapes
+  bool contains(const Vec3& p) const;
+  };
+
+// INST: placed object or actor. Characters carry their own markers (seagull "flightDir", crab "seahole1"/
+// "landhole1", spider "hole1".. ), volumes ("visibilityVolume", "inhabitVolume", dog "attackVolume", guard
+// "guardVolume") and a script (SbScript, e.g. Section Keys "Path" name = "beach_1_man": Profiles/beach_1_man.dat)
+// as children; they are stored in `markers`, `volumes` and `script` here, not in the scene's lists.
 //   0x03 name, 0x0a kind (3, or 2 for props laid on their side: purpose unknown, the transform has the rotation),
 //   0x0b transform, 0x72 model (MODL name in another scene), 0x74 that scene ("RoadCar" = Roadcar.sb, empty:
 //   the game knows where the model lives: Car.sb, stone.sb, people.sb, AIChars.sb).
@@ -92,6 +160,12 @@ struct SbInstance {
   std::string source;
   uint32_t    kind = 0;
   Mat4        world;
+  std::vector<SbMarker> markers;
+  std::vector<SbVolume> volumes;
+  std::string script;
+
+  const SbMarker* marker(std::string_view name) const;
+  const SbVolume* volume(std::string_view name) const;
   };
 
 // SCRI: text in the "Section Keys" format (see KeySections), e.g. the physics of a prop in stone.sb:
@@ -102,18 +176,6 @@ struct SbScript {
   std::string name;
   int32_t     model = -1; // SbScene::models, -1 outside a MODL
   std::string text;
-  };
-
-// EVOL: named volume (trigger), e.g. "water_box", "car_shortcut", "car_reset_volume_*".
-//   0x03 name, 0xd0 u32 shape, 0xd4 shape data (floats, world space). All volumes in the tracks are shape 2, a
-//   vertical prism: y min, y max, then the corners of its outline (x, z).
-struct SbVolume {
-  std::string        name;
-  uint32_t           shape = 0;
-  std::vector<float> data;
-
-  // inside the prism (shape 2); false for other shapes
-  bool contains(const Vec3& p) const;
   };
 
 // COLL - top level node of track scenes (MOD_COLLISION). The game collides with the render geometry itself:
@@ -149,6 +211,7 @@ struct SbScene {
   std::vector<SbInstance>  instances;
   std::vector<SbScript>    scripts;   // SCRI directly under MODL/FOLD/DESC
   std::vector<SbVolume>    volumes;
+  std::vector<SbSequence>  sequences;
   SbCollisionGrid          collision; // empty for scenes without COLL (cars, props)
 
   const SbTexture*  texture(int32_t index, int32_t model) const;

@@ -46,6 +46,8 @@ class PhysicsWorld {
     static constexpr int     PropTag = 1;
     // the same of the cars (Vehicle, Opponent)
     static constexpr int     CarTag  = 2;
+    // the same of people, guards and dogs (Characters)
+    static constexpr int     CharacterTag = 3;
 
     const CollisionMesh&     track() const { return coll; }
     btDiscreteDynamicsWorld& bullet()      { return *world; }
@@ -74,7 +76,8 @@ class PhysicsWorld {
 // the engine on the rear wheels and the tires (Vehicle::tires) push the body; Bullet moves it and stops the body
 // spheres at the track and the props. The wheels stand on solid ground only: water (Surface::Water) is not
 // solid, so the car wades through shallow water and sinks into deep water, slowed down by it, and counts as
-// drowned once it has been fully under water for CarParams::drownTime.
+// drowned once a point just above its origin has been under water for CarParams::drownTime (see
+// CarParams::drownHeight).
 class Vehicle {
   public:
     struct Input {
@@ -128,9 +131,14 @@ class Vehicle {
     Vec3                       velocity()  const;
     Vec3                       localSpin() const;
     // an impulse (kg m/s) at the world point `at`
-    void                       push(const Vec3& impulse, const Vec3& at);
+    void                       applyImpulse(const Vec3& impulse, const Vec3& at);
     // the Bullet body, tagged PhysicsWorld::CarTag
     btRigidBody&               chassis() { return *body; }
+    const btRigidBody&         chassis() const { return *body; }
+    // adds `dv` (m/s, world) to the velocity: a kick (people.sb characters)
+    void                       addVelocity(const Vec3& dv);
+    // carried by someone (a person's hand): put at `pose` (model -> world), at rest; addVelocity() throws it afterwards
+    void                       hold(const Mat4& pose);
     // forward speed, m/s (negative when reversing)
     float                      speed() const;
     // turbo tank, 0..1 of a full one
@@ -144,8 +152,11 @@ class Vehicle {
     Surface                    surface() const { return under; }
     // how deep the body is in water: 0 dry .. 1 fully under water
     float                      submerged() const { return sub; }
-    // fully under water for a while: the original puts the car back on the track (last checkpoint)
-    bool                       drowned() const { return underWater>=prm.drownTime; }
+    // under water for a while: the original puts the car back on the track (last checkpoint)
+    bool                       drowned() const { return underWater>prm.drownTime; }
+    // how fast a car with its origin at `origin` drowns (RCCars.exe 0x508a10): 0 out of the water, 1 under it,
+    // 4 deep under it; drowned once the time multiplied by it passes CarParams::drownTime
+    static float               drownRate(const CollisionMesh& track, const Vec3& origin, const CarParams& prm);
     bool                       onGround() const;
     size_t                     wheelsOnGround() const;
 
@@ -211,7 +222,7 @@ class Vehicle {
     Surface                               under = Surface::Default;
     float                                 sub   = 0;
     float                                 wet   = 0;          // share of the wheels in water, 0..1
-    float                                 underWater = 0;     // s fully under water
+    float                                 underWater = 0;     // drowning timer, s (see CarParams::drownTime)
 
     Hit                                   lastHit   = Hit::None;
     Contact                               touch;

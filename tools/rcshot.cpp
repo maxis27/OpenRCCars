@@ -10,6 +10,9 @@
 //   RCSHOT_BOOST=1 holds the boost, RCSHOT_START="x z yaw" puts the car somewhere else first.
 //   env RCSHOT_TIME=<seconds> is the moment of the water animation (default: the drive time, else 0).
 //   env RCSHOT_OBJECTS=0 hides the objects placed on the track (props, characters, road cars).
+//   env RCSHOT_ACTOR=<instance name> looks at a person or animal from RCSHOT_ACTOR_DIST m (default 2.5) after
+//   RCSHOT_ACTOR_TIME seconds (default 1) with the car parked RCSHOT_ACTOR_CAR m in front of it (default 2), and
+//   RCSHOT_ACTOR_SIDE degrees round it (default 30).
 
 #include <Tempest/Device>
 #include <Tempest/Fence>
@@ -27,7 +30,9 @@
 #include "game/world/modelmesh.h"
 #include "game/world/level.h"
 #include "game/world/objects.h"
+#include "physics/characters.h"
 #include "physics/vehicle.h"
+#include "game/world/characters.h"
 
 using namespace Tempest;
 
@@ -109,6 +114,59 @@ int main(int argc, const char** argv) {
       cam.chase(rc::Mat4::translate(carPose.translation())*rc::Mat4::rotate(1,std::atan2(f.x,f.z)*57.29578f),
                 ChaseDistance,ChaseHeight);
       }
+    // people and animals
+    std::unique_ptr<rc::Characters> chars;
+    if(const char* o = std::getenv("RCSHOT_OBJECTS"); o==nullptr || std::string(o)!="0")
+      chars = std::make_unique<rc::Characters>(world,library,level.scene(),level.name(),
+                                               [&res](const std::string& f){ return res.pack().read(f); });
+    if(const char* who = std::getenv("RCSHOT_ACTOR"); who!=nullptr && chars) {
+      auto env = [](const char* n, float def) { const char* v = std::getenv(n); return v ? float(std::atof(v)) : def; };
+      rc::Characters::Actor* a = nullptr;
+      for(auto* x:chars->actors())
+        if(x->name==who)
+          a = x;
+      if(a==nullptr)
+        throw std::runtime_error(std::string("no character ")+who);
+      if(carSb.models.empty())
+        carSb = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
+      const auto  geom = rc::carGeometry(carSb,"Car1");
+      rc::Vehicle veh(world,geom,rc::CarParams::load(res.pack(),1),rc::Mat4::translate({0,-500,0}));
+      const float time = env("RCSHOT_ACTOR_TIME",1.f);
+      for(float t=0; t<time; t+=1.f/60.f) {
+        // the car stays parked in front of the character, wherever it goes
+        const rc::Vec3 at = a->world.translation();
+        const rc::Vec3 f  = a->world.vector({0,0,1});
+        const float    d  = env("RCSHOT_ACTOR_CAR",2.f);
+        rc::Vec3       p  = at+rc::Vec3{f.x,0,f.z}.normalized()*d;
+        if(auto g = level.groundHeight({p.x,at.y+2.f,p.z}))
+          p.y = *g-geom.min.y;
+        veh.hold(rc::Mat4::translate(p));
+        world.step(1.f/60.f);
+        chars->update(1.f/60.f,&veh);
+        }
+      carPose = veh.pose();
+      const rc::Vec3 at   = a->world.translation();
+      const rc::Vec3 f    = a->world.vector({0,0,1});
+      const float    side = env("RCSHOT_ACTOR_SIDE",30.f)*3.14159265f/180.f;
+      const float    yaw  = std::atan2(f.x,f.z)+side;
+      const float    dist = env("RCSHOT_ACTOR_DIST",2.5f);
+      cam.position = at+rc::Vec3{std::sin(yaw),0,std::cos(yaw)}*dist+rc::Vec3{0,dist*0.35f,0};
+      cam.lookAt(at+rc::Vec3{0,a->kind==rc::Characters::Kind::Person || a->kind==rc::Characters::Kind::Guard ? 0.8f : 0.1f,0});
+      Log::i(a->name," at ",at.x," ",at.y," ",at.z,", ",a->seq>=0 ? a->skeleton->sequences()[size_t(a->seq)].name : "-",
+             " ",a->time," s, ",a->visible ? "visible" : "hidden");
+      }
+    else if(chars) {
+      // a moment with the car where it is, so the characters near it show up
+      if(carSb.models.empty())
+        carSb = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
+      rc::Vehicle veh(world,rc::carGeometry(carSb,"Car1"),rc::CarParams::load(res.pack(),1),carPose);
+      for(int i=0; i<2; ++i) {
+        veh.hold(carPose);
+        chars->update(1.f/60.f,&veh);
+        }
+      }
+    CharacterView charView(device);
+
     if(argc>10) {
       cam.position = {float(std::atof(argv[6])),float(std::atof(argv[7])),float(std::atof(argv[8]))};
       cam.yaw      = float(std::atof(argv[9]));
@@ -147,6 +205,8 @@ int main(int argc, const char** argv) {
         objects->draw(enc,viewProj,push);
       if(car)
         car->draw(enc,viewProj,push,carPose,parts.empty() ? nullptr : &parts);
+      if(chars)
+        charView.draw(enc,0,res,*chars,push);
       level.mesh().draw(enc,push,LevelMesh::Pass::Translucent,sky);
       if(std::getenv("RCSHOT_COLL")!=nullptr)
         level.collisionView().draw(enc,push);

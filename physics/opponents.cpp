@@ -172,7 +172,7 @@ float RouteTracker::update(const Vec3& car, size_t laps) {
 
 Opponent::Opponent(PhysicsWorld& world, const CarGeometry& g, std::vector<CarProfile> p, const Checkpoints& route,
                    const Spline& band, const CarParams& params)
-  : owner(world), geom(g), prm(params), profiles(std::move(p)), tracker(route), bandSpline(band) {
+  : owner(world), checkpoints(route), geom(g), prm(params), profiles(std::move(p)), tracker(route), bandSpline(band) {
   // the lap's end: where each recording comes back to cp_1 in the second half of its loop, within the computer's
   // radius of it as in RCCars.exe (Checkpoints::passes)
   for(auto& r:profiles) {
@@ -240,6 +240,8 @@ void Opponent::restart() {
   wheelTurn    = 0;
   steerAngle   = 0;
   finishTime   = -1;
+  drownTimer   = 0;
+  resets.reset();
   current      = profiles[0].pose(0);
   tracker.reset();
   tracker.update(current.translation(),0);
@@ -368,6 +370,65 @@ void Opponent::knock() {
   nearFrame = 0;
   while(nearFrame+1<fr.size() && fr[nearFrame+1].time<=playTime)
     ++nearFrame;
+  }
+
+void Opponent::setTrack(const Vec3& mn, const Vec3& mx, const ResetVolumes& volumes) {
+  hasTrack = true;
+  boxMin   = mn;
+  boxMax   = mx;
+  resets   = volumes;
+  resets.reset();
+  }
+
+bool Opponent::trackRules(float dt) {
+  if(!hasTrack)
+    return false;
+  const Vec3  at    = pose().translation();
+  const bool  out   = at.x<boxMin.x || at.x>boxMax.x || at.z<boxMin.z || at.z>boxMax.z || at.y<boxMin.y-0.1f;
+  const float drown = Vehicle::drownRate(owner.track(),at,prm);
+  drownTimer = drown>0 ? drownTimer+drown*dt : 0.f;
+  bool back = out || drownTimer>prm.drownTime || resets.tick(at,dt);
+  for(size_t i=0; !back && knocked() && i<resets.volumes().size(); ++i)
+    back = resets.volumes()[i].volume->contains(at);
+  if(back)
+    putBack();
+  return back;
+  }
+
+void Opponent::putBack() {
+  // the last main checkpoint passed, from where the car is along the route; its grid slot before the first one
+  const auto& route = checkpoints.route();
+  size_t      last  = std::min(tracker.segment(),route.empty() ? size_t(0) : route.size()-1);
+  while(last>0 && !route[last].main)
+    --last;
+  const Mat4 to = (route.empty() || (last==0 && lapCount==0)) ? profiles[0].pose(0)
+                                                              : checkpoints.poseAt(last,geom.min.y);
+  knock();
+  driven->reset(to);
+  ++putBacks;
+  driveTime  = 0;
+  sinceTouch = 0;
+  stuckTime  = 0;
+  backTime   = 0;
+  backing    = false;
+  steerDeg   = 0;
+  drownTimer = 0;
+  resets.reset();
+  tracker.relocate();
+  // the nearest frame of the recording (0x4fd980), not past the one it was at and not back over the lap's line
+  const auto& fr   = profiles[cur].frames();
+  const bool  over = playTime>=lines[cur];
+  const size_t was = std::min(nearFrame,fr.size()-1);
+  float       bd   = 1e30f;
+  for(size_t i=0; i<=was; ++i) {
+    if(over && fr[i].time<lines[cur])
+      continue;
+    if(const float d = (fr[i].position-to.translation()).length(); d<bd) {
+      bd        = d;
+      nearFrame = i;
+      }
+    }
+  playTime = fr[nearFrame].time;
   }
 
 void Opponent::resume(size_t frame) {
@@ -603,6 +664,14 @@ bool Opponents::playerStart(Mat4& pose) const {
   return true;
   }
 
+void Opponents::setTrack(const SbScene& track) {
+  if(track.collision.empty())
+    return;
+  const ResetVolumes volumes(track);
+  for(auto& c:cars)
+    c->setTrack(track.collision.min,track.collision.max,volumes);
+  }
+
 void Opponents::restart() {
   player.reset();
   playerSinceCar = 1e3f;
@@ -622,6 +691,7 @@ void Opponents::update(float dt, bool racing, const Vec3& playerPos, size_t play
     const Vec3 to   = c->pose().translation()-playerPose.translation();
     const bool seen = to.length()<SeeDistance && Vec3::dot(to,playerPose.vector({0,0,1}))>0;
     c->update(dt,baseRate,c->progress()-player.progress(),!playerDone,seen);
+    c->trackRules(dt);
     if(c->finishTime<0 && int(c->laps())>=laps)
       c->finishTime = raceTime;
     }
@@ -738,7 +808,7 @@ Vehicle::Hit Opponents::collide(Vehicle& pl, float dt) {
       // the share of an equal-mass push (restitution 0.1) that the lifted centre turns upwards
       const float j  = up.params().mass*closing*0.55f;
       const Vec3  dl = d+Vec3{0,Lift,0};
-      up.push(Vec3{0,j*Lift/std::max(dl.length(),0.05f),0},(up.centre()+by.centre())*0.5f);
+      up.applyImpulse(Vec3{0,j*Lift/std::max(dl.length(),0.05f),0},(up.centre()+by.centre())*0.5f);
       }
     o.shakeLeft = ShakeTime;
     o.shake     = Vec3{};

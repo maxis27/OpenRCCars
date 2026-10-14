@@ -98,7 +98,11 @@ struct CarParams {
   float   waterDropWheels = 0.15f; // fraction of speed lost when the first wheel splashes in, Water.ini speedDropOther
   float   waterDropBody   = 0.25f; // ... when the body does, Water.ini speedDropCenter
   float   waterDamping    = 0.95f; // velocity kept per 1/30 s with the body under water, Water.ini DampingVelocity2
-  float   drownTime       = 1.f;   // s fully under water before the car counts as drowned
+  // RCCars.exe 0x508a10: drowning is timed at a point 0.2 m above the car's origin. Under the water surface the
+  // timer runs, 4x as fast when the point is more than 0.5 m under; out of the water it starts again from zero.
+  float   drownHeight     = 0.2f;  // m above the car's origin
+  float   drownDeep       = 0.5f;  // m under the surface where the timer runs 4x as fast
+  float   drownTime       = 2.f;   // s on the timer before the car counts as drowned
 
   static CarParams load(PackFile& pack, int32_t car, int32_t upgrade = 0);
 

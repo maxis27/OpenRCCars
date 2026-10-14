@@ -9,6 +9,8 @@
 #include "formats/collision.h"
 #include "formats/settings.h"
 #include "particles.h"
+#include "tracks.h"
+#include "wake.h"
 
 namespace rc::fx {
 
@@ -46,6 +48,25 @@ struct EffectSettings {
     float oscillation = 0, speedDecay = 0;
     CurveSpline intensity;              // Splines/wspr_int.spl: particles a second from the speed in km/h
     } spray;
+  // Settings/exhausted_gas.ini (0x5308f0): smoke from the exhaust of the boosters bought
+  struct Exhaust {
+    float gravityY = 0;
+    float dx = 0, dy = 0;
+    float twist = 0;
+    float scaleX = 0, scaleXDisp = 0, scaleY = 0, scaleYDisp = 0;
+    float grow = 1;                     // DynamicScale: size grows by this - 1 every second, without end
+    float speed = 0;                    // m/s out of the exhaust, the car's own speed added
+    float speedAtt = 1;                 // horizontal speed left after 1 s
+    float life = 0, lifeDisp = 0;
+    float explodeTime = 0;              // s of the puff when the turbo comes on
+    float explodeColor = 1;             // grey it darkens to (0..1)
+    float explodeAlpha = 1;             // opacity of its smoke (0..1)
+    float wheelSpin = 0;                // rear wheel slip above which a spinning wheel makes smoke
+    CurveSpline intensity;              // Splines/eg_int.spl: particles a second, by km/h
+    } exhaust;
+  TrackSettings tracks;                 // Settings/car_trace.ini
+  WakeSettings  wake;                   // Settings/wtr_trace.crs
+  FoamSettings  foam;                   // Settings/whr_horse.ini
 
   using Reader = std::function<std::vector<uint8_t>(const std::string&)>;
   // `read` gets files from RCCars.pack ("Settings\\car_dustx.ini"); throws if it cannot
@@ -65,20 +86,36 @@ struct CarState {
     std::optional<float> water;            // height of the water surface over the wheel, if any
     float                slip = 0;         // 0..1: wheel spin (RCCars.exe 0x5019a0), with
     float                rimSpeed = 0;     // m/s of the tyre's surface; our Bullet car has no wheel spin: both 0
+    int                  slot = -1;        // RCCars.exe's number: 0/1 front left/right, 2/3 rear, 4/5 the middle
+    Vec3                 axle{1,0,0};      // world, turned with the steering
+    Vec3                 normal{0,1,0};    // of the ground at `contact`
+    uint32_t             triangle = 0;     // the ground's CollisionMesh triangle
+    uint8_t              sound = 0;        // the ground's SoundSurface
+    };
+  struct Exhaust {
+    Vec3 pos, dir;                         // world
     };
   Mat4               pose;                 // model -> world (+Z forward)
   Vec3               velocity;             // m/s
   bool               gas = false, brake = false;
+  bool               boost = false;        // the turbo is on
+  int                upgrade = 0;          // 0..3: the tyres and the booster bought
   std::vector<Wheel> wheels;
+  std::optional<Exhaust> exhaust;          // the booster's end, if the model has it
+  Vec3               body;                 // middle of the body, world
+  float              bodyHeight = 0;       // m
+  std::optional<float> bodyWater;          // the water surface near the body
 
-  // fills in each wheel's ground contact, surface and water from the track, given hub, radius, front and left:
-  // the same for the player's car and the computer's replays, whatever drives them
+  // fills in each wheel's ground contact, surface and water, and the body's water, from the track, given hub,
+  // radius, front and left: the same for the player's car and the computer's replays, whatever drives them
   void sense(const CollisionMesh& track);
   };
 
 // The effects RCCars.exe gives a car (0x531650): dust behind the wheels (car_dustx, 0x52e000) and spray where they
-// cut the water (WATER_SPRAY, 0x527e20). The players' cars have them on every wheel, the computer's cars only on the
-// rear wheels and with dust living half as long.
+// cut the water (WATER_SPRAY, 0x527e20), tyre tracks (car_trace, 0x52f050), and for the players' cars the exhaust
+// smoke (exhausted_gas, 0x530180), the wake and foam in water (wtr_trace 0x528ce0, whr_horse 0x526020) and the dirt
+// the dust leaves on the body (0x52e320, 0x531c20). The players' cars have them on every wheel, the computer's cars
+// only on the rear wheels and with dust living half as long.
 class CarEffects {
   public:
     CarEffects(const EffectSettings& settings, bool player);
@@ -86,7 +123,13 @@ class CarEffects {
     // after the physics; `camera`: dust starts only within 12 m of it
     void update(const CarState& car, const Vec3& camera, float dt, Random& rnd);
     void collect(std::vector<Billboard>& out) const;
-    void clear();
+    // tyre tracks within 20 m of the camera, the wake and the foam
+    void collect(std::vector<Mark>& out, const Vec3& camera) const;
+    // all of it gone (a new race); with `keep` only the particles, the tracks end where they are and the dirt stays
+    // (the car put back on the track)
+    void clear(bool keep = false);
+    // how dirty the body is: 0 clean .. 2 the dirtiest texture (0x531c20 blends dirt_car<n>_1 and _2)
+    float dirt() const;
 
   private:
     struct WheelFx {
@@ -103,10 +146,22 @@ class CarEffects {
       };
     void dust (WheelFx& fx, size_t i, const CarState& car, const Vec3& camera, float dt, Random& rnd);
     void spray(WheelFx& fx, const CarState::Wheel& w, const CarState& car, float dt, Random& rnd);
+    void smoke(const CarState& car, float dt, Random& rnd);
+    void marks(const CarState& car, float dt, Random& rnd);
 
     const EffectSettings& set;
     bool                  player = false;
     std::vector<WheelFx>  wheels;
+    TyreTracks            tracks;
+    Wake                  wake;
+    // exhaust (0x5303c0): the puff when the turbo comes on, the smoke's grey, the emitter
+    Emitter               exhaust{100};
+    float                 explode = 0;      // s of the puff left
+    bool                  boostWas = false;
+    float                 grey = 255;
+    bool                  puff = false, boostSmoke = false;
+    // dirt: grows with the dust the wheels raise, washed off in water, up to 3000
+    float                 dirtAmount = 0;
   };
 
 }

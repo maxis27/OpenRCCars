@@ -20,9 +20,11 @@
 #include "formats/collision.h"
 #include "formats/objects.h"
 #include "formats/water.h"
+#include "physics/characters.h"
 #include "physics/checkpoints.h"
 #include "physics/opponents.h"
 #include "physics/race.h"
+#include "physics/resetvolumes.h"
 #include "physics/props.h"
 #include "physics/vehicle.h"
 #include "audio/carsound.h"
@@ -355,6 +357,9 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   for(auto& w:geom.wheels)
     std::printf("  %-18s hub (%.3f %.3f %.3f) radius %.3f width %.3f\n",w.name.c_str(),
                 w.center.x,w.center.y,w.center.z,w.radius,w.width);
+  for(size_t i=0; i<geom.exhausts.size(); ++i)
+    std::printf("  exhaust %zu (%.3f %.3f %.3f) dir (%.2f %.2f %.2f)\n",i+1,geom.exhausts[i].pos.x,geom.exhausts[i].pos.y,
+                geom.exhausts[i].pos.z,geom.exhausts[i].dir.x,geom.exhausts[i].dir.y,geom.exhausts[i].dir.z);
   std::printf("boost: top %.1f km/h, accel %.1f m/s^2 at 0, tank %.0f units (+%.2f/s, -%.2f/s while boosting)\n",
               prm.boostTopSpeed*3.6f,prm.acceleration(0,1,true),prm.boostTank,prm.boostCharge,prm.boostDrain);
   std::printf("params: top %.1f km/h, accel %.1f m/s^2 at 0, steer %.1f deg, spring %.3f m (%.3f..%.3f) sag %.3f"
@@ -384,6 +389,7 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   rc::PhysicsWorld world(coll);
   auto             props = placeProps(game,scene,world);
   rc::Vehicle      veh(world,geom,prm,start);
+  rc::ResetVolumes resets(scene);
 
   // the engine sound of the drive (rcinfo sound)
   std::unique_ptr<rc::Mixer>        mixer;
@@ -398,7 +404,7 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
     engine = std::make_unique<rc::CarSound>(*mixer,*sndLib,car-1);
     }
   const float dt = 1.f/60.f, limit = wavOut ? 40.f : 120.f;
-  size_t flips = 0, reverses = 0, drowned = 0, passed = 0;
+  size_t flips = 0, reverses = 0, respawns = 0, passed = 0;
   float  maxSpeed = 0, stuck = 0, backing = 0, upsideDown = 0, t = 0;
   bool   fell = false;
   int    frame = 0;
@@ -482,15 +488,21 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
       }
     maxSpeed = std::max(maxSpeed,veh.speed());
     onSurface[veh.surface()] += dt;
-    // in the sea for too long: back to the last checkpoint, as the game does
-    if(veh.drowned()) {
-      const rc::Vec3 at = veh.pose().translation();
-      std::printf("%6.2f drowned at (%.2f %.2f %.2f), back to %s\n",t,at.x,at.y,at.z,
+    // in the sea for too long, out of the collision box or in a reset volume: back to the last checkpoint, as
+    // the game does
+    const rc::Vec3 at   = veh.pose().translation();
+    const auto&    box  = scene.collision;
+    const bool     out  = at.x<box.min.x || at.x>box.max.x || at.z<box.min.z || at.z>box.max.z || at.y<box.min.y-0.1f;
+    const bool     drown = veh.drowned();
+    if(drown || out || resets.tick(at,dt)) {
+      std::printf("%6.2f %s at (%.2f %.2f %.2f), back to %s\n",t,
+                  drown ? "drowned" : out ? "out of the track" : "in a reset volume",at.x,at.y,at.z,
                   route[cps.lastPassed()].name.c_str());
+      resets.reset();
       veh.reset(cps.respawn(geom.min.y));
       aim  = cps.guide();
       prev = veh.pose().translation();
-      ++drowned;
+      ++respawns;
       continue;
       }
     const rc::Vec3 now = veh.pose().translation();
@@ -509,8 +521,8 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
     }
   const bool lap = cps.laps()>0;
   std::printf("%s: %zu of %zu checkpoints in %.1f s, max speed %.1f km/h, %zu times backed up, %zu times put back"
-              " on the wheels, drowned %zu times\n",lap ? "lap finished" : "lap not finished",passed,cps.mainCount(),t,
-              maxSpeed*3.6f,reverses,flips,drowned);
+              " on the wheels, %zu times back to the last checkpoint\n",lap ? "lap finished" : "lap not finished",passed,cps.mainCount(),t,
+              maxSpeed*3.6f,reverses,flips,respawns);
   size_t knocked = 0;
   for(auto& p:props) {
     const rc::Vec3 at = p.body->pose().translation();
@@ -816,11 +828,13 @@ static int cmdAi(const fs::path& game, const fs::path& track, rc::PackFile& pack
   auto scene    = rc::SbScene::load(readFile(game/track));
   auto carScene = rc::SbScene::load(readFile(game/"RCCarsDB/Car.sb"));
   rc::CollisionMesh  coll(scene);
+  const std::string  name = track.stem().string();
+  coll.setSeas(rc::Seas::load(scene,pack,name));
   rc::Checkpoints    cps(scene,coll);
   rc::PhysicsWorld   world(coll);
-  const std::string  name = track.stem().string();
   rc::Opponents ai(world,[&pack](const std::string& f){ return pack.read(f); },carScene,name,cps,
                    rc::Opponents::Level(level),[&pack](int32_t c){ return rc::CarParams::load(pack,c); });
+  ai.setTrack(scene);
   std::printf("%s: AIRace%d, %zu opponents (%s), %.0f m a lap\n",name.c_str(),rc::aiRaceNumber(name),ai.size(),
               rc::Opponents::levelName(rc::Opponents::Level(level)),cps.lapLength());
   rc::Mat4 grid;
@@ -851,7 +865,7 @@ static int cmdAi(const fs::path& game, const fs::path& track, rc::PackFile& pack
   const float dt = 1.f/60.f;
   float t = 0;
   size_t done = 0;
-  std::vector<size_t> lapsSeen(ai.size(),0);
+  std::vector<size_t> lapsSeen(ai.size(),0), backs(ai.size(),0);
   while(done<ai.size() && t<150.f*float(laps)) {
     t += dt;
     ai.update(dt,true,grid.translation(),0,true,t,laps);
@@ -859,6 +873,11 @@ static int cmdAi(const fs::path& game, const fs::path& track, rc::PackFile& pack
     for(size_t i=0; i<ai.size(); ++i) {
       if(ai[i].finishTime>=0)
         ++done;
+      if(ai[i].putBacks!=backs[i]) {
+        backs[i] = ai[i].putBacks;
+        const auto p = ai[i].pose().translation();
+        std::printf("  %7.2f %-10s put back on the track at (%.2f %.2f %.2f)\n",t,ai[i].name.c_str(),p.x,p.y,p.z);
+        }
       if(ai[i].laps()!=lapsSeen[i]) {
         lapsSeen[i] = ai[i].laps();
         std::printf("  %7.2f %-10s lap %zu, %.0f m along the route\n",t,ai[i].name.c_str(),lapsSeen[i],ai[i].progress());
@@ -875,6 +894,165 @@ static int cmdAi(const fs::path& game, const fs::path& track, rc::PackFile& pack
     return 4;
     }
   return bad>0 ? 4 : 0;
+  }
+
+static const char* characterKind(rc::Characters::Kind k) {
+  switch(k) {
+    case rc::Characters::Kind::Person:  return "person";
+    case rc::Characters::Kind::Guard:   return "guard";
+    case rc::Characters::Kind::Seagull: return "seagull";
+    case rc::Characters::Kind::Crab:    return "crab";
+    case rc::Characters::Kind::Spider:  return "spider";
+    case rc::Characters::Kind::Dog:     return "dog";
+    case rc::Characters::Kind::Vulture: return "vulture";
+    }
+  return "?";
+  }
+
+// people and animals of a track: what they are, then for each one a car (Car1) driving at it from 3 m away (or
+// from 2.5 m at `kmh`) for a few seconds, with what happens: animations, "Wielkie Łup!", sounds, kicks and throws
+static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile& pack, const std::string& only,
+                    float kmh) {
+  auto scene = rc::SbScene::load(readFile(game/"RCCarsDB"/(track+".sb")));
+  auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
+  rc::ObjectLibrary lib([&](const std::string& p){ return readFile(game/p); });
+  rc::CollisionMesh coll(scene);
+  auto reader = [&pack](const std::string& f){ return pack.read(f); };
+  const auto geom = rc::carGeometry(cars,"Car1");
+  const auto prm  = rc::CarParams::load(pack,1,0);
+
+  {
+    rc::PhysicsWorld world(coll);
+    rc::Characters   chars(world,lib,scene,track,reader);
+    std::printf("%zu characters\n",chars.size());
+    for(auto* a:chars.actors()) {
+      const rc::Vec3 at = a->world.translation();
+      std::printf("  %-8s %-24s %-10s at %7.2f %6.2f %7.2f",characterKind(a->kind),a->name.c_str(),a->model->name.c_str(),
+                  at.x,at.y,at.z);
+      for(auto& q:a->skeleton->sequences())
+        std::printf(" %s(%.2fs)",q.name.c_str(),q.duration);
+      for(auto& t:a->textures)
+        std::printf(" [%s->%s]",t.first.c_str(),t.second.c_str());
+      std::printf("\n");
+      }
+  }
+
+  int failures = 0;
+  for(size_t i=0;; ++i) {
+    rc::PhysicsWorld world(coll);
+    rc::Characters   chars(world,lib,scene,track,reader);
+    if(i>=chars.size())
+      break;
+    rc::Characters::Actor* a = chars.actors()[i];
+    if(!only.empty() && a->name!=only && a->model->name!=only)
+      continue;
+    if(a->kind==rc::Characters::Kind::Vulture) {
+      // round the path
+      rc::Vec3 lo = {1e9f,1e9f,1e9f}, hi = {-1e9f,-1e9f,-1e9f};
+      for(int f=0; f<60*60; ++f) {
+        chars.update(1.f/60.f,nullptr);
+        const rc::Vec3 p = a->world.translation();
+        lo = {std::min(lo.x,p.x),std::min(lo.y,p.y),std::min(lo.z,p.z)};
+        hi = {std::max(hi.x,p.x),std::max(hi.y,p.y),std::max(hi.z,p.z)};
+        }
+      std::printf("%s: a minute of flight within x %.1f..%.1f y %.1f..%.1f z %.1f..%.1f\n",a->name.c_str(),
+                  lo.x,hi.x,lo.y,hi.y,lo.z,hi.z);
+      continue;
+      }
+    // a car far away first, so the character settles (walks its path, stays hidden ...)
+    rc::Mat4 park = rc::Mat4::translate({0,-500,0});
+    rc::Vehicle car(world,geom,prm,park);
+    for(int f=0; f<30; ++f)
+      chars.update(1.f/60.f,nullptr);
+    // where it shows up once the car is near: the car 3 m in front of it, facing it
+    rc::Vec3 target = a->world.translation();
+    for(int f=0; f<120 && !a->visible; ++f) {
+      const rc::Vec3 f3 = a->world.vector({0,0,1});
+      rc::Vec3 from = target+rc::Vec3{f3.x,0,f3.z}.normalized()*3.f;
+      car.reset(rc::Mat4::translate(from+rc::Vec3{0,0.3f,0}));
+      world.step(1.f/60.f);
+      chars.update(1.f/60.f,&car);
+      target = a->world.translation();
+      }
+    if(!a->visible) {
+      std::printf("%s (%s): never shows up with the car near\n",a->name.c_str(),a->model->name.c_str());
+      continue;
+      }
+    {
+      const rc::Vec3 f3 = a->world.vector({0,0,1});
+      rc::Vec3 from = target+rc::Vec3{f3.x,0,f3.z}.normalized()*3.f;
+      if(auto h = coll.groundHeight(from+rc::Vec3{0,1.f,0}))
+        from.y = *h-geom.min.y;
+      const rc::Vec3 to = target-from;
+      car.reset(rc::Mat4::translate(from)*rc::Mat4::rotate(1,std::atan2(to.x,to.z)*180.f/3.14159265f));
+      // with a speed: from 2.5 m away, already that fast (negative: an opponent instead, the player stays put)
+      if(kmh>0) {
+        rc::Vec3 far = target-to.normalized()*2.5f;
+        if(auto h = coll.groundHeight(far+rc::Vec3{0,1.f,0}))
+          far.y = *h-geom.min.y;
+        const rc::Vec3 dir = (target-far).normalized();
+        car.place(rc::Mat4::translate(far)*rc::Mat4::rotate(1,std::atan2(dir.x,dir.z)*180.f/3.14159265f),
+                  rc::Vec3{dir.x,0,dir.z}.normalized()*(kmh/3.6f),{});
+        }
+    }
+    std::printf("%s (%s) at %.2f %.2f %.2f, %s drives at it:\n",a->name.c_str(),a->model->name.c_str(),
+                target.x,target.y,target.z,kmh<0 ? "an opponent" : "the car");
+    std::vector<rc::Characters::Car> others;
+    rc::Vec3 otherDir;
+    if(kmh<0) {
+      const rc::Vec3 side = car.pose().vector({1,0,0});
+      otherDir = rc::Vec3{-side.x,0,-side.z}.normalized();
+      others.push_back({target+rc::Vec3{0,0.1f,0}-otherDir*2.5f,otherDir*(-kmh/3.6f)});
+      }
+    bool knocked = false;
+    int32_t lastSeq = -2;
+    bool    lastVis = true, hits = false;
+    float   maxUp = 0;
+    for(int f=0; f<60*5; ++f) {
+      const float t = float(f)/60.f;
+      rc::Vehicle::Input in;
+      const rc::Vec3 to = a->world.translation()-car.pose().translation();
+      const rc::Vec3 fw = car.pose().vector({0,0,1});
+      float ang = std::atan2(to.x,to.z)-std::atan2(fw.x,fw.z);
+      while(ang> 3.14159265f) ang -= 6.2831853f;
+      while(ang<-3.14159265f) ang += 6.2831853f;
+      in.throttle = kmh<0 ? 0.f : 1.f;
+      in.steer    = kmh<0 ? 0.f : std::clamp(ang*2.f,-1.f,1.f);
+      car.update(in,1.f/60.f);
+      world.step(1.f/60.f);
+      for(auto& o:others)
+        o.pos += o.velocity*(1.f/60.f);
+      if(chars.update(1.f/60.f,&car,others)) {
+        std::printf("  %5.2f Wielkie Lup! (car %.1f km/h)\n",t,car.velocity().length()*3.6f);
+        hits = true;
+        }
+      if(!knocked && !others.empty() && others[0].hit) {
+        std::printf("  %5.2f the opponent ran into it: knocked off its recording\n",t);
+        knocked = true;
+        }
+      if(a->seq!=lastSeq) {
+        std::printf("  %5.2f %s\n",t,a->seq>=0 ? a->skeleton->sequences()[size_t(a->seq)].name.c_str() : "-");
+        lastSeq = a->seq;
+        }
+      if(a->visible!=lastVis) {
+        std::printf("  %5.2f %s\n",t,a->visible ? "back" : "gone");
+        lastVis = a->visible;
+        }
+      if(!a->sound.empty())
+        std::printf("  %5.2f sound %s\n",t,a->sound.c_str());
+      if(kmh>0 && f%5==0 && f<60)
+        std::printf("  %5.2f car %.1f km/h, %.2f m from it\n",t,car.velocity().length()*3.6f,
+                    (a->world.translation()-car.pose().translation()).length());
+      const float up = car.velocity().y;
+      if(up>maxUp+1.f) {
+        std::printf("  %5.2f the car goes up at %.1f m/s\n",t,up);
+        maxUp = up;
+        }
+      }
+    const rc::Vec3 p = a->world.translation();
+    std::printf("  ends at %.2f %.2f %.2f%s\n",p.x,p.y,p.z,hits ? "" : ", no hit");
+    }
+  return failures;
   }
 
 // the settings of the cars' dust and spray, and how many particles a car makes on each surface and in water
@@ -894,50 +1072,84 @@ static int cmdFx(rc::PackFile& pack) {
   std::printf("spray: DX %.2f rgba %.0f %.0f %.0f %.0f life %.2f+-%.2f angle %.0f+-%.0f span %.0f vel %.2f+-%.2f scale %.2f/%.2fs\n",
               w.dx,w.rgba[0],w.rgba[1],w.rgba[2],w.rgba[3],w.life,w.lifeDisp,w.angle,w.angleDisp,w.angleSpan,w.velLen,
               w.velLenDisp,w.scale,w.timeScale);
+  const auto& e = set.exhaust;
+  std::printf("exhaust: DX %.2f DY %.2f scale %.2f+-%.2f grow %.2f/s speed %.2f att %.2f gravity %.2f life %.2f+-%.2f"
+              " explode %.2f s grey %.2f alpha %.2f spin %.2f\n",e.dx,e.dy,e.scaleX,e.scaleXDisp,e.grow,e.speed,e.speedAtt,
+              e.gravityY,e.life,e.lifeDisp,e.explodeTime,e.explodeColor,e.explodeAlpha,e.wheelSpin);
+  for(float kmh:{5.f,15.f,30.f,50.f})
+    std::printf("  %3.0f km/h: %.1f puffs/s\n",kmh,e.intensity.at(kmh));
+  const auto& t = set.tracks;
+  std::printf("tracks: life %.0f s, max length %.2f m, %.2f texture repeats/m, max bend %.3f m\n",t.timeLife,t.maxLen,
+              t.scaleCoeff,t.maxHeight);
+  const auto& k = set.wake;
+  std::printf("wake: forward %.2f x %.2f, back %.2f x %.2f m, alpha %.0f/%.0f, stretch %.2f..%.2f at %.2f/s, runs %.1f%%/s"
+              " at 30 km/h\n",k.forwZ,k.forwX,k.backZ,k.backX,k.forwA,k.backA,k.animMin,k.animMax,k.animSpeed,
+              k.speed.empty() ? 0.f : k.speed.at(30));
+  const auto& f = set.foam;
+  std::printf("foam: wheel %.2f x %.2f, body %.2f x %.2f m, alpha %.0f, %.3f m over the water, steps every %.2f s\n",
+              f.forwZ,f.forwX,f.forwZBody,f.forwXBody,f.forwA,f.normalOffset,f.animDelay);
 
   // a car going straight at 30 km/h for 2 s: on sand, then with its wheels half in water
-  auto run = [&](rc::Surface surface, bool water) {
+  struct Counts { size_t dust = 0, spray = 0, tracks = 0, wake = 0, foam = 0; float dirt = 0; };
+  auto run = [&](rc::Surface surface, uint8_t sound, bool water) {
     rc::fx::CarEffects fx(set,true);
     rc::fx::Random     rnd;
     rc::fx::CarState   car;
-    car.velocity = {0,0,30.f/3.6f};
-    car.gas      = true;
+    car.velocity   = {0,0,30.f/3.6f};
+    car.gas        = true;
+    car.bodyHeight = 0.2f;
     for(int i=0; i<4; ++i) {
       rc::fx::CarState::Wheel wh;
       wh.front  = i<2;
       wh.left   = i%2==0;
       wh.radius = 0.05f;
+      wh.slot   = i;
       car.wheels.push_back(wh);
       }
-    std::vector<rc::fx::Billboard> out;
     for(int f=0; f<120; ++f) {
       const float z = car.velocity.z*float(f)/60.f;
       car.pose = rc::Mat4::translate({0,0,z});
+      car.body = {0,0.1f,z};
+      car.bodyWater.reset();
+      if(water)
+        car.bodyWater = 0.05f;
       for(size_t i=0; i<4; ++i) {
         auto& wh = car.wheels[i];
         wh.hub      = {wh.left ? 0.1f : -0.1f,0.05f,z+(wh.front ? 0.15f : -0.15f)};
         wh.contact  = {wh.hub.x,0,wh.hub.z};
         wh.onGround = true;
         wh.surface  = surface;
+        wh.sound    = sound;
+        wh.triangle = uint32_t(z/0.5f);  // a triangle every 50 cm
         wh.water.reset();
         if(water)
           wh.water = 0.05f;
         }
       fx.update(car,car.pose.translation()+rc::Vec3{0,1,-2},1.f/60.f,rnd);
       }
+    std::vector<rc::fx::Billboard> out;
     fx.collect(out);
-    size_t dust = 0;
+    Counts c;
     for(auto& b:out)
-      dust += b.texture==rc::fx::Billboard::Dust ? 1 : 0;
-    return std::pair<size_t,size_t>(dust,out.size()-dust);
+      (b.texture==rc::fx::Billboard::Dust ? c.dust : c.spray)++;
+    std::vector<rc::fx::Mark> marks;
+    fx.collect(marks,car.pose.translation());
+    for(auto& m:marks)
+      (m.kind==rc::fx::Mark::Track ? c.tracks : m.kind==rc::fx::Mark::Wake ? c.wake : c.foam)++;
+    c.dirt = fx.dirt();
+    return c;
     };
   for(auto s:{rc::Surface::Default,rc::Surface::Sand,rc::Surface::DeepSand,rc::Surface::Gravel}) {
-    auto [dust,spray] = run(s,false);
-    std::printf("30 km/h on %-8s: %zu dust, %zu spray\n",rc::surfaceName(s),dust,spray);
+    const uint8_t snd = s==rc::Surface::Sand ? rc::SoundSurface::Sand : s==rc::Surface::DeepSand ? rc::SoundSurface::Trampled :
+                        s==rc::Surface::Gravel ? rc::SoundSurface::Gravel : rc::SoundSurface::None;
+    auto c = run(s,snd,false);
+    std::printf("30 km/h on %-8s: %zu dust and smoke, %zu spray, %zu track quads, dirt %.3f\n",rc::surfaceName(s),c.dust,
+                c.spray,c.tracks,c.dirt);
     }
-  auto [dust,spray] = run(rc::Surface::Sand,true);
-  std::printf("30 km/h in water: %zu dust, %zu spray\n",dust,spray);
-  return spray>0 ? 0 : 4;
+  auto c = run(rc::Surface::Sand,rc::SoundSurface::Sand,true);
+  std::printf("30 km/h in water: %zu dust and smoke, %zu spray, %zu track quads, %zu wake, %zu foam\n",c.dust,c.spray,
+              c.tracks,c.wake,c.foam);
+  return c.spray>0 && c.wake>0 && c.foam>0 ? 0 : 4;
   }
 
 // the player driving into an opponent from the start of a race: knocked off its recording, driven back to it,
@@ -947,13 +1159,15 @@ static int cmdRam(const fs::path& game, const fs::path& track, rc::PackFile& pac
   auto scene    = rc::SbScene::load(readFile(game/track));
   auto carScene = rc::SbScene::load(readFile(game/"RCCarsDB/Car.sb"));
   rc::CollisionMesh  coll(scene);
+  const std::string  name  = track.stem().string();
+  coll.setSeas(rc::Seas::load(scene,pack,name));
   rc::Checkpoints    cps(scene,coll);
   rc::PhysicsWorld   world(coll);
   auto               props = placeProps(game,scene,world);
-  const std::string  name  = track.stem().string();
   auto params = [&pack](int32_t c){ return rc::CarParams::load(pack,c); };
   rc::Opponents ai(world,[&pack](const std::string& f){ return pack.read(f); },carScene,name,cps,
                    rc::Opponents::Level::Normal,params);
+  ai.setTrack(scene);
   rc::Mat4 grid;
   if(ai.size()==0 || !ai.playerStart(grid)) {
     std::printf("no opponents\n");
@@ -1022,9 +1236,121 @@ static int cmdRam(const fs::path& game, const fs::path& track, rc::PackFile& pac
   return knocks>0 ? 0 : 4;
   }
 
+// "rcinfo <game> drown <track> [car]": the reset volumes and the collision box of a track, then the car let down
+// into water of a few depths, and how long until it counts as drowned (RCCars.exe: 2 s, 0.5 s when deep)
+static int cmdDrown(const fs::path& game, const fs::path& track, rc::PackFile& pack, int car) {
+  auto scene = rc::SbScene::load(readFile(game/track));
+  auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
+  rc::CollisionMesh coll(scene);
+  coll.setSeas(rc::Seas::load(scene,pack,track.stem().string()));
+  const auto geom = rc::carGeometry(cars,"Car"+std::to_string(car));
+  const auto prm  = rc::CarParams::load(pack,car,0);
+  const auto& grid = scene.collision;
+  std::printf("collision box (%.1f %.1f %.1f) .. (%.1f %.1f %.1f)\n",grid.min.x,grid.min.y,grid.min.z,
+              grid.max.x,grid.max.y,grid.max.z);
+  std::printf("car origin %.3f m above the bottom of the wheels, roof %.3f m above it\n",-geom.min.y,geom.roof);
+
+  rc::ResetVolumes resets(scene);
+  for(auto& v:resets.volumes()) {
+    const auto& d = v.volume->data;
+    std::printf("%-24s filter %.3f s, y %.2f .. %.2f, %zu corners\n",v.volume->name.c_str(),v.filter,
+                d.size()>1 ? d[0] : 0.f,d.size()>1 ? d[1] : 0.f,d.size()>2 ? (d.size()-2)/2 : 0);
+    }
+  rc::Checkpoints cps(scene,coll);
+  for(auto& p:cps.route()) {
+    if(!p.main)
+      continue;
+    const rc::Vec3 at = p.position;
+    const bool out = at.x<grid.min.x || at.x>grid.max.x || at.z<grid.min.z || at.z>grid.max.z || at.y<grid.min.y-0.1f;
+    bool inVolume = false;
+    for(auto& v:resets.volumes())
+      inVolume |= v.volume->contains(at);
+    if(out || inVolume)
+      std::printf("  %s at (%.1f %.1f %.1f): %s\n",p.name.c_str(),at.x,at.y,at.z,
+                  out ? "out of the collision box" : "in a reset volume");
+    }
+
+  // water spots by depth (surface over flat solid ground), the first one of each found on a 1 m grid
+  const float depths[] = {0.1f,0.2f,0.3f,0.5f,1.f,2.f};
+  bool        found[std::size(depths)] = {};
+  for(float x=grid.min.x; x<grid.max.x; x+=1.f)
+    for(float z=grid.min.z; z<grid.max.z; z+=1.f) {
+      const auto ground = coll.groundHeight(rc::Vec3{x,grid.max.y,z});
+      if(!ground)
+        continue;
+      const auto surface = coll.waterLevel(rc::Vec3{x,*ground+0.01f,z},20.f);
+      if(!surface || *surface<=*ground)
+        continue;
+      const float depth = *surface-*ground;
+      // flat ground around it, so that the car stays at that depth
+      bool flat = true;
+      for(float d:{-0.6f,0.6f})
+        for(const rc::Vec3& o:{rc::Vec3{d,0,0},rc::Vec3{0,0,d}}) {
+          const auto g = coll.groundHeight(rc::Vec3{x+o.x,*ground+0.5f,z+o.z});
+          flat &= g && std::abs(*g-*ground)<0.03f;
+          }
+      if(!flat)
+        continue;
+      for(size_t i=0; i<std::size(depths); ++i) {
+        if(found[i] || std::abs(depth-depths[i])>0.03f*std::max(1.f,depths[i]))
+          continue;
+        found[i] = true;
+        rc::PhysicsWorld world(coll);
+        rc::Mat4         at = rc::Mat4::translate({x,*ground-geom.min.y+0.05f,z});
+        rc::Vehicle      veh(world,geom,prm,at);
+        float t = 0;
+        const float dt = 1.f/60.f;
+        rc::Vehicle::Input hold;
+        hold.handbrake = true;
+        for(; t<10.f && !veh.drowned(); t+=dt) {
+          veh.update(hold,dt);
+          world.step(dt);
+          }
+        const rc::Vec3 end = veh.pose().translation();
+        std::printf("water %.2f m deep at (%.1f %.1f %.1f): %s after %.2f s, %.2f m away, %.2f m under\n",depth,x,
+                    *ground,z,veh.drowned() ? "drowned" : "still not drowned",t,
+                    std::hypot(end.x-x,end.z-z),*surface-end.y);
+        // an opponent 20 s into the race, knocked off and dropped there
+        if(depths[i]<1.f || cps.empty())
+          continue;
+        rc::PhysicsWorld aw(coll);
+        rc::Opponents    ai(aw,[&pack](const std::string& f){ return pack.read(f); },cars,track.stem().string(),cps,
+                            rc::Opponents::Level::Easy,[&pack](int32_t c){ return rc::CarParams::load(pack,c); });
+        ai.setTrack(scene);
+        if(ai.size()==0)
+          continue;
+        const rc::Vec3 player = cps.route()[0].position;
+        float          ta     = 0;
+        for(; ta<20.f; ta+=dt) {
+          ai.update(dt,true,player,0,true,ta,3);
+          aw.step(dt);
+          }
+        auto& o = ai[0];
+        o.knock();
+        o.vehicle()->reset(at);
+        const float from = ta;
+        for(; ta<from+5.f && o.putBacks==0; ta+=dt) {
+          ai.update(dt,true,player,0,true,ta,3);
+          aw.step(dt);
+          }
+        const rc::Vec3 back = o.pose().translation();
+        std::printf("  opponent %s: %s after %.2f s, at (%.1f %.1f %.1f), %.0f m along the route\n",o.name.c_str(),
+                    o.putBacks>0 ? "put back on the track" : "still in the water",ta-from,back.x,back.y,back.z,
+                    o.progress());
+        const float put = ta;
+        for(; ta<put+30.f && o.knocked(); ta+=dt) {
+          ai.update(dt,true,player,0,true,ta,3);
+          aw.step(dt);
+          }
+        std::printf("  %s %.1f s later\n",o.knocked() ? "still off its recording" : "back on its recording",ta-put);
+        }
+      }
+  return 0;
+  }
+
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates|ai|fx|ram ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates|ai|fx|ram|chars|drown ...\n");
     return 1;
     }
   try {
@@ -1066,11 +1392,15 @@ int main(int argc, char** argv) {
       }
     if(cmd=="sb" && argc>3)
       return cmdSb(game/argv[3],pack);
+    if(cmd=="chars" && argc>3)
+      return cmdChars(game,argv[3],pack,argc>4 ? argv[4] : "",argc>5 ? float(std::atof(argv[5])) : 0.f);
     if(cmd=="ai" && argc>3)
       return cmdAi(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 2,argc>5 ? std::atoi(argv[5]) : 3);
     if(cmd=="ram" && argc>3)
       return cmdRam(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 0,argc>5 ? float(std::atof(argv[5])) : 30.f,
                     argc>6 && std::strcmp(argv[6],"side")==0);
+    if(cmd=="drown" && argc>3)
+      return cmdDrown(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1);
     if(cmd=="gates" && argc>3)
       return cmdGates(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1);
     if(cmd=="sound" && argc>4)

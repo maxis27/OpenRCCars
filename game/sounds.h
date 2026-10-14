@@ -15,6 +15,8 @@
 
 class Resources;
 
+namespace rc { class Characters; }
+
 // The game's sound: the channels of RCCars.sb (Sound\*.wav from RCCars.pack) and the music (Tracks\*.mp3), mixed by
 // rc::Mixer and played through one Tempest sound effect. Without a sound device the game goes on silent.
 //
@@ -38,6 +40,10 @@ class Sounds {
     void setTrack(const rc::SbScene& scene);
     void tickAmbient(const rc::Vec3& ear, const rc::Vec3& right, float dt);
 
+    // the voices of the people and animals (the sound channel named like the model in people.sb / AIChars.sb),
+    // heard from `ear`
+    void tickCharacters(const rc::Characters& chars, const rc::Vec3& ear, const rc::Vec3& right);
+
     // call once per frame
     void tick();
 
@@ -54,6 +60,9 @@ class Sounds {
     std::map<std::string,rc::BankChannel>        channels;
     rc::MusicList                                music;
     rc::AmbientSounds                            ambient;
+    std::unique_ptr<rc::SoundLibrary>            peopleLib, animalLib;
+    // by model and the actor's number among those of its model; the mixer keeps its channels, so they are reused
+    std::map<std::pair<std::string,int>,rc::BankChannel> actorChannels;
     bool                                         musicOn = false;
 
     std::unique_ptr<Tempest::SoundDevice>        device;

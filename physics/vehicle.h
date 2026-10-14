@@ -50,6 +50,8 @@ class PhysicsWorld {
     static constexpr int     CarTag  = 2;
     // the same of people, guards and dogs (Characters)
     static constexpr int     CharacterTag = 3;
+    // the same of the road traffic (Traffic)
+    static constexpr int     TrafficTag = 4;
     struct PropHit {
       btRigidBody* body = nullptr;
       Vec3         point, normal;

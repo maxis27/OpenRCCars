@@ -75,12 +75,12 @@ class LevelMesh {
 
     struct Push {
       float    viewProj[16];
-      float    cameraPos[4];   // xyz, w = fog distance
+      float    cameraPos[4];   // xyz, w = fog density (rc::Fog)
       float    sunDir[4];      // xyz, w = lightmap scale
       uint32_t flags = 0;
       float    time = 0;       // seconds, animates the water and the foam
       float    envMap = 0;     // strength of the environment map (ScenePipelines::env), 0 = none
-      uint32_t padding = 0;
+      uint32_t fogColor = 0;  // 0x00RRGGBB
       float    carPos[4] = {0,1e6f,0,0}; // the player's car: the sea is see-through near it (WaterWaves)
       };
 
@@ -108,6 +108,9 @@ class LevelMesh {
     // how far the waves lift the sea that `mesh` (SbScene::meshes) belongs to above its still level
     // (CollisionMesh::waterSurface) at `p`, `time` seconds in, as the shaders move it; 0 for water without waves
     float        waveLift(uint32_t mesh, const rc::Vec3& p, float time) const;
+    // where the sea sound may sit: the corners of the outline of the track's sea (the last one, as RCCars.exe has
+    // it), at the height of that sea's offset; empty without a sea
+    const std::vector<rc::Vec3>& seaCoast() const;
 
     // the waves of the main sea (the node "more1", else the first sea with waves), null if none
     const rc::WaterWaves* mainSea() const;

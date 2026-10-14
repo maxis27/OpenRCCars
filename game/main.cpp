@@ -13,19 +13,23 @@
 #include "mainwindow.h"
 #include "resources.h"
 
-// usage: OpenRCCars [-g <game_dir>] [-l <track>] [-dx12] [-validation]
+// usage: OpenRCCars [-g <game_dir>] [-l <track>] [-dev] [-dx12] [-validation]
 //   game_dir defaults to the current directory (run it from the RC Cars installation folder)
+//   -dev: the developer mode of RCCars.exe (same switch, 0x4883dd), with our own debug keys on top
 int main(int argc, const char** argv) {
   std::filesystem::path gameDir = std::filesystem::current_path();
   std::string           track   = "beach_1";
   bool                  dx12    = false;
   bool                  debug   = false;
+  bool                  dev     = false;
 
   for(int i=1; i<argc; ++i) {
     if(std::strcmp(argv[i],"-g")==0 && i+1<argc)
       gameDir = argv[++i];
     else if(std::strcmp(argv[i],"-l")==0 && i+1<argc)
       track = argv[++i];
+    else if(std::strcmp(argv[i],"-dev")==0)
+      dev = true;
     else if(std::strcmp(argv[i],"-dx12")==0)
       dx12 = true;
     else if(std::strcmp(argv[i],"-validation")==0)
@@ -51,8 +55,10 @@ int main(int argc, const char** argv) {
       Tempest::Log::e("RCCars.pack not found in \"",gameDir.string(),"\" - run from the RC Cars folder or pass -g <folder>");
       return 1;
       }
+    if(dev)
+      Tempest::Log::i("-dev mode on");
     Resources  resources(device,gameDir);
-    MainWindow wnd(device,resources,track);
+    MainWindow wnd(device,resources,track,dev);
     return app.exec();
     }
   catch(const std::exception& e) {

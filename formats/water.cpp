@@ -1,6 +1,7 @@
 #include "water.h"
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 
 #include "pack.h"
@@ -40,7 +41,21 @@ std::optional<WaterWaves> WaterWaves::parse(const SliderFile& f) {
   w.distAlphaClampMax = slider(f,"distAlphaClampMax",0);
   w.colorMin          = slider(f,"colorMin",255);
   w.colorMax          = slider(f,"colorMax",255);
+  w.alphaEnvMap       = float(int(slider(f,"alphaEnvMap",0)*2.55f))/255.f;
   return w;
+  }
+
+float WaterWaves::waves(float x, float z, float t) const {
+  const float a  = angle*3.14159265f/180.f;
+  const float p1 = period*(x*std::cos(a) + z*std::sin(a) + speed*t);
+  const float p2 = std::hypot(x-center.x,z-center.z)/length2 + period2*t;
+  return amp*(0.75f*std::sin(p1) + 0.25f) + amp2*std::sin(p2);
+  }
+
+float WaterWaves::lift(float x, float z, float t, float edge) const {
+  const float s = magnetRadius>0 ? std::clamp(edge/magnetRadius,0.f,1.f) : 1.f;
+  const float y = (1.f-s)*magnetOffset + s*waves(x,z,t);
+  return edge<0.01f ? y+magnetOffset : y;
   }
 
 CoastFoam CoastFoam::parse(const SliderFile& f) {

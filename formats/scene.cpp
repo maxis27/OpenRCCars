@@ -168,6 +168,8 @@ class Loader {
           case 0x08:
             if(ch.size()>=8)
               m.node = ch.i32(4);
+            if(ch.size()>=24)
+              m.flags = ch.u32(20);
             break;
           case 0x0b:
             for(int i=0; i<9; ++i)

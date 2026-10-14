@@ -79,8 +79,9 @@ class CollisionMesh {
     Surface                      surfaceBelow(const Vec3& from, float maxDepth) const;
     // the same for the sounds (SoundSurface), the solid ground only
     uint8_t                      soundBelow(const Vec3& from, float maxDepth) const;
-    // height of the nearest water surface above `at`, or if there is none, below it; within `range` either way
-    std::optional<float>         waterLevel(const Vec3& at, float range) const;
+    // height of the nearest water surface above `at`, or if there is none, below it; within `range` either way;
+    // `mesh` (if given) gets the SbScene::meshes the water belongs to
+    std::optional<float>         waterLevel(const Vec3& at, float range, uint32_t* mesh = nullptr) const;
 
     // seas with WLOD settings are lowered by their "offset" (formats/water.h)
     void                         setSeas(const Seas& seas);

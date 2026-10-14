@@ -7,6 +7,7 @@ layout(binding = 0) uniform sampler2D texBase;
 layout(binding = 1) uniform sampler2D texLight;
 layout(binding = 2) uniform sampler2D texMask;
 layout(binding = 3) uniform sampler2D texBase2;
+layout(binding = 5) uniform sampler2D texEnv;   // one face of the cube map cubemap_racer (all six are the same)
 
 layout(location = 0) in vec3 inNormal;
 layout(location = 1) in vec2 inUvBase;
@@ -16,6 +17,31 @@ layout(location = 4) in vec2 inUvBase2;
 layout(location = 5) in vec3 inWorld;
 
 layout(location = 0) out vec4 outColor;
+
+// The environment map of RCCars.exe (0x463360, 0x465aa0): a second pass over the meshes that have one, added onto
+// them (blend SrcAlpha, One) with the strength push.envMap (texture factor alpha) times their own opacity. Its
+// coordinates are the reflection vector in camera space (D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR, x right, y up,
+// z forward) looked up in a cube map. The camera's axes in vertex space are the rows of viewProj (game/camera.cpp
+// projection: row 0 = right*g/aspect, row 1 = -up*g, row 3 = forward).
+vec3 environment(vec3 normal) {
+  vec3  right = normalize(vec3(push.viewProj[0][0], push.viewProj[1][0], push.viewProj[2][0]));
+  vec3  up    = -normalize(vec3(push.viewProj[0][1], push.viewProj[1][1], push.viewProj[2][1]));
+  vec3  fwd   = normalize(vec3(push.viewProj[0][3], push.viewProj[1][3], push.viewProj[2][3]));
+  vec3  r     = reflect(normalize(inWorld - push.cameraPos.xyz), normal);
+  vec3  c     = vec3(dot(r, right), dot(r, up), dot(r, fwd));
+  vec3  a     = abs(c);
+  // the face of the cube and the coordinates on it, as Direct3D picks them
+  vec2  st;
+  float ma;
+  if(a.x>=a.y && a.x>=a.z) {
+    ma = a.x;  st = c.x>0.0 ? vec2(-c.z, -c.y) : vec2( c.z, -c.y);
+    } else if(a.y>=a.z) {
+    ma = a.y;  st = c.y>0.0 ? vec2( c.x,  c.z) : vec2( c.x, -c.z);
+    } else {
+    ma = a.z;  st = c.z>0.0 ? vec2( c.x, -c.y) : vec2(-c.x, -c.y);
+    }
+  return texture(texEnv, st/max(ma, 1e-6)*0.5 + 0.5).rgb;
+  }
 
 void main() {
   vec4 color  = texture(texBase, inUvBase);
@@ -101,6 +127,8 @@ void main() {
     light  += vec3(0.6)*pow(max(dot(normal, h), 0.0), 60.0);
     }
   color.rgb *= light;
+  if(push.envMap>0.0)
+    color.rgb += environment(normal)*push.envMap;
 
   // simple distance fog, the original game uses fog too (VIDEO_UseFog)
   float dist = length(inWorld - push.cameraPos.xyz);

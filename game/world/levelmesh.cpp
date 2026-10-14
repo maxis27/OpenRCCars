@@ -7,6 +7,7 @@
 #include <cmath>
 #include <functional>
 #include <map>
+#include <optional>
 #include <tuple>
 #include <unordered_map>
 
@@ -142,6 +143,13 @@ struct BatchKey {
 
 }
 
+struct LevelMesh::SeaSurface {
+  std::vector<rc::WaterWaves>   waves;
+  std::vector<SeaOutline>       outlines;
+  std::vector<int32_t>          ofMesh;   // per SbScene::meshes, -1 none
+  std::optional<rc::SbVolume>   waterBox;
+  };
+
 std::vector<bool> LevelMesh::hiddenMeshes(const rc::SbScene& scene) {
   // "_LOD<n>" copies of the same thing are siblings under one parent. Objects keep their full detail mesh
   // without a suffix next to simplified _LOD1/_LOD2 copies; the sea is made only of LODs, where _LOD1 is the
@@ -201,6 +209,8 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
   // 0. seas with waves: the node above the sea faces that has a WLOD_<track>_<node>.ini, e.g. "more1"
   std::vector<rc::WaterWaves> seas;
   std::vector<std::string>    seaNames;
+  std::vector<float>          seaEnv;   // strength of the environment map, if the node has one (SbMesh::flags)
+  std::map<int32_t,int32_t>   seaNode;  // node -> sea
   std::vector<int32_t>        seaOf(scene.meshes.size(),-1);
   if(!track.empty()) {
     std::map<int32_t,int32_t> node; // mesh -> sea, -1 none
@@ -216,6 +226,8 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
             id = int32_t(seas.size());
             seas.push_back(*w);
             seaNames.push_back(scene.meshes[size_t(p)].name);
+            seaEnv.push_back((scene.meshes[size_t(p)].flags & 0x20000) ? w->alphaEnvMap : 0.f);
+            seaNode[p] = id;
             }
           it = node.emplace(p,id).first;
           }
@@ -398,6 +410,7 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
       b.flags |= F_Water | F_Waves;
       b.mode   = rc::AlphaMode::Translucent;
       b.water  = key.base2;
+      b.envMap = seaEnv[size_t(key.base2)];
       b.tex[2] = nullptr;
       }
     b.tex[3] = key.base2>=0 && key.mask!=-3 ? sceneTexture(res,scene,key.base2,key.model,nullptr) : nullptr;
@@ -430,6 +443,21 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
 
   for(auto& w:seas)
     waterUbo.push_back(device.ubo(WaterBlock::from(w,foam)));
+
+  env        = &ScenePipelines::environment(res);
+  seaSurface = std::make_shared<SeaSurface>();
+  seaSurface->waves    = std::move(seas);
+  seaSurface->outlines = std::move(outlines);
+  // every mesh under a sea's node, the hidden LODs too: the collision has them
+  seaSurface->ofMesh.assign(scene.meshes.size(),-1);
+  for(size_t mi=0; mi<scene.meshes.size(); ++mi)
+    for(int32_t p=int32_t(mi); p>=0; p=scene.meshes[size_t(p)].parent)
+      if(auto it = seaNode.find(p); it!=seaNode.end()) {
+        seaSurface->ofMesh[mi] = it->second;
+        break;
+        }
+  if(waterBox!=nullptr)
+    seaSurface->waterBox = *waterBox;
 
   vbo            = device.vbo(all);
   info.triangles = all.size()/3;
@@ -471,6 +499,11 @@ ScenePipelines::ScenePipelines(Device& device) {
     auto tese = device.shader(sh.data,sh.len);
     water = device.pipeline(Topology::Triangles,stBlend,vert,tesc,tese,frag);
     }
+  }
+
+const Texture2d& ScenePipelines::environment(Resources& res) {
+  auto t = res.texture("cubemap_racer");
+  return t!=nullptr ? t->tex : res.white();
   }
 
 const RenderPipeline& ScenePipelines::get(rc::AlphaMode mode) const {
@@ -523,13 +556,27 @@ void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass, 
       enc.setPipeline(p);
       current = &p;
       }
-    push.flags = b.flags | (tess ? uint32_t(F_Tess) : 0u);
+    push.flags  = b.flags | (tess ? uint32_t(F_Tess) : 0u);
+    push.envMap = b.envMap;
     enc.setPushData(push);
     enc.setBinding(0,*b.tex[0]);
     enc.setBinding(1,*b.tex[1]);
     enc.setBinding(2,*b.tex[2]);
     enc.setBinding(3,*b.tex[3]);
     enc.setBinding(4,b.water>=0 ? waterUbo[size_t(b.water)] : pso.noWater);
+    enc.setBinding(5,*env);
     enc.draw(vbo,b.first,b.count);
     }
+  }
+
+float LevelMesh::waveLift(uint32_t mesh, const rc::Vec3& p, float time) const {
+  if(seaSurface==nullptr || mesh>=seaSurface->ofMesh.size() || seaSurface->ofMesh[mesh]<0)
+    return 0;
+  // the distance to the outline as the vertices of the sea get it (uvMask.x above)
+  const size_t          sea   = size_t(seaSurface->ofMesh[mesh]);
+  const rc::WaterWaves& w     = seaSurface->waves[sea];
+  const float           reach = std::max(w.magnetRadius,w.alphaRadius)+0.5f;
+  const bool            inBox = !seaSurface->waterBox || seaSurface->waterBox->contains(p);
+  const float           edge  = inBox ? seaSurface->outlines[sea].distance(p,reach) : reach;
+  return w.lift(p.x,p.z,time,edge);
   }

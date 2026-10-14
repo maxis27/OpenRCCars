@@ -56,6 +56,7 @@ class ModelMesh {
       const Tempest::Texture2d* tex   = nullptr;
       rc::AlphaMode             mode  = rc::AlphaMode::Opaque;
       const Tempest::Texture2d* dirt[2] = {};
+      float                     envMap = 0; // LevelMesh::Push::envMap
       };
 
     std::string                           modelName;
@@ -63,6 +64,7 @@ class ModelMesh {
     std::vector<Batch>                    batches;
     Tempest::VertexBuffer<LevelMesh::Vertex> vbo;
     ScenePipelines                        pso;
+    const Tempest::Texture2d*             envTex = nullptr;
     rc::Vec3                              bbox[2];
     float                                 dirt = 0;
   };

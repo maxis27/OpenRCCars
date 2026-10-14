@@ -17,6 +17,7 @@ layout(push_constant, std430) uniform Push {
   vec4  sunDir;       // xyz, w = lightmap scale
   uint  flags;
   float time;         // seconds; with F_DIRT how dirty the car is
+  float envMap;       // strength of the environment map (texEnv), 0 = none
   vec4  carPos;       // the player's car
   } push;
 

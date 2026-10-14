@@ -18,7 +18,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 - **renderer**: trasa z teksturami, lightmapami, mieszaniem tekstur terenu, alpha-testem, przezroczystością i mgłą;
   przełączanie 10 tras
 - **auto**: model z `Car.sb` (Overkill, Buggy, Hummer) stoi na pozycji startowej gracza (`INST 'Player'`), osadzony
-  na ziemi; nadwozie i koła są osobnymi częściami (pod obrót i skręt kół); kamera za autem albo kamera swobodna
+  na ziemi; nadwozie i koła są osobnymi częściami (pod obrót i skręt kół); kamera za autem albo kamera swobodna;
+  kamera za autem nie schodzi pod wodę, a karoseria, szyby i chromy mają odbicia z mapy otoczenia jak w oryginale
 - **kolizje trasy** z węzła `COLL`: siatka komórek nad trasą, w każdej lista ścian siatek renderu, które ją przecinają;
   z tego powstaje siatka kolizji (trójkąty w przestrzeni świata) z raycastem po komórkach (DDA). Auto staje na
   ziemi wyznaczonej raycastem. Klawisz **K** pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
@@ -177,8 +178,6 @@ Same narzędzia do danych (bez Tempesta i GPU): `cmake -B build -DOPENRCCARS_TOO
 
 ## Sterowanie
 
-| Klawisz | Akcja |
-|---|---|
 Jazda (kamera za autem):
 
 | Klawisz | Akcja |
@@ -407,7 +406,7 @@ lib/Tempest     silnik (submoduł git)
   `s = 1`. Krycie rośnie od 35/255 na brzegu do pełnego w odległości `alphaRadius`, ale tylko przy aucie: zwykła
   odległość `sqrt(dxz² + 187·dy²)` od auta między `distAlphaClampMin` a `Max` (0 i 8) przechodzi w pełne krycie.
   Szarość wierzchołka idzie od `colorMin` do `colorMax` z wysokością fali. Nie robimy `clampY*` (w znalezionym kodzie
-  nieużywane), `alphaPow` ani env mapy. U nas teselacja (`shader/water.tesc`, `water.tese`) dzieli morze przy kamerze
+  nieużywane) ani `alphaPow`. Odbicia: niżej, przy mapie otoczenia. U nas teselacja (`shader/water.tesc`, `water.tese`) dzieli morze przy kamerze
   co 15 cm (dalej co 2% odległości) i podnosi wierzchołki w GPU; bez teselacji robi to shader wierzchołków na
   oryginalnej siatce. Fizyka liczy wodę na tej samej wysokości co obraz (`y0 + offset`, bez fal).
 - Piana przy brzegu to ściany `coast*` z teksturą `coast_base` i maską `ALP1` `coast` bez `BAS2`: maska to
@@ -587,6 +586,21 @@ lib/Tempest     silnik (submoduł git)
   czystym autem a teksturami `dirt_car<auto>_1` i `_2` (auta 2 i 3 mają osobne `a`/`b` dla dwóch tekstur
   karoserii `car_askin*` i `car_bskin*`) i miesza sąsiednie; brud kładzie się na lakier według swojej
   przezroczystości. Tylko auta graczy.
+- **Mapa otoczenia (odbicia)** (`RCCars.exe` 0x463360, 0x465aa0, 0x48f530): siatki, które ją mają, rysuje drugi
+  raz z teksturą `cubemap_racer` (sześć jednakowych ścian sześcianu: miękka biała plama na czarnym), dodaną do obrazu
+  (`SrcAlpha, One`) z siłą równą alfie `TEXTUREFACTOR` razy krycie siatki. Współrzędne to wektor odbicia w przestrzeni
+  kamery (`D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR`), więc blask zależy od kąta patrzenia, nie od świata. Mapę dostają
+  siatki z flagą `0x20000` w nagłówku `0x08` węzła `MESH` (`SbMesh::flags`; węzły mórz `more1`/`more2` i
+  `ENVIR_CAR_BODY_body` aut), siatki z `GRE1` lub `GRE2` w nazwie i karoseria (0x48e4b0, 0x4df7b0, 0x507130). Siła:
+  morze `alphaEnvMap` z `WLOD_*` (`int(v·2,55)/255`, 16 → 0,157; 0x521540, 0x524f80), w aucie wg nazwy z
+  `Settings/carEnvMap.ini` (0x4f9d00, 0x5080b0, 0x507d80): karoseria `EnvMapBody` 112/255, `*GRE1*` (szyby,
+  chromy) `EnvMapGRE1` 255/255, `*GRE2*` (lampy, zderzaki) `EnvMapGRE2` 137/255; reszta z flagą (np. rekwizyty ze
+  `stone.sb`) całą mapę. `EnvMapUpgrades` (156) dotyczy ulepszeń, których jeszcze nie pokazujemy. U nas to jeden
+  przebieg `shader/level.frag` (`environment()`), który dodaje mapę do koloru przed mgłą.
+- **Kamera nad wodą** (0x501180, ostatni krok kamery za autem): jeśli punkt 7 cm pod okiem kamery jest pod wodą
+  (promień tylko po wodzie, 0x5350d0), oko idzie na 14 cm nad jej powierzchnię; kierunek patrzenia zostaje.
+  Powierzchnia to animowana siatka morza (0x5353b0 bierze bieżące wierzchołki), więc liczymy ją z falami
+  (`Level::waterHeight`, `WaterWaves::lift`). Kamera nigdy nie schodzi pod wodę i oryginał nie ma widoku spod wody.
 - Rozpoznane, jeszcze nieprzeniesione: pluski w stałych miejscach tras (markery `water_splash_N` na beach_1,
   beach_3, country_3; 0x5272f0), fale `Water_Wave_New` i `BURST_MNG`.
 

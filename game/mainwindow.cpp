@@ -462,6 +462,7 @@ void MainWindow::tick(float dt) {
       }
     const rc::Mat4 target = rc::Mat4::translate(carPose.translation())*rc::Mat4::rotate(1,chaseYaw);
     camera.chase(target,ChaseDistance,ChaseHeight);
+    level->keepAboveWater(camera,time);
     return;
     }
   const float s = speed*dt*((keys[Event::K_LShift] || keys[Event::K_RShift]) ? 4.f : 1.f);

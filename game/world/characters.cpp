@@ -215,6 +215,7 @@ void CharacterView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, Resources& 
     enc.setBinding(2,*d.tex);
     enc.setBinding(3,*d.tex);
     enc.setBinding(4,pso.noWater);
+    enc.setBinding(5,res.white());
     enc.draw(vbo[frame%2],d.first,d.count);
     }
   }

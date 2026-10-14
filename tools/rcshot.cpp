@@ -37,6 +37,15 @@
 
 using namespace Tempest;
 
+// the moment of the water animation: RCSHOT_TIME, else the drive time, else 0
+static float waterTime() {
+  if(const char* t = std::getenv("RCSHOT_TIME"))
+    return float(std::atof(t));
+  if(const char* d = std::getenv("RCSHOT_DRIVE"))
+    return float(std::atof(d));
+  return 0;
+  }
+
 int main(int argc, const char** argv) {
   if(argc<4) {
     Log::e("usage: rcshot <game_dir> <track> <out.png> [width height] [x y z yaw pitch]");
@@ -115,6 +124,7 @@ int main(int argc, const char** argv) {
       const rc::Vec3 f = carPose.vector({0,0,1});
       cam.chase(rc::Mat4::translate(carPose.translation())*rc::Mat4::rotate(1,std::atan2(f.x,f.z)*57.29578f),
                 ChaseDistance,ChaseHeight);
+      level.keepAboveWater(cam,waterTime());
       // RCSHOT_VIEW=<degrees>,<metres>: close to the car instead, from that side (0 behind, 90 its left)
       if(const char* v = std::getenv("RCSHOT_VIEW")) {
         const float yaw  = float(std::atof(v))/57.29578f+std::atan2(f.x,f.z);
@@ -201,10 +211,7 @@ int main(int argc, const char** argv) {
       const rc::Vec3 at = carPose.translation();
       push.carPos[0] = at.x; push.carPos[1] = at.y; push.carPos[2] = at.z;
       }
-    if(const char* t = std::getenv("RCSHOT_TIME"))
-      push.time = float(std::atof(t));
-    else if(const char* d = std::getenv("RCSHOT_DRIVE"))
-      push.time = float(std::atof(d));
+    push.time = waterTime();
 
     CommandBuffer cmd;
     {

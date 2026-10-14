@@ -18,6 +18,7 @@
 #include "effects.h"
 #include "hud.h"
 #include "physics/characters.h"
+#include "physics/traffic.h"
 #include "physics/checkpoints.h"
 #include "physics/opponents.h"
 #include "physics/race.h"
@@ -26,6 +27,7 @@
 #include "resources.h"
 #include "sounds.h"
 #include "world/characters.h"
+#include "world/traffic.h"
 #include "world/modelmesh.h"
 #include "world/level.h"
 #include "world/objects.h"
@@ -80,6 +82,8 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<Objects>          objects; // props: bodies in `physics`
     std::unique_ptr<rc::Characters>   characters; // people and animals: bodies in `physics`
     std::unique_ptr<CharacterView>    characterView;
+    std::unique_ptr<rc::Traffic>      traffic;    // road cars: bodies in `physics`
+    std::unique_ptr<TrafficView>      trafficView;
     std::unique_ptr<rc::Vehicle>      vehicle;
     std::unique_ptr<rc::Checkpoints>  checkpoints;
     std::unique_ptr<rc::Race>         race;

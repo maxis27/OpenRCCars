@@ -49,6 +49,16 @@ float environmentOf(const rc::SbMesh& m, bool car, rc::PackFile& pack) {
 
 ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
                      const rc::Vec3& origin, int skin)
+  :ModelMesh(device,res,sb,model,origin,Options(),skin) {
+  }
+
+ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
+                     const rc::Vec3& origin, const Options& opt)
+  :ModelMesh(device,res,sb,model,origin,opt,0) {
+  }
+
+ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
+                     const rc::Vec3& origin, const Options& opt, int skin)
   :modelName(model), pso(device) {
   const int32_t modelId = sb.findModel(model);
   if(modelId<0)
@@ -57,9 +67,36 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
   bbox[0] = { 1e9f, 1e9f, 1e9f};
   bbox[1] = {-1e9f,-1e9f,-1e9f};
   partList.push_back(Part{});
+  const bool named = !opt.parts.empty();
+  for(auto& n:opt.parts) {
+    Part p{n,{}};
+    for(auto& m:sb.meshes)
+      if(m.model==modelId && m.name==n) {
+        p.pivot = m.world.translation()-origin;
+        break;
+        }
+    partList.push_back(p);
+    }
+  // the nearest node above (or at) `mesh` named in `names`, -1 if none
+  auto under = [&](size_t mesh, const std::vector<std::string>& names) -> int32_t {
+    for(int32_t i=int32_t(mesh); i>=0; i=sb.meshes[size_t(i)].parent) {
+      auto it = std::find(names.begin(),names.end(),sb.meshes[size_t(i)].name);
+      if(it!=names.end())
+        return int32_t(it-names.begin());
+      }
+    return -1;
+    };
 
   // part of each mesh: body (0) or the WHEEL_* node above it; -1 = hidden
   auto partOf = [&](size_t mesh) -> int32_t {
+    if(named) {
+      auto& self = sb.meshes[mesh].name;
+      if(self.find("_LOD1")!=std::string::npos || self.find("_LOD2")!=std::string::npos)
+        return -1;
+      if(under(mesh,opt.hidden)>=0)
+        return -1;
+      return under(mesh,opt.parts)+1;
+      }
     auto name = rc::carPart(sb,mesh);
     if(!name)
       return -1;
@@ -75,7 +112,8 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
 
   // 1. model space triangles, bucketed by part, texture and environment map
   const bool car = model.size()>3 && model.rfind("Car",0)==0 && model[3]>='1' && model[3]<='9';
-  std::map<std::tuple<size_t,int32_t,float>,std::vector<LevelMesh::Vertex>> buckets;
+  // key: part, texture, environment map, head light variant (Batch::lit)
+  std::map<std::tuple<size_t,int32_t,float,int8_t>,std::vector<LevelMesh::Vertex>> buckets;
   for(size_t mi=0; mi<sb.meshes.size(); ++mi) {
     auto& m = sb.meshes[mi];
     if(m.model!=modelId || m.positions.empty())
@@ -86,12 +124,16 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
     // mirrored nodes (scale -1) flip the winding
     const bool  mirrored = m.world.determinant3()<0;
     const float env      = m.faces.empty() ? 0.f : environmentOf(m,car,res.pack());
+    const bool  light    = !opt.lights.empty() && under(mi,opt.lights)>=0;
+    for(int8_t variant=(light ? 0 : -1); variant<=(light ? 1 : -1); ++variant)
     for(auto& f:m.faces) {
       const size_t n    = f.pos.size();
       auto         base = f.layer(rc::LayerTag::Base);
       if(n<3 || base==nullptr)
         continue;
-      auto& out  = buckets[{size_t(part),base->texture,env}];
+      // a head light switched the other way than modelled shows the other half of its texture
+      const float shift = variant<0 || (variant==1)==opt.modelledLit ? 0.f : (opt.modelledLit ? 0.5f : -0.5f);
+      auto& out  = buckets[{size_t(part),base->texture,env,variant}];
       auto  vert = [&](size_t corner) {
         LevelMesh::Vertex v = {};
         const uint32_t pi = f.pos[corner];
@@ -104,6 +146,7 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
         if(corner<base->uv.size() && base->uv[corner]<m.uvs.size()) {
           v.uvBase[0] = m.uvs[base->uv[corner]].x;
           v.uvBase[1] = m.uvs[base->uv[corner]].y;
+          v.uvBase[opt.lightAxis==1 ? 1 : 0] += shift;
           }
         bbox[0] = {std::min(bbox[0].x,p.x),std::min(bbox[0].y,p.y),std::min(bbox[0].z,p.z)};
         bbox[1] = {std::max(bbox[1].x,p.x),std::max(bbox[1].y,p.y),std::max(bbox[1].z,p.z)};
@@ -119,7 +162,7 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
     }
 
   // 2. wheel pivots: centre of the wheel's bounding box
-  for(size_t p=1; p<partList.size(); ++p) {
+  for(size_t p=1; p<partList.size() && !named; ++p) {
     rc::Vec3 mn = { 1e9f, 1e9f, 1e9f}, mx = {-1e9f,-1e9f,-1e9f};
     for(auto& [key,verts]:buckets) {
       if(std::get<0>(key)!=p)
@@ -135,15 +178,19 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
   // 3. one vertex buffer, part-relative positions
   std::vector<LevelMesh::Vertex> all;
   for(auto& [key,verts]:buckets) {
-    const auto [part,texture,env] = key;
+    const auto [part,texture,env,lit] = key;
     const rc::Vec3 pivot = partList[part].pivot;
     Batch b;
     b.part   = part;
+    b.lit    = lit;
     b.first  = all.size();
     b.count  = verts.size();
     b.envMap = env;
     if(auto t = sb.texture(texture,modelId)) {
       std::string name = t->name;
+      for(auto& [from,to]:opt.textures)
+        if(name==from && res.texture(to)!=nullptr)
+          name = to;
       if(skin>0 && skin<4 && name.rfind("car_",0)==0 && name.find("skin")!=std::string::npos && name.back()=='1') {
         std::string other = name;
         other.back() = char('1'+skin);
@@ -188,7 +235,7 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
 
 void ModelMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
                    const LevelMesh::Push& frame, const rc::Mat4& world,
-                   const std::vector<rc::Mat4>* partPoses) const {
+                   const std::vector<rc::Mat4>* partPoses, bool lightsOn) const {
   const rc::Vec3 camera = {frame.cameraPos[0],frame.cameraPos[1],frame.cameraPos[2]};
   const rc::Vec3 sun    = {frame.sunDir[0],   frame.sunDir[1],   frame.sunDir[2]};
 
@@ -210,6 +257,8 @@ void ModelMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
 
   const RenderPipeline* current = nullptr;
   for(auto& b:batches) {
+    if(b.lit>=0 && (b.lit==1)!=lightsOn)
+      continue;
     auto& p = pso.get(b.mode);
     if(current!=&p) {
       enc.setPipeline(p);

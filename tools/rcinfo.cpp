@@ -12,6 +12,7 @@
 //   rcinfo <game_dir> objects <RCCarsDB/x.sb>    objects placed on a track (INST): model, kind, physics, settling test
 //   rcinfo <game_dir> ai <RCCarsDB/x.sb> [level 1-3] [laps]  the opponents: recordings, their loops, a race without the player
 //   rcinfo <game_dir> sound <RCCarsDB/x.sb> <out.wav> [car 1-3]  the test drive with the engine sound, rendered to WAV
+//   rcinfo <game_dir> traffic <track> [seconds]  the road traffic: departures, how the cars stand on the road, a push
 //   rcinfo <game_dir> check                      decode every texture in the pack and every RCCarsDB/*.sb
 
 #include "formats/fog.h"
@@ -27,6 +28,7 @@
 #include "physics/race.h"
 #include "physics/resetvolumes.h"
 #include "physics/props.h"
+#include "physics/traffic.h"
 #include "physics/vehicle.h"
 #include "audio/carsound.h"
 #include "audio/mixer.h"
@@ -190,6 +192,143 @@ static int cmdObj(const fs::path& path, const fs::path& out) {
       }
     base += m.positions.size();
     }
+  return 0;
+  }
+
+// the node tree of one model of a scene: name, parent, world position and axes, vertex count
+static int cmdNodes(const fs::path& path, const std::string& model) {
+  auto scene = rc::SbScene::load(readFile(path));
+  const int32_t id = scene.findModel(model);
+  if(id<0) {
+    std::fprintf(stderr,"model %s not found\n",model.c_str());
+    return 1;
+    }
+  for(size_t i=0; i<scene.meshes.size(); ++i) {
+    auto& m = scene.meshes[i];
+    if(m.model!=id)
+      continue;
+    int depth = 0;
+    for(int32_t p=m.parent; p>=0; p=scene.meshes[size_t(p)].parent)
+      ++depth;
+    const rc::Vec3 t = m.world.translation(), x = m.world.vector({1,0,0}), y = m.world.vector({0,1,0}),
+                   z = m.world.vector({0,0,1});
+    std::string tex;
+    for(auto& f:m.faces)
+      if(auto b = f.layer(rc::LayerTag::Base))
+        if(auto t = scene.texture(b->texture,id); t!=nullptr && tex.find(t->name)==std::string::npos)
+          tex += " "+t->name;
+    std::printf("%*s%-24s at %7.3f %7.3f %7.3f  x %5.2f %5.2f %5.2f  y %5.2f %5.2f %5.2f  z %5.2f %5.2f %5.2f  %zu verts"
+                " flags %x%s\n",
+                depth*2,"",m.name.c_str(),t.x,t.y,t.z,x.x,x.y,x.z,y.x,y.y,y.z,z.x,z.y,z.z,m.positions.size(),
+                m.flags,tex.c_str());
+    }
+  return 0;
+  }
+
+// the road traffic of a track for `seconds`: when the cars leave, how high their wheels are above the road while
+// seen, then the player's car put in the way of one
+static int cmdTraffic(const fs::path& game, const std::string& track, rc::PackFile& pack, float seconds) {
+  auto scene = rc::SbScene::load(readFile(game/"RCCarsDB"/(track+".sb")));
+  auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
+  rc::ObjectLibrary lib([&](const std::string& p){ return readFile(game/p); });
+  rc::CollisionMesh coll(scene);
+  rc::PhysicsWorld  world(coll);
+  rc::Traffic       traffic(world,lib,scene,track,[&pack](const std::string& f){ return pack.read(f); });
+  std::printf("%zu road cars%s\n",traffic.size(),traffic.slow() ? " (slow)" : "");
+  if(traffic.size()==0)
+    return 0;
+
+  // the lowest point of a car as drawn (wheels as modelled), in world space
+  auto lowest = [](const rc::Traffic::Car& c) {
+    const rc::SbScene& sb = *c.model->scene;
+    float lo = 1e9f;
+    for(auto& m:sb.meshes) {
+      if(m.model!=c.model->id || m.faces.empty())
+        continue;
+      bool hidden = false;
+      for(int32_t i=int32_t(&m-sb.meshes.data()); i>=0; i=sb.meshes[size_t(i)].parent)
+        hidden |= std::find(c.hidden.begin(),c.hidden.end(),sb.meshes[size_t(i)].name)!=c.hidden.end();
+      if(hidden)
+        continue;
+      for(auto& p:m.positions)
+        lo = std::min(lo,c.world.point(m.world.point(p)-c.model->origin).y);
+      }
+    return lo;
+    };
+
+  std::vector<rc::Characters::Car> none;
+  std::map<std::string,std::pair<float,float>> gap; // per car: min, max of wheels above the road
+  std::map<std::string,bool> lit;
+  int   sent = 0;
+  float last = 0;
+  rc::Vec3 camera = {0,-1000,0};
+  for(int f=0; f<int(seconds*60.f); ++f) {
+    const float t = float(f)/60.f;
+    world.step(1.f/60.f);
+    traffic.update(1.f/60.f,true,nullptr,camera,none);
+    for(auto* c:traffic.cars())
+      if(c->lightsOn && !lit[c->name]) {
+        const rc::Vec3 at = c->pose.translation();
+        std::printf("  %6.2f s: %s switches its head lights on at %.1f %.1f %.1f\n",t,c->name.c_str(),at.x,at.y,at.z);
+        }
+    for(auto* c:traffic.cars())
+      lit[c->name] = c->lightsOn;
+    if(traffic.departures()!=sent) {
+      sent = traffic.departures();
+      std::printf("  %6.2f s: car %d leaves (%.2f s after the last)\n",t,sent,t-last);
+      last = t;
+      }
+    // the camera rides along with the first car on the road, so that one is posed as seen
+    const rc::Traffic::Car* seen = nullptr;
+    for(auto* c:traffic.cars())
+      if(c->onRoad && seen==nullptr)
+        seen = c;
+    if(seen!=nullptr && seen->visible) {
+      const rc::Vec3 at = seen->pose.translation();
+      if(auto h = coll.groundHeight(at+rc::Vec3{0,2.f,0},6.f)) {
+        const float g = lowest(*seen)-*h;
+        auto it = gap.try_emplace(seen->name,g,g).first;
+        it->second.first  = std::min(it->second.first,g);
+        it->second.second = std::max(it->second.second,g);
+        }
+      }
+    camera = seen!=nullptr ? seen->pose.translation() : rc::Vec3{0,-1000,0};
+    }
+  for(auto& [name,g]:gap)
+    std::printf("  %-9s lowest point %.2f .. %.2f m above the road\n",name.c_str(),g.first,g.second);
+
+  // the player's car parked 6 m ahead of a car on the road, in the way of its left wheels (a Hummer's body is
+  // 0.6 m above the road: a toy car fits under it)
+  const rc::Traffic::Car* in = nullptr;
+  for(auto* c:traffic.cars())
+    if(c->onRoad && in==nullptr)
+      in = c;
+  if(in==nullptr) {
+    std::printf("no car on the road for the push test\n");
+    return 0;
+    }
+  const auto geom = rc::carGeometry(cars,"Car1");
+  rc::Vec3 at = in->pose.point({1.f,0,6.f});
+  if(auto h = coll.groundHeight(at+rc::Vec3{0,2.f,0},6.f))
+    at.y = *h-geom.min.y;
+  rc::Vehicle car(world,geom,rc::CarParams::load(pack,1,0),rc::Mat4::translate(at));
+  float top = 0;
+  for(int f=0; f<120; ++f) {
+    world.step(1.f/60.f);
+    car.update({},1.f/60.f);
+    traffic.update(1.f/60.f,true,&car,car.pose().translation(),none);
+    const rc::Vec3 v = car.velocity();
+    if(std::getenv("RCINFO_TRACE") && f%10==0) {
+      const rc::Vec3 a = in->pose.translation(), b = car.pose().translation();
+      std::printf("    %5.2f s: %s %s at %.1f %.1f %.1f, player at %.1f %.1f %.1f\n",float(f)/60.f,in->name.c_str(),
+                  in->onRoad ? "on the road" : "parked",a.x,a.y,a.z,b.x,b.y,b.z);
+      }
+    if(v.length()>top+0.5f) {
+      top = v.length();
+      std::printf("  %5.2f s: player's car at %.1f km/h (%.1f m/s up)\n",float(f)/60.f,top*3.6f,v.y);
+      }
+    }
+  std::printf("%s ran into the player's car: %s\n",in->name.c_str(),top>1.f ? "pushed off" : "not touched");
   return 0;
   }
 
@@ -1347,7 +1486,7 @@ static int cmdDrown(const fs::path& game, const fs::path& track, rc::PackFile& p
 
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|coll|objects|check|drive|race|gates|ai|fx|fog|ram|chars|drown ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|nodes|coll|objects|check|drive|race|gates|ai|fx|fog|ram|chars|drown|traffic ...\n");
     return 1;
     }
   try {
@@ -1361,6 +1500,8 @@ int main(int argc, char** argv) {
       return cmdObjects(game,argv[3]);
     if(cmd=="obj" && argc>4)
       return cmdObj(game/argv[3],argv[4]);
+    if(cmd=="nodes" && argc>4)
+      return cmdNodes(game/argv[3],argv[4]);
 
     rc::PackFile pack(game/"RCCars.pack");
     if(cmd=="pack" && argc>3) {
@@ -1405,6 +1546,8 @@ int main(int argc, char** argv) {
     if(cmd=="ram" && argc>3)
       return cmdRam(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 0,argc>5 ? float(std::atof(argv[5])) : 30.f,
                     argc>6 && std::strcmp(argv[6],"side")==0);
+    if(cmd=="traffic" && argc>3)
+      return cmdTraffic(game,argv[3],pack,argc>4 ? float(std::atof(argv[4])) : 60.f);
     if(cmd=="drown" && argc>3)
       return cmdDrown(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1);
     if(cmd=="gates" && argc>3)

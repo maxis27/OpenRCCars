@@ -58,7 +58,7 @@ void MainWindow::loadLevel(const std::string& name) {
     resetVolumes = rc::ResetVolumes(level->scene());
     fog.setTarget(rc::FogParams::load(resources.pack(),name));
     hud->setTrack(name);
-    sounds->setTrack(level->scene());
+    sounds->setTrack(level->scene(),level->mesh().seaCoast());
     camera  = level->startCamera();
     setupPhysics();
     }
@@ -513,7 +513,7 @@ void MainWindow::tickSounds(float dt) {
   // the computer's cars and the water, heard from the camera
   const rc::Vec3 ear   = camera.position;
   const rc::Vec3 right = camera.right();
-  sounds->tickAmbient(ear,right,dt);
+  sounds->tickAmbient(ear,right,dt,level->collision().highestWater(ear,10.f));
   if(characters)
     sounds->tickCharacters(*characters,ear,right);
   for(size_t i=0; opponents && i<opponents->size() && i<aiSounds.size(); ++i) {

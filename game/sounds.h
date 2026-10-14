@@ -36,9 +36,10 @@ class Sounds {
     // the next race track of the playlist (Autoexec.gm), and on to the next one whenever a track ends
     void startMusic();
     void stopMusic();
-    // the water of a track (water_splash_N, WATER_FALL_N), heard from `ear` with `right` to the right of it
-    void setTrack(const rc::SbScene& scene);
-    void tickAmbient(const rc::Vec3& ear, const rc::Vec3& right, float dt);
+    // the water of a track (water_splash_N, WATER_FALL_N, the sea along `coast`: LevelMesh::seaCoast), heard from
+    // `ear` with `right` to the right of it; `waterAtEar` as rc::AmbientSounds::update
+    void setTrack(const rc::SbScene& scene, const std::vector<rc::Vec3>& coast);
+    void tickAmbient(const rc::Vec3& ear, const rc::Vec3& right, float dt, std::optional<float> waterAtEar);
 
     // the voices of the people and animals (the sound channel named like the model in people.sb / AIChars.sb),
     // heard from `ear`

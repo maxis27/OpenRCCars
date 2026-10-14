@@ -286,10 +286,14 @@ bool CollisionMesh::isWater(const Triangle& t) const {
   return t.surface==Surface::Water && !waterfall[t.mesh];
   }
 
-std::optional<float> CollisionMesh::waterLevel(const Vec3& at, float range) const {
+std::optional<float> CollisionMesh::waterLevel(const Vec3& at, float range, uint32_t* mesh) const {
   if(!water)
     return std::nullopt;
-  auto level = [&](const Hit& h) { return waterSurface(tris[h.triangle].mesh,h.point); };
+  auto level = [&](const Hit& h) {
+    if(mesh!=nullptr)
+      *mesh = tris[h.triangle].mesh;
+    return waterSurface(tris[h.triangle].mesh,h.point);
+    };
   // the nearest surface above (under water), else the nearest one below
   if(auto h = raycast(at,Vec3{0,1,0},range,Layer::Water))
     return level(*h);

@@ -33,6 +33,13 @@ class Level {
 
     // highest collision surface directly below `from`
     std::optional<float> groundHeight(const rc::Vec3& from) const;
+    // height of the water surface over or under `at` (CollisionMesh::waterLevel) with the waves of `time`
+    // seconds, where the picture has it
+    std::optional<float> waterHeight(const rc::Vec3& at, float range, float time) const;
+
+    // RCCars.exe 0x501180, the last step of the chase camera: an eye less than 7 cm above the water is put 14 cm
+    // above it (the check looks 7 cm under the eye, 0x5013ce), so the camera never goes under water
+    void                 keepAboveWater(Camera& camera, float time) const;
 
   private:
     std::string                levelName;

@@ -9,6 +9,7 @@
 #include <Tempest/VertexBuffer>
 
 #include <deque>
+#include <memory>
 #include <string_view>
 #include <vector>
 
@@ -43,6 +44,10 @@ struct ScenePipelines {
   Tempest::RenderPipeline water;
   // binding 4 of everything but the sea
   Tempest::UniformBuffer<WaterBlock> noWater;
+
+  // binding 5: the environment map, one face of the cube map "cubemap_racer" (RCCars.exe 0x48f530 loads it as the
+  // default for every mesh that has one); white if it is missing
+  static const Tempest::Texture2d& environment(Resources& res);
   };
 
 // Static, pre-transformed geometry of a .sb scene, grouped into batches by texture layers.
@@ -74,7 +79,8 @@ class LevelMesh {
       float    sunDir[4];      // xyz, w = lightmap scale
       uint32_t flags = 0;
       float    time = 0;       // seconds, animates the water and the foam
-      uint32_t padding[2] = {};
+      float    envMap = 0;     // strength of the environment map (ScenePipelines::env), 0 = none
+      uint32_t padding = 0;
       float    carPos[4] = {0,1e6f,0,0}; // the player's car: the sea is see-through near it (WaterWaves)
       };
 
@@ -99,6 +105,10 @@ class LevelMesh {
     rc::Vec3     bboxMax() const { return bbox[1]; }
     const Stats& stats()   const { return info; }
 
+    // how far the waves lift the sea that `mesh` (SbScene::meshes) belongs to above its still level
+    // (CollisionMesh::waterSurface) at `p`, `time` seconds in, as the shaders move it; 0 for water without waves
+    float        waveLift(uint32_t mesh, const rc::Vec3& p, float time) const;
+
     // low detail copies (_LOD<n>) that are not drawn, per SbScene::meshes
     static std::vector<bool> hiddenMeshes(const rc::SbScene& scene);
 
@@ -111,7 +121,9 @@ class LevelMesh {
       rc::AlphaMode             mode   = rc::AlphaMode::Opaque;
       bool                      sky    = false; // sky dome (sky_* textures)
       int32_t                   water  = -1;    // waterUbo, -1: ScenePipelines::noWater
+      float                     envMap = 0;     // Push::envMap
       };
+    struct SeaSurface; // the seas' waves and outlines, for waveLift
 
     const Tempest::Texture2d*     sceneTexture(Resources& res, const rc::SbScene& scene, int32_t index, int32_t model, rc::AlphaMode* mode);
 
@@ -121,6 +133,8 @@ class LevelMesh {
     std::deque<Tempest::Texture2d> embedded;  // lightmaps stored inside the scene; deque keeps addresses stable
     std::vector<std::pair<int32_t,size_t>> embeddedIndex;
     ScenePipelines                pso;
+    const Tempest::Texture2d*     env = nullptr;
+    std::shared_ptr<SeaSurface>   seaSurface;
     rc::Vec3                      bbox[2];
     Stats                         info;
   };

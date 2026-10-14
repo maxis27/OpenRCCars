@@ -600,6 +600,7 @@ void MainWindow::render() {
           m->second->draw(enc,viewProj,push,o.pose(),&parts);
           }
         }
+      effects->setFog(push.cameraPos[3],push.fogColor);
       if(vehicle)
         effects->drawTracks(enc,frameId,viewProj,camera.position);
       if(level)

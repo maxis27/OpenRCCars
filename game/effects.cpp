@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "formats/fog.h"
 #include "physics/opponents.h"
 #include "physics/vehicle.h"
 #include "resources.h"
@@ -69,10 +70,10 @@ Effects::Effects(Device& device, Resources& res)
   if(droplet==nullptr)
     droplet = &res.white();
 
-  // the HUD's shaders: sprites in pixels with a depth, tested against the scene, not written to it
-  auto sh   = AppShader::get("hud.vert.sprv");
+  // sprites in pixels with a depth, tested against the scene, not written to it (the HUD's, with fog)
+  auto sh   = AppShader::get("sprite.vert.sprv");
   auto vert = device.shader(sh.data,sh.len);
-  sh        = AppShader::get("hud.frag.sprv");
+  sh        = AppShader::get("sprite.frag.sprv");
   auto frag = device.shader(sh.data,sh.len);
   RenderState st;
   st.setCullFaceMode(RenderState::CullMode::NoCull);
@@ -201,8 +202,12 @@ void Effects::drawMarks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Ma
   struct Push {
     float    viewProj[16];
     uint32_t mode;
+    uint32_t fogColor;
+    float    fogDensity;
     } push = {};
   vp.toColumnMajor(push.viewProj);
+  push.fogColor   = fogColor;
+  push.fogDensity = fogDensity;
   const auto repeat = Sampler::bilinear(ClampMode::Repeat);
   for(auto& r:ranges) {
     const Texture2d* t[2] = {tyre[0],tyre[0]};
@@ -287,6 +292,7 @@ void Effects::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, con
       for(int c=0; c<4; ++c)
         r.color[c] = b.rgba[c];
       r.depth = it.depth;
+      r.fog   = rc::Fog::visibility(fogDensity,it.z); // the sprite is at one depth, w = z
       return r;
       };
     const Vertex a = corner(-hw,-hh,0,0), bb = corner(hw,-hh,1,0), c = corner(hw,hh,1,1), d = corner(-hw,hh,0,1);
@@ -302,9 +308,9 @@ void Effects::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, con
 
   vbo[frame%2] = device.vbo(BufferHeap::Upload,verts);
   struct Push {
-    float screen[2];
-    float sharpen;   // hud.frag: 0 = plain texture
-    } push = {{float(w),float(h)},0};
+    float    screen[2];
+    uint32_t fogColor;
+    } push = {{float(w),float(h)},fogColor};
   enc.setPipeline(pso);
   enc.setPushData(push);
   for(auto& r:ranges) {

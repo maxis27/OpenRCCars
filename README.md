@@ -578,7 +578,8 @@ lib/Tempest     silnik (submoduł git)
   (0x532aa0), także na starcie z „braku mgły”. Obiekt z sekcją `FOG` (`FOG_Start`, `FOG_End`, `FOG_EndInt` jako
   gęstość, `FOG_Color`) mógłby zmieniać mgłę na zdarzenia 126/127 (wjazd i powrót do mgły trasy), ale żadna trasa
   takiego obiektu nie ma. W oryginale wyłącza ją `VIDEO_UseFog 0` w `Config.gm`, u nas jest zawsze. Efekty
-  (kurz, bryzgi) rysujemy jeszcze bez mgły.
+  aut (kurz, bryzgi, spaliny, ślady opon, kilwater, piana) oryginał rysuje z włączoną mgłą, więc u nas też;
+  ślady opon, mieszane „x2”, idą ku połowie koloru mgły, jak przebieg 0x463e70 dla takich mieszań.
 - Rozpoznane, jeszcze nieprzeniesione: pluski w stałych miejscach tras (markery `water_splash_N` na beach_1,
   beach_3, country_3; 0x5272f0), fale `Water_Wave_New` i `BURST_MNG`.
 

@@ -39,6 +39,8 @@ add_shader(arrow.vert arrow.vert)
 add_shader(arrow.frag arrow.frag)
 add_shader(marks.vert marks.vert)
 add_shader(marks.frag marks.frag)
+add_shader(sprite.vert sprite.vert)
+add_shader(sprite.frag sprite.frag)
 
 add_custom_command(
   OUTPUT     ${HEADER} ${CPP}

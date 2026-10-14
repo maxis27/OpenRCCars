@@ -347,8 +347,8 @@ lib/Tempest     silnik (submoduł git)
     sprężyna; do ruchu liczy się tylko część wzdłuż normalnej podłoża, a moment w osiach auta razy
     `coeffMomentOX` (0,5..2, pochylenie) i `coeffMomentOZ` (1..3, przechył), bez obrotu wokół pionu.
     Koło wciśnięte w ziemię od razu idzie w górę (najwyżej do `lenMin`), w dół opada do spoczynku (`length`, a
-    wolniej niż 5 km/h `length − 0,95·kPos`) z szybkością rosnącą z czasem jazdy (0x4fb340). Tę szybkość
-    w oryginale mnoży nieznany nam czynnik; przyjęliśmy 30 (wolniej koła nie nadążały za autem);
+    wolniej niż 5 km/h `length − 0,95·kPos`) z szybkością r (promień koła) na sekundę, a po t s jazdy szybciej
+    niż 5 km/h r·(1 + 18·t), czyli 10·r od 0,5 s (0x4fb340);
   - rysowanie kół (0x504820 Overkill, 0x505780 Buggy, 0x5068e0 Hummer): gra nigdy nie przesuwa koła o długość
     sprężyny, tylko obraca węzły, na których koła wiszą, więc koła zostają na osiach. Sztywna oś (`FRONT_AXLE`,
     `REAR_AXLE`) wychyla się o atan(opad kół / `lenAxe`) (0,05..0,2 m), najwyżej 30° w dół i 90° w górę, i przechyla

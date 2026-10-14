@@ -431,12 +431,11 @@ void Vehicle::step(float h) {
 // RCCars.exe (0x4fb340): a wheel pushed into the ground goes up at once, to springMin at most; otherwise it goes
 // down towards its rest, 10 times faster once the car has gone faster than 5 km/h for 0.5 s, and stops on the
 // ground. At rest is springLength while the car goes faster than 5 km/h, 0.95 springSag shorter when slower.
-// The original moves the wheel by r times a factor we have not decoded; we take WheelRate r m/s (slower, the wheels
-// could not keep up with the body and the car sat on its belly). The wheel is swept down from the top of its spring,
-// so it also climbs onto a step in front of it.
+// It goes down by r (the wheel's radius) per second, r (1 + 18 t) after t s faster than 5 km/h, so 10 r from
+// 0.5 s on (0x8 of the car's data counts t). The wheel is swept down from the top of its spring, so it also climbs
+// onto a step in front of it.
 void Vehicle::suspension(float h) {
   constexpr float Moving    = 1.388889f; // m/s, 5 km/h
-  constexpr float WheelRate = 30.f;
   constexpr float WheelLift = 0.3f;
   const Vec3  v     = velocity();
   const float speed = v.length();
@@ -471,7 +470,7 @@ void Vehicle::suspension(float h) {
     owner.bullet().convexSweepTest(wh.front ? wheelShape[0].get() : wheelShape[1].get(),from,to,cb);
     const float ground = cb.hasHit() ? float(cb.m_closestHitFraction)*reach : 1e9f;
 
-    float rate = WheelRate*wh.radius;
+    float rate = wh.radius;
     if(speed>=Moving)
       rate *= 1.f+18.f*std::min(movingTime,0.5f);
     float len = wh.length;

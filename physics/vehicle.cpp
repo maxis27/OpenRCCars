@@ -486,22 +486,30 @@ void Vehicle::update(const Input& in, float dt) {
   }
 
 // RCCars.exe (0x4f6ea0): the frame time in steps, one step for a frame shorter than 0.02 s, else steps of 0.02 s
-// while more than 0.038 s is left and the rest in two halves
+// while more than 0.038 s is left and the rest in two halves. Ours: each of them in equal parts of at most
+// MaxStep, since our springs lose and find the ground over and over (the car shakes and never comes to rest) with
+// steps as long as a frame
 void Vehicle::advance(float dt) {
+  constexpr float MaxStep = 1.f/120.f;
+  auto steps = [this](float h) {
+    const int n = std::max(1,int(std::ceil(h/MaxStep-1e-4f)));
+    for(int i=0; i<n; ++i)
+      step(h/float(n));
+    };
   if(dt<=0)
     return;
   if(dt<0.02f) {
-    step(dt);
+    steps(dt);
     return;
     }
   float rest = dt;
   if(dt>0.038f)
     do {
-      step(0.02f);
+      steps(0.02f);
       rest -= 0.02f;
       } while(rest>0.038f);
-  step(0.5f*rest);
-  step(0.5f*rest);
+  steps(0.5f*rest);
+  steps(0.5f*rest);
   }
 
 // RCCars.exe holds a car still (0x4f59a0, 0x4f6610) once, with no key held, it has gone slower than 1.3 km/h and

@@ -434,7 +434,9 @@ lib/Tempest     silnik (submoduł git)
   - głęboki piasek i woda (`tires<N>.ini`, 0..1): każde koło w głębokim piasku dokłada `coeffDeepSand·v²` przeciw
     ruchowi w swoim punkcie, a w wodzie `coeffWater·v²`, od zera przy kole zanurzonym w 30% do całości przy 90%;
   - kroki (0x4f6ea0): klatka krótsza niż 0,02 s to jeden krok, dłuższa to kroki po 0,02 s, dopóki zostaje
-    więcej niż 0,038 s, a reszta w dwóch połowach (przy 60 kl./s krok 1/60 s). Siły (grawitacja, opór, sprężyny,
+    więcej niż 0,038 s, a reszta w dwóch połowach (przy 60 kl./s krok 1/60 s). U nas każdy z nich dzieli się
+    jeszcze na równe części najwyżej po 1/120 s: przy krokach długości klatki nasze sprężyny co chwilę tracą
+    i łapią podłoże, więc stojące auto drży bez końca (np. na deskach pomostu). Siły (grawitacja, opór, sprężyny,
     napęd, opony; 0x4f0910) liczą się od nowa przy każdym kroku Eulera, także w próbach szukania zderzenia.
     Opór powietrza i łożysk działa od 0,0001 m/s, bez wygładzania (0x4ed970);
   - start (0x4f27a0): auto postawione na trasie najpierw osiada przez 2 s (100 kroków po 0,02 s) tylko pod

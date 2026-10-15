@@ -24,7 +24,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   przy prędkości i turbo, unoszenie, gdy teren zasłania auto), nie schodzi pod wodę, a karoseria, szyby i chromy mają odbicia z mapy otoczenia jak w oryginale
 - **kolizje trasy** z węzła `COLL`: siatka komórek nad trasą, w każdej lista ścian siatek renderu, które ją przecinają;
   z tego powstaje siatka kolizji (trójkąty w przestrzeni świata) z raycastem po komórkach (DDA). Auto staje na
-  ziemi wyznaczonej raycastem. Klawisz **K** pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
+  ziemi wyznaczonej raycastem. Klawisz **K** (w trybie `-dev`) pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
   ściany, niebieskie niewidoczne ściany (ściany bez tekstury)
 - **fizyka jazdy** ([Bullet](https://github.com/bulletphysics/bullet3) `btRaycastVehicle`): auto jeździ po trasie
   z klawiatury. Koła to promienie rzucane przez siatkę kolizji `COLL` (raycast z kroku 2), nadwozie to prostopadłościan
@@ -65,7 +65,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   `messagebox`, z punktami głównymi (`map_cp`, następny świeci) i autami (`map_arrow`: gracz i przeciwnicy); strzałka kierunku
   w nawiasach z `overtaking.csi`; w lewym górnym rogu miejsce (`place1..6`) w wyścigu z przeciwnikami. Czas i numer
   okrążenia metaliczne jak w oryginale, czas okrążenia miga pod czasem tylko po jego ukończeniu. Spoza
-  oryginału są tylko kule zaliczania punktów (1,6 m) obrysowane na trasie do debugowania (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
+  oryginału są tylko kule zaliczania punktów (1,6 m) obrysowane na trasie do debugowania (klawisz G w trybie `-dev`, domyślnie wyłączone): następna główna zielona, kolejna żółta,
   zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono, pośrednia, na którą wskazuje strzałka,
   niebieska. Każde zaliczenie trafia też do logu
 - **przeciwnicy**: jak w oryginale, dopóki nikt ich nie potrąci, nie jeżdżą z fizyką, tylko odtwarzają przejazdy nagrane na każdej trasie
@@ -173,6 +173,7 @@ build\bin\RelWithDebInfo\OpenRCCars.exe -g "D:\SteamLibrary\steamapps\common\RCC
 ```
 
 Opcje: `-g <folder gry>` (domyślnie bieżący katalog), `-l <trasa>` (domyślnie `beach_1`),
+`-dev` (tryb deweloperski jak w oryginale, z naszymi klawiszami debugowania, patrz niżej),
 `-dx12` (backend DirectX 12, eksperymentalnie), `-validation` (warstwy walidacji Vulkana).
 
 ### Linux
@@ -201,7 +202,6 @@ Jazda (kamera za autem):
 | Spacja | skok (przewrócone auto: na koła) |
 | Shift | dopalacz (zużywa turbo, ok. 10 s z pełnego zbiornika) |
 | B | zablokuj koła (tylne, do poślizgu) |
-| T | postaw auto na koła w miejscu |
 | R | powrót do ostatniego głównego punktu kontrolnego (przed pierwszym: na start) |
 | Enter | wyścig od nowa, od odliczania („Jeszcze raz”) |
 | L | liczba okrążeń: 3 / 5 / 7 (i wyścig od nowa) |
@@ -214,17 +214,42 @@ Pozostałe:
 
 | Klawisz | Akcja |
 |---|---|
+| F1–F10 | trasy: beach_1–4, country_1–4, urban_1–2 (w trybie dev urban_1 to Shift+F9) |
+| Esc | wyjście |
+
+Tryb deweloperski (`-dev`, jak `RCCars.exe -dev`):
+
+| Klawisz | Akcja |
+|---|---|
+| F9 | lot autem jak w oryginale: auto bez fizyki, kamera sztywno za nim, bez powrotu na punkt kontrolny; drugi raz: auto znowu jedzie z miejsca, w którym jest |
+| ↑ / ↓, W / S | (lot) do przodu / do tyłu, `ZeroSpeed` m/s (15 z `Autoexec.gm`) |
+| ← / → | (lot) obrót, `ZeroAngle` stopni/s (90) |
+| Alt + ↑ / ↓, Alt + ← / → | (lot) w górę / w dół, w bok |
+| A / Z | (lot) nos w górę / w dół |
+| End | (lot) wypoziomuj |
+| Shift | (lot) dwa razy szybciej |
+| F11 | natychmiastowe wyjście (oryginał: `WM_CLOSE`) |
 | V | kamera za autem ↔ kamera swobodna (auto wtedy stoi) |
-| K | nakładka kolizji (debug; turkusowa woda, fioletowy głęboki piasek) |
-| G | kule zaliczania punktów kontrolnych, 1,6 m (debug, domyślnie wyłączone) |
-| N | przeskok do następnego głównego punktu kontrolnego (debug, do sprawdzania okrążeń i mety) |
+| K | nakładka kolizji (turkusowa woda, fioletowy głęboki piasek) |
+| G | kule zaliczania punktów kontrolnych, 1,6 m |
+| N | przeskok do następnego głównego punktu kontrolnego (do sprawdzania okrążeń i mety) |
+| T | postaw auto na koła w miejscu |
 | W / S / A / D | ruch kamery swobodnej |
 | E, Spacja / Q, C | w górę / w dół |
 | Shift | szybciej ×4 |
 | przeciąganie myszą, strzałki | obrót kamery swobodnej |
 | kółko myszy | prędkość kamery |
-| F1–F10 | trasy: beach_1–4, country_1–4, urban_1–2 |
-| Esc | wyjście |
+
+Co `-dev` robi w `RCCars.exe` (0x4883dd ustawia flagę 0x147d204, w logu „-dev mode on”): klawisz F9 (0x48c0e3)
+przełącza flagę 0x147d254, F11 zamyka okno; wczytuje skrypt `debug.gm`, pomija przy starcie kilka kroków (m.in. styl
+dźwięku `Snd_Style`), dodaje polecenia konsoli (`GetInfo`, `GetStat`, `cash`, `stat`, `dt0`–`dtx`, `burst`, `constr`, „ZERO”
+`F`/`E1`/`E2`/`I`) i pozwala wczytać trasę wprost z instancją `Player`. Przy F9 auto gracza nie przechodzi przez
+fizykę (0x4f39e0 → 0x482900): w pierwszej klatce staje prosto, przodem tam, dokąd jechało po ziemi, a potem przesuwa
+się i obraca o `ZeroSpeed`·dt i `ZeroAngle`·dt (sekcja „Debug”, domyślnie 100 i 90, `Autoexec.gm` ustawia
+`ZeroSpeed 15`) klawiszami z 0x482320 (↑↓ przód/tył, ←→ obrót, Alt+↑↓ góra/dół, Alt+←→ oraz `,`/`.` w bok, A/Z
+pochylenie, End poziomo, Shift ×2). Kamera ma wtedy sprężyny bez luzu: 1,0443 m za autem i 0,409 m nad nim (0x500ce9),
+bez podnoszenia przez przeszkody (0x501183) i bez pilnowania wody; 0x508160 nie odsyła auta na punkt kontrolny.
+U nas klawisze debugowania (V, K, G, N, T) działają tylko w tym trybie.
 
 ## Narzędzia
 

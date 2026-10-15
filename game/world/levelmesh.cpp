@@ -149,8 +149,9 @@ std::optional<rc::WaterWaves> loadWaves(rc::PackFile& pack, std::string_view tra
 struct BatchKey {
   int32_t model = -1;
   int32_t base = -1, light = -1, mask = -1, base2 = -1;
+  bool    modulate = false; // SbMesh::renderFlags 0x40000000
   bool operator<(const BatchKey& o) const {
-    return std::tie(model,base,light,mask,base2) < std::tie(o.model,o.base,o.light,o.mask,o.base2);
+    return std::tie(model,base,light,mask,base2,modulate) < std::tie(o.model,o.base,o.light,o.mask,o.base2,o.modulate);
     }
   };
 
@@ -312,6 +313,7 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
       key.model = m.model;
       key.base  = base->texture;
       key.light = light ? light->texture : -1;
+      key.modulate = (m.renderFlags & 0x40000000)!=0;
       if(mask) {
         key.mask  = mask->texture;
         key.base2 = base2 ? base2->texture : -1;
@@ -447,6 +449,11 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
       b.mode   = rc::AlphaMode::Translucent;
       b.water  = foamSea;
       }
+    if(key.modulate) {
+      // darkens or lightens the ground under it: its grey (128) leaves it as it is
+      b.flags = F_Modulate;
+      b.mode  = rc::AlphaMode::Opaque;
+      }
     if(b.mode==rc::AlphaMode::Cutout)
       b.flags |= F_Cutout;
     for(auto& t:b.tex)
@@ -456,8 +463,13 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
     batches.push_back(b);
     }
 
-  // opaque first, then the water, then the rest of the translucent batches: the foam is surf on top of the water
-  auto order = [](const Batch& b) { return b.mode!=rc::AlphaMode::Translucent ? 0 : (b.flags & F_Water) ? 1 : 2; };
+  // opaque first, the strips multiplied onto the ground over it, then the water, then the rest of the translucent
+  // batches: the foam is surf on top of the water
+  auto order = [](const Batch& b) {
+    if(b.mode!=rc::AlphaMode::Translucent)
+      return (b.flags & F_Modulate) ? 1 : 0;
+    return (b.flags & F_Water) ? 2 : 3;
+    };
   std::stable_sort(batches.begin(),batches.end(),[&](const Batch& a, const Batch& b){
     return order(a) < order(b);
     });
@@ -540,6 +552,14 @@ ScenePipelines::ScenePipelines(Device& device) {
   stBlend.setZWriteEnabled(false);
   blend = device.pipeline(Topology::Triangles,stBlend,vert,frag);
 
+  // SbMesh::renderFlags 0x40000000: RCCars.exe gives these meshes the same state as the tyre tracks (0x451310 mode
+  // 3, 0x121), twice the source times the destination
+  RenderState stModulate = stOpaque;
+  stModulate.setBlendSource(RenderState::BlendMode::DstColor);
+  stModulate.setBlendDest  (RenderState::BlendMode::SrcColor);
+  stModulate.setZWriteEnabled(false);
+  modulate = device.pipeline(Topology::Triangles,stModulate,vert,frag);
+
   noWater = device.ubo(WaterBlock());
 
   if(device.properties().tesselationShader) {
@@ -601,7 +621,7 @@ void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass, 
     if((b.mode==rc::AlphaMode::Translucent)!=(pass==Pass::Translucent))
       continue;
     const bool tess = (b.flags & F_Water) && !pso.water.isEmpty();
-    auto&      p    = tess ? pso.water : pso.get(b.mode);
+    auto&      p    = tess ? pso.water : (b.flags & F_Modulate) ? pso.modulate : pso.get(b.mode);
     if(current!=&p) {
       enc.setPipeline(p);
       current = &p;

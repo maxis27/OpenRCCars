@@ -629,6 +629,13 @@ lib/Tempest     silnik (submoduł git)
   chromy) `EnvMapGRE1` 255/255, `*GRE2*` (lampy, zderzaki) `EnvMapGRE2` 137/255; reszta z flagą (np. rekwizyty ze
   `stone.sb`) całą mapę. `EnvMapUpgrades` (156) dotyczy ulepszeń, których jeszcze nie pokazujemy. U nas to jeden
   przebieg `shader/level.frag` (`environment()`), który dodaje mapę do koloru; takie siatki oryginał rysuje bez mgły.
+- **Paski bieżnika na trasach** (`wt_wetsand`, 151 siatek na wszystkich 10 trasach): to nie ślady aut, tylko
+  część mapy. Słowo 4 nagłówka `0x08` węzła `MESH` (`SbMesh::renderFlags`) mówi, jak siatkę rysować (0x48e4b0,
+  0x451310): `0x1000` przezroczystość z alfy tekstury, `0x2000` morza, `0x40000000` mnożenie przez to, co pod spodem
+  (×2, ten sam stan `0x121` co ślady opon). Ten ostatni bit mają tylko paski `wt_wetsand`: ich szare tło (128)
+  zostawia piasek, a ciemniejszy bieżnik go przyciemnia. U nas `ScenePipelines::modulate` po nieprzezroczystych,
+  bez światła; mgła ciągnie je do szarości, która nic nie zmienia. Czy oryginał kładzie na nie lightmapę
+  (country_4), nie wiadomo; pomijamy ją, bo przyciemniłaby piasek dwa razy.
 - **Kamera za autem** (`game/chasecamera.*`; 0x5007a0 co klatkę, 0x501180 przy rysowaniu, ustawienia
   `Settings/Camera.ini` czyta 0x4f9da0, suwaki 1..100 liniowo na zakresy wpisane w kod): kamera trzyma własne oko
   i co klatkę ogląda je z układu auta: środek auta (stan bryły, +0x5884) z kierunkiem nosa położonym płasko (gdy nos

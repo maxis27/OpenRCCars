@@ -82,6 +82,9 @@ class CollisionMesh {
     // height of the nearest water surface above `at`, or if there is none, below it; within `range` either way;
     // `mesh` (if given) gets the SbScene::meshes the water belongs to
     std::optional<float>         waterLevel(const Vec3& at, float range, uint32_t* mesh = nullptr) const;
+    // height of the highest water surface between `range` above and `range` below `at` (RCCars.exe 0x535130 with
+    // fOnlyWater: a ray down from `range` above)
+    std::optional<float>         highestWater(const Vec3& at, float range) const;
 
     // seas with WLOD settings are lowered by their "offset" (formats/water.h)
     void                         setSeas(const Seas& seas);
@@ -91,6 +94,9 @@ class CollisionMesh {
     // whether the car finds water in this triangle: RCCars.exe looks for it only in the seas and in the objects
     // named *stream* or *pool* (0x51c240, list at 0x575710), not in the waterfalls (*wtr_fall*), which are only seen
     bool                         isWater(const Triangle& t) const;
+
+    // indices into triangles() of those listed in the cells the box lo..hi touches, each once
+    std::vector<uint32_t>        trianglesIn(const Vec3& lo, const Vec3& hi) const;
 
     // triangles listed in a cell; the same triangle shows up in every cell it touches
     template<class F>

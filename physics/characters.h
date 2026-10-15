@@ -66,6 +66,9 @@ class Characters {
       std::vector<std::pair<std::string,std::string>> textures;
       // a sound of the model's sound channel (SNCH named like the model) to start now, empty if none
       std::string               sound;
+      // a person walking where the path leaves footprints (RCCars.exe 0x50f930: moving, path state 1..3 or 5, not
+      // RepairMan); fx::Footprints puts them down
+      bool                      soles = false;
       };
 
     // another car on the track (the opponents)
@@ -88,6 +91,18 @@ class Characters {
     void                        restart();
 
     const std::vector<Actor*>&  actors() const { return view; }
+    // a burst a guard fires in this update (message 0x261 to BURST_MNG, fx::Gunfire): from its gun at a car,
+    // PlayerCar or an index of `cars`
+    static constexpr int        PlayerCar = -1;
+    struct Shot {
+      Vec3 gun;
+      int  car = PlayerCar;
+      };
+    const std::vector<Shot>&    shooting() const { return guns; }
+    // someone took the player's car in their hand in this update (0x5111f0 -> 0x4f3640: the chase camera holds still)
+    bool                        grabbedPlayer() const { return grabbed; }
+    // someone holds the player's car after this update (0x4f3690 lets go of it when thrown)
+    bool                        holdingPlayer() const { return carried; }
     size_t                      size()   const { return view.size(); }
 
   private:
@@ -137,11 +152,14 @@ class Characters {
     std::map<const ObjectLibrary::Model*,std::unique_ptr<Skeleton>> skeletons;
     std::vector<std::unique_ptr<State>>           states;
     std::vector<Actor*>                           view;
+    std::vector<Shot>                             guns;
     std::mt19937                                  rng{20061013};
     float                                         sincePerson = 1e3f; // s since the last "Wielkie Łup!" per kind
     float                                         sinceDog    = 1e3f;
     float                                         sinceGuard  = 1e3f;
     bool                                          greatHit    = false;
+    bool                                          grabbed     = false;
+    bool                                          carried     = false;
     float                                         carKmh      = 0;    // the player's speed before this step
     float                                         lastKmh     = 0;
     int                                           vultures    = 0;

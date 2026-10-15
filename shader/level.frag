@@ -47,6 +47,15 @@ void main() {
   vec4 color  = texture(texBase, inUvBase);
   vec3 normal = normalize(inNormal);
 
+  if((push.flags & F_MODULATE)!=0u) {
+    // tread strips on the ground: the ground under them is lit and fogged already, so they are not; the fog takes
+    // them to the grey that changes nothing. Whether RCCars.exe puts the lightmap of the few that have one
+    // (country_4) on them is not known; it would darken the ground twice, so it is left out
+    float keep = exp(-push.cameraPos.w/gl_FragCoord.w);
+    outColor   = vec4(mix(vec3(0.5), color.rgb, keep), 1.0);
+    return;
+    }
+
   if((push.flags & F_BLEND)!=0u) {
     // ALP1 mask selects between the two terrain textures
     float m  = texture(texMask, inUvMask).a;
@@ -130,10 +139,13 @@ void main() {
   if(push.envMap>0.0)
     color.rgb += environment(normal)*push.envMap;
 
-  // simple distance fog, the original game uses fog too (VIDEO_UseFog)
-  float dist = length(inWorld - push.cameraPos.xyz);
-  float fog  = clamp(dist/push.cameraPos.w, 0.0, 1.0);
-  color.rgb  = mix(color.rgb, vec3(0.62,0.72,0.82), fog*fog*0.6);
+  // D3DFOG_EXP table fog (formats/fog.h): what is `depth` (w) in front of the camera keeps exp(-density*depth) of
+  // its colour; meshes with the environment map are drawn without fog
+  if(push.envMap<=0.0) {
+    float depth = 1.0/gl_FragCoord.w;
+    float keep  = exp(-push.cameraPos.w*depth);
+    color.rgb   = mix(unpackUnorm4x8(push.fogColor).bgr, color.rgb, keep);
+    }
 
   outColor = color;
   }

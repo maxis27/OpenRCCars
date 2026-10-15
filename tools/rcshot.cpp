@@ -9,10 +9,16 @@
 //   (positive = left) for the last half of that time, RCSHOT_JUMP=<seconds> jumps at that moment,
 //   RCSHOT_BOOST=1 holds the boost, RCSHOT_START="x z yaw" puts the car somewhere else first.
 //   env RCSHOT_TIME=<seconds> is the moment of the water animation (default: the drive time, else 0).
+//   env RCSHOT_FOG=0 draws without the track's fog (Settings\fog_<track>.ini).
 //   env RCSHOT_OBJECTS=0 hides the objects placed on the track (props, characters, road cars).
 //   env RCSHOT_ACTOR=<instance name> looks at a person or animal from RCSHOT_ACTOR_DIST m (default 2.5) after
 //   RCSHOT_ACTOR_TIME seconds (default 1) with the car parked RCSHOT_ACTOR_CAR m in front of it (default 2), and
 //   RCSHOT_ACTOR_SIDE degrees round it (default 30).
+//   env RCSHOT_FX=<seconds> runs the track's effects (splashes, breaking waves, the guards' gunfire at the parked car)
+//   that long, seen from the final camera, and draws them; the water's time goes on from RCSHOT_TIME.
+//   env RCSHOT_TRAFFIC=<seconds> lets the road traffic run that long after the start of the race and, with
+//   RCSHOT_TRAFFIC_CAR=<n>, looks at the n-th car on the road from RCSHOT_ACTOR_DIST m (default 8),
+//   RCSHOT_ACTOR_SIDE degrees round it (default 30) and RCSHOT_ACTOR_RISE times that distance up (default 0.35).
 
 #include <Tempest/Device>
 #include <Tempest/Fence>
@@ -27,6 +33,8 @@
 #include <memory>
 #include <string>
 
+#include "game/effects.h"
+#include "game/chasecamera.h"
 #include "game/resources.h"
 #include "game/world/modelmesh.h"
 #include "game/world/level.h"
@@ -34,6 +42,9 @@
 #include "physics/characters.h"
 #include "physics/vehicle.h"
 #include "game/world/characters.h"
+#include "game/world/traffic.h"
+#include "physics/traffic.h"
+#include "formats/fog.h"
 
 using namespace Tempest;
 
@@ -62,6 +73,8 @@ int main(int argc, const char** argv) {
     Resources res(device,argv[1]);
     Level     level(device,res,argv[2]);
     Camera    cam = level.startCamera();
+    ChaseCamera chase(ChaseCamera::Settings::load([&res](const std::string& f){ return res.pack().read(f); }));
+    ChaseCamera::Car chaseCar;
 
     // objects first: they settle on the track before the car drives in
     rc::PhysicsWorld         world(level.collision());
@@ -94,6 +107,9 @@ int main(int argc, const char** argv) {
         const float      time  = float(std::atof(drive));
         const int        carNo = std::atoi(car->name().c_str()+3);
         rc::Vehicle      veh(world,rc::carGeometry(carSb,car->name()),rc::CarParams::load(res.pack(),carNo),carPose);
+        chaseCar.pose   = carPose;
+        chaseCar.centre = carPose.translation();
+        chase.reset(chaseCar);
         for(float t=0; t<time; t+=1.f/60.f) {
           rc::Vehicle::Input in;
           in.throttle = 1;
@@ -105,6 +121,14 @@ int main(int argc, const char** argv) {
           if(veh.hit()!=rc::Vehicle::Hit::None)
             Log::i(veh.hit()==rc::Vehicle::Hit::Great ? "great hit" : "hit"," at ",t," s, ",veh.boostTank()," turbo");
           world.step(1.f/60.f);
+          chaseCar.pose     = veh.pose();
+          chaseCar.centre   = veh.centre();
+          chaseCar.velocity = veh.velocity();
+          chaseCar.spin     = veh.localSpin().length();
+          chaseCar.boost    = in.boost;
+          chase.update(chaseCar,1.f/60.f);
+          if(t+1.f/60.f<time)
+            chase.apply(chaseCar,&level.collision(),1.f/60.f,cam);
           }
         carPose = veh.pose();
         const rc::CarRig::Pose rig = veh.rigPose();
@@ -120,13 +144,17 @@ int main(int argc, const char** argv) {
                at.x," ",at.y," ",at.z,", on ",rc::surfaceName(veh.surface()),", ",int(veh.submerged()*100.f),
                "% under water");
         }
-      // chase view from behind, level with the horizon
-      const rc::Vec3 f = carPose.vector({0,0,1});
-      cam.chase(rc::Mat4::translate(carPose.translation())*rc::Mat4::rotate(1,std::atan2(f.x,f.z)*57.29578f),
-                ChaseDistance,ChaseHeight);
+      // the game's chase camera (game/chasecamera.h), settled behind a parked car
+      if(std::getenv("RCSHOT_DRIVE")==nullptr) {
+        chaseCar.pose   = carPose;
+        chaseCar.centre = carPose.translation();
+        chase.reset(chaseCar);
+        }
+      chase.apply(chaseCar,&level.collision(),1.f/60.f,cam);
       level.keepAboveWater(cam,waterTime());
       // RCSHOT_VIEW=<degrees>,<metres>: close to the car instead, from that side (0 behind, 90 its left)
       if(const char* v = std::getenv("RCSHOT_VIEW")) {
+        const rc::Vec3 f = carPose.point({0,0,1})-carPose.translation();
         const float yaw  = float(std::atof(v))/57.29578f+std::atan2(f.x,f.z);
         const char* d    = std::strchr(v,',');
         const float dist = d ? float(std::atof(d+1)) : 0.8f;
@@ -188,12 +216,108 @@ int main(int argc, const char** argv) {
       }
     CharacterView charView(device);
 
+    // road traffic
+    std::unique_ptr<rc::Traffic> traffic;
+    if(chars)
+      traffic = std::make_unique<rc::Traffic>(world,library,level.scene(),level.name(),
+                                              [&res](const std::string& f){ return res.pack().read(f); });
+    if(const char* run = std::getenv("RCSHOT_TRAFFIC"); run!=nullptr && traffic && traffic->size()>0) {
+      auto env = [](const char* n, float def) { const char* v = std::getenv(n); return v ? float(std::atof(v)) : def; };
+      std::vector<rc::Characters::Car> none;
+      const float time = float(std::atof(run));
+      for(float t=0; t<time; t+=1.f/60.f) {
+        world.step(1.f/60.f);
+        traffic->update(1.f/60.f,true,nullptr,cam.position,none);
+        }
+      const rc::Traffic::Car* look = nullptr;
+      int n = 0;
+      for(auto* c:traffic->cars()) {
+        if(!c->onRoad)
+          continue;
+        const rc::Vec3 at = c->world.translation();
+        Log::i("traffic: ",c->name," at ",at.x," ",at.y," ",at.z);
+        if(const char* k = std::getenv("RCSHOT_TRAFFIC_CAR"); k!=nullptr && n++==std::atoi(k))
+          look = c;
+        }
+      Log::i("traffic: ",traffic->departures()," sent in ",time," s");
+      if(look!=nullptr) {
+        const rc::Vec3 at   = look->world.translation();
+        const rc::Vec3 f    = look->pose.vector({0,0,1});
+        const float    side = env("RCSHOT_ACTOR_SIDE",30.f)*3.14159265f/180.f;
+        const float    yaw  = std::atan2(f.x,f.z)+side;
+        const float    dist = env("RCSHOT_ACTOR_DIST",8.f);
+        cam.position = at+rc::Vec3{std::sin(yaw),0,std::cos(yaw)}*dist+rc::Vec3{0,dist*env("RCSHOT_ACTOR_RISE",0.35f),0};
+        cam.lookAt(at+rc::Vec3{0,1.f,0});
+        // once more, so the car near the camera is posed (wheels, lights) and drawn
+        world.step(1.f/60.f);
+        traffic->update(1.f/60.f,true,nullptr,cam.position,none);
+        }
+      }
+    TrafficView trafficView(device,res);
+
     if(argc>10) {
       cam.position = {float(std::atof(argv[6])),float(std::atof(argv[7])),float(std::atof(argv[8]))};
       cam.yaw      = float(std::atof(argv[9]));
       cam.pitch    = float(std::atof(argv[10]));
       }
     Log::i("camera: ",cam.position.x," ",cam.position.y," ",cam.position.z," yaw=",cam.yaw," pitch=",cam.pitch);
+
+    // the track's effects, run for a while in front of the camera
+    std::unique_ptr<Effects> fx;
+    float                    fxTime = 0;
+    if(const char* f = std::getenv("RCSHOT_FX")) {
+      fx = std::make_unique<Effects>(device,res);
+      fx->setTrack(level.scene(),level.mesh().mainSea());
+      if(carSb.models.empty())
+        carSb = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
+      std::unique_ptr<rc::Vehicle> veh;
+      if(car)
+        veh = std::make_unique<rc::Vehicle>(world,rc::carGeometry(carSb,"Car1"),rc::CarParams::load(res.pack(),1),carPose);
+      const rc::fx::View     view = {cam.position,cam.viewProj(float(w)/float(h))};
+      const float time = float(std::atof(f));
+      int bursts = 0, hits = 0;
+      for(float t=0; t<time; t+=1.f/60.f) {
+        const float water = waterTime()+t;
+        if(veh) {
+          veh->hold(carPose);
+          world.step(1.f/60.f);
+          }
+        if(chars && veh)
+          chars->update(1.f/60.f,veh.get());
+        // the guards shoot at the parked car (target 0)
+        std::vector<rc::fx::Gunfire::Order>  orders;
+        std::vector<rc::fx::Gunfire::Target> targets;
+        if(veh) {
+          for(auto& s:chars ? chars->shooting() : std::vector<rc::Characters::Shot>{})
+            orders.push_back({s.gun,0});
+          rc::fx::Gunfire::Target tg;
+          tg.pose   = veh->pose();
+          tg.boxMin = veh->geometry().bodyMin;
+          tg.boxMax = veh->geometry().bodyMax;
+          tg.chance = rc::fx::Gunfire::chanceFor(true,0);
+          targets.push_back(tg);
+          }
+        bursts += int(orders.size());
+        std::vector<rc::fx::Footprints::Walker> walkers;
+        if(chars)
+          for(auto* a:chars->actors())
+            walkers.push_back({a->world,a->soles});
+        fx->tickWorld(1.f/60.f,view,water,[&level,water](const rc::Vec3& p){ return level.waterHeight(p,10.f,water); },
+                      orders,targets,level.collision(),walkers);
+        fx->gunSounds();
+        hits += int(fx->gunHits().size());
+        }
+      fxTime = time;
+      const rc::Vec3 at = carPose.translation();
+      Log::i("effects: ",time," s, ",bursts," bursts at the car (",at.x," ",at.y," ",at.z,"), ",hits," hits, ",
+             fx->footprintCount()," footprints");
+      if(chars)
+        for(auto* a:chars->actors())
+          if(a->kind==rc::Characters::Kind::Person) {
+            const rc::Vec3 p = a->world.translation();
+            Log::i("  ",a->name," now at ",p.x," ",p.y," ",p.z,a->soles ? ", leaving footprints" : "");
+            }
+      }
 
     auto color = device.attachment(TextureFormat::RGBA8,w,h);
     auto depth = device.zbuffer(TextureFormat::Depth32F,w,h);
@@ -204,14 +328,19 @@ int main(int argc, const char** argv) {
     push.cameraPos[0] = cam.position.x;
     push.cameraPos[1] = cam.position.y;
     push.cameraPos[2] = cam.position.z;
-    push.cameraPos[3] = 250.f;
+    if(const char* f = std::getenv("RCSHOT_FOG"); f==nullptr || std::string(f)!="0") {
+      // the fog as it is once its fade-in is over (no fade here)
+      const auto fog = rc::FogParams::load(res.pack(),argv[2]);
+      push.cameraPos[3] = fog.density;
+      push.fogColor     = fog.color & 0xffffffu;
+      }
     push.sunDir[0] = 0.4f; push.sunDir[1] = 0.8f; push.sunDir[2] = 0.3f;
     push.sunDir[3] = 1.0f;
     if(car) {
       const rc::Vec3 at = carPose.translation();
       push.carPos[0] = at.x; push.carPos[1] = at.y; push.carPos[2] = at.z;
       }
-    push.time = waterTime();
+    push.time = waterTime()+fxTime;
 
     CommandBuffer cmd;
     {
@@ -225,7 +354,13 @@ int main(int argc, const char** argv) {
         car->draw(enc,viewProj,push,carPose,parts.empty() ? nullptr : &parts);
       if(chars)
         charView.draw(enc,0,res,*chars,push);
+      if(fx)
+        fx->drawTracks(enc,0,viewProj,cam.position);
+      if(traffic)
+        trafficView.draw(enc,0,*traffic,viewProj,push,&level.collision());
       level.mesh().draw(enc,push,LevelMesh::Pass::Translucent,sky);
+      if(fx)
+        fx->draw(enc,0,int(w),int(h),viewProj,cam.position);
       if(std::getenv("RCSHOT_COLL")!=nullptr)
         level.collisionView().draw(enc,push);
     }

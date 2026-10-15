@@ -49,6 +49,8 @@ class PhysicsWorld {
     static constexpr int     CarTag  = 2;
     // the same of people, guards and dogs (Characters)
     static constexpr int     CharacterTag = 3;
+    // the same of the road traffic (Traffic)
+    static constexpr int     TrafficTag = 4;
 
     const CollisionMesh&     track() const { return coll; }
     btDiscreteDynamicsWorld& bullet()      { return *world; }
@@ -129,6 +131,8 @@ class Vehicle {
     Mat4                       pose()  const;
     // centre of mass, world; its velocity (m/s); the angular velocity in the car's own axes (rad/s, x pitch, z roll)
     Vec3                       centre()    const;
+    // the centre of mass where pose() draws it: between the last two fixed steps, like the model on screen
+    Vec3                       drawnCentre() const;
     Vec3                       velocity()  const;
     Vec3                       localSpin() const;
     // an impulse (kg m/s) at the world point `at`
@@ -138,6 +142,11 @@ class Vehicle {
     const btRigidBody&         chassis() const { return *body; }
     // adds `dv` (m/s, world) to the velocity: a kick (people.sb characters)
     void                       addVelocity(const Vec3& dv);
+    // a bullet of a guard or the BTR hit the car (RCCars.exe 0x508560 -> 0x4f3470): pushed ShotPushOut m/s away from
+    // `gun` and ShotPushUp m/s up. The game then holds the car (no keys, handbrake on, 0x4f6b20) and puts it back
+    // at the last checkpoint ShotHold s after the first hit (0x508ae0), more hits in between only push it
+    static constexpr float     ShotPushOut = 6.5f, ShotPushUp = 3.25f, ShotHold = 2.f;
+    void                       shotFrom(const Vec3& gun);
     // carried by someone (a person's hand): put at `pose` (model -> world), at rest; addVelocity() throws it afterwards
     void                       hold(const Mat4& pose);
     // forward speed, m/s (negative when reversing)

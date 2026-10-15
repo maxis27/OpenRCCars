@@ -106,6 +106,9 @@ class Opponent {
     bool                 trackRules(float dt);
     // back on the track at the last main checkpoint passed
     void                 putBack();
+    // a bullet hit it (RCCars.exe 0x508560): knocked off its recording and pushed away from `gun`
+    // (Vehicle::shotFrom); put back on the track Vehicle::ShotHold s after the first hit (0x508ae0, in trackRules)
+    void                 shotFrom(const Vec3& gun);
 
     Mat4                 pose() const;
     // how the wheels and the suspension are drawn now (CarRig): driven, as the Vehicle has them; following the
@@ -137,6 +140,7 @@ class Opponent {
     int32_t              car = 0;           // 0 Overkill, 1 Buggy, 2 Hummer
     int32_t              skin = 0;          // AIPlayer<n> Skin
     size_t               putBacks = 0;      // times put back on the track
+    float                shotTime = -1;     // s since a bullet hit it, < 0 none
 
   private:
     // the autopilot of a knocked car

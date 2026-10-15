@@ -4,10 +4,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <functional>
 #include <map>
 #include <optional>
+#include <set>
 #include <tuple>
 #include <unordered_map>
 
@@ -81,6 +83,17 @@ class SeaOutline {
 
     size_t outlineEdges() const { return edges.size(); }
 
+    // the corners of the outline, each once
+    std::vector<rc::Vec2> points() const {
+      std::set<std::pair<float,float>> seen;
+      std::vector<rc::Vec2>            ret;
+      for(auto& [a,b]:edges)
+        for(const rc::Vec2& p:{a,b})
+          if(seen.insert({p.x,p.y}).second)
+            ret.push_back(p);
+      return ret;
+      }
+
   private:
     static constexpr float triCell = 4.f, edgeCell = 2.f;
     using Tri = std::array<rc::Vec3,3>;
@@ -136,8 +149,9 @@ std::optional<rc::WaterWaves> loadWaves(rc::PackFile& pack, std::string_view tra
 struct BatchKey {
   int32_t model = -1;
   int32_t base = -1, light = -1, mask = -1, base2 = -1;
+  bool    modulate = false; // SbMesh::renderFlags 0x40000000
   bool operator<(const BatchKey& o) const {
-    return std::tie(model,base,light,mask,base2) < std::tie(o.model,o.base,o.light,o.mask,o.base2);
+    return std::tie(model,base,light,mask,base2,modulate) < std::tie(o.model,o.base,o.light,o.mask,o.base2,o.modulate);
     }
   };
 
@@ -147,8 +161,16 @@ struct LevelMesh::SeaSurface {
   std::vector<rc::WaterWaves>   waves;
   std::vector<SeaOutline>       outlines;
   std::vector<int32_t>          ofMesh;   // per SbScene::meshes, -1 none
+  int32_t                       main = -1; // "more1", else the first one
   std::optional<rc::SbVolume>   waterBox;
+  std::vector<rc::Vec3>         coast;    // seaCoast()
   };
+
+const rc::WaterWaves* LevelMesh::mainSea() const {
+  if(seaSurface==nullptr || seaSurface->main<0)
+    return nullptr;
+  return &seaSurface->waves[size_t(seaSurface->main)];
+  }
 
 std::vector<bool> LevelMesh::hiddenMeshes(const rc::SbScene& scene) {
   // "_LOD<n>" copies of the same thing are siblings under one parent. Objects keep their full detail mesh
@@ -291,6 +313,7 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
       key.model = m.model;
       key.base  = base->texture;
       key.light = light ? light->texture : -1;
+      key.modulate = (m.renderFlags & 0x40000000)!=0;
       if(mask) {
         key.mask  = mask->texture;
         key.base2 = base2 ? base2->texture : -1;
@@ -426,6 +449,11 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
       b.mode   = rc::AlphaMode::Translucent;
       b.water  = foamSea;
       }
+    if(key.modulate) {
+      // darkens or lightens the ground under it: its grey (128) leaves it as it is
+      b.flags = F_Modulate;
+      b.mode  = rc::AlphaMode::Opaque;
+      }
     if(b.mode==rc::AlphaMode::Cutout)
       b.flags |= F_Cutout;
     for(auto& t:b.tex)
@@ -435,8 +463,13 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
     batches.push_back(b);
     }
 
-  // opaque first, then the water, then the rest of the translucent batches: the foam is surf on top of the water
-  auto order = [](const Batch& b) { return b.mode!=rc::AlphaMode::Translucent ? 0 : (b.flags & F_Water) ? 1 : 2; };
+  // opaque first, the strips multiplied onto the ground over it, then the water, then the rest of the translucent
+  // batches: the foam is surf on top of the water
+  auto order = [](const Batch& b) {
+    if(b.mode!=rc::AlphaMode::Translucent)
+      return (b.flags & F_Modulate) ? 1 : 0;
+    return (b.flags & F_Water) ? 2 : 3;
+    };
   std::stable_sort(batches.begin(),batches.end(),[&](const Batch& a, const Batch& b){
     return order(a) < order(b);
     });
@@ -448,6 +481,7 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
   seaSurface = std::make_shared<SeaSurface>();
   seaSurface->waves    = std::move(seas);
   seaSurface->outlines = std::move(outlines);
+  seaSurface->main     = foamSea;
   // every mesh under a sea's node, the hidden LODs too: the collision has them
   seaSurface->ofMesh.assign(scene.meshes.size(),-1);
   for(size_t mi=0; mi<scene.meshes.size(); ++mi)
@@ -458,6 +492,34 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
         }
   if(waterBox!=nullptr)
     seaSurface->waterBox = *waterBox;
+
+  // the sea sound follows the coast of the last sea RCCars.exe finds (0x522ed0). It looks for nodes named *more*
+  // depth first (0x51eff0), and a node lists its children newest first (0x44ed80), so the last one it finds is the
+  // first in the file among siblings: "more1" on beach_1, not the lagoon "more2". The sound sits at the height of
+  // that sea's offset (0x523140).
+  std::vector<std::vector<int32_t>> children(scene.meshes.size()+1);
+  for(size_t mi=0; mi<scene.meshes.size(); ++mi) {
+    const int32_t p = scene.meshes[mi].parent;
+    children[p>=0 && size_t(p)<scene.meshes.size() ? size_t(p) : scene.meshes.size()].push_back(int32_t(mi));
+    }
+  int32_t soundSea = -1;
+  std::function<void(size_t)> visit = [&](size_t n) {
+    for(auto it=children[n].rbegin(); it!=children[n].rend(); ++it) {
+      std::string lower = scene.meshes[size_t(*it)].name;
+      for(auto& c:lower)
+        c = char(std::tolower(static_cast<unsigned char>(c)));
+      if(lower.find("more")==std::string::npos) {
+        visit(size_t(*it));
+        continue;
+        }
+      auto sea = seaNode.find(*it);
+      soundSea = sea!=seaNode.end() ? sea->second : -1;
+      }
+    };
+  visit(scene.meshes.size());
+  if(soundSea>=0)
+    for(const rc::Vec2& p:seaSurface->outlines[size_t(soundSea)].points())
+      seaSurface->coast.push_back({p.x,seaSurface->waves[size_t(soundSea)].offset,p.y});
 
   vbo            = device.vbo(all);
   info.triangles = all.size()/3;
@@ -489,6 +551,14 @@ ScenePipelines::ScenePipelines(Device& device) {
   stBlend.setBlendDest  (RenderState::BlendMode::OneMinusSrcAlpha);
   stBlend.setZWriteEnabled(false);
   blend = device.pipeline(Topology::Triangles,stBlend,vert,frag);
+
+  // SbMesh::renderFlags 0x40000000: RCCars.exe gives these meshes the same state as the tyre tracks (0x451310 mode
+  // 3, 0x121), twice the source times the destination
+  RenderState stModulate = stOpaque;
+  stModulate.setBlendSource(RenderState::BlendMode::DstColor);
+  stModulate.setBlendDest  (RenderState::BlendMode::SrcColor);
+  stModulate.setZWriteEnabled(false);
+  modulate = device.pipeline(Topology::Triangles,stModulate,vert,frag);
 
   noWater = device.ubo(WaterBlock());
 
@@ -551,7 +621,7 @@ void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass, 
     if((b.mode==rc::AlphaMode::Translucent)!=(pass==Pass::Translucent))
       continue;
     const bool tess = (b.flags & F_Water) && !pso.water.isEmpty();
-    auto&      p    = tess ? pso.water : pso.get(b.mode);
+    auto&      p    = tess ? pso.water : (b.flags & F_Modulate) ? pso.modulate : pso.get(b.mode);
     if(current!=&p) {
       enc.setPipeline(p);
       current = &p;
@@ -567,6 +637,11 @@ void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass, 
     enc.setBinding(5,*env);
     enc.draw(vbo,b.first,b.count);
     }
+  }
+
+const std::vector<rc::Vec3>& LevelMesh::seaCoast() const {
+  static const std::vector<rc::Vec3> none;
+  return seaSurface ? seaSurface->coast : none;
   }
 
 float LevelMesh::waveLift(uint32_t mesh, const rc::Vec3& p, float time) const {

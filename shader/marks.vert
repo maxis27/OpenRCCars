@@ -4,7 +4,7 @@
 
 layout(push_constant, std430) uniform Push {
   mat4 viewProj;
-  uint mode;      // 0 tyre track, 1 texture with a second one's opacity (wake, foam)
+  uint mode;      // 0 tyre track, 1 texture with a second one's opacity (wake, foam), 2 a spot on the track
   } push;
 
 layout(location = 0) in vec3 inPos;

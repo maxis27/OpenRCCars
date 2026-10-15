@@ -13,7 +13,7 @@ namespace rc {
 // Module table followed by a node tree: DESC -> FOLD/MODL -> MESH (nested), GLTX, MARK, COLL, HHID, INST, SCRI, SPLN, ANIM ...
 //
 // MESH children:
-//   0x03 name, 0x08 header (u32 count, node number, 0, two flag words, `flags`),
+//   0x03 name, 0x08 header (u32 count, node number, 0, a flag word, `renderFlags`, `flags`),
 //   0x0b transform (u32 9, pos xyz, scale xyz, rotation xyz in degrees),
 //   0x11 positions (u32 n + vec3[n]), 0x13 texcoords (u32 n + vec2[n]), 0x14 bbox,
 //   0x17 faces: list of 0x18 { prefix n; 0x19 position indices, 0x1a normals, 0x25 material, 0x27 face normal,
@@ -96,6 +96,10 @@ struct SbMesh {
   int32_t             node   = -1; // number of the node in its MODL (header), referred to by skins
   uint32_t            flags  = 0;  // 0x08 word 5; 0x20000 = drawn with the environment map (RCCars.exe 0x48e4b0):
                                    // the seas' nodes ("more1") and the cars' ENVIR_CAR_BODY_body
+  uint32_t            renderFlags = 0; // 0x08 word 4, how RCCars.exe draws the mesh (0x48e4b0, 0x451310):
+                                       // 0x1000 blended by its texture's alpha, 0x2000 the seas,
+                                       // 0x40000000 multiplied onto what is under it, twice the source times
+                                       // the destination (the tread strips "wt_wetsand" on every track)
   Mat4                local;
   Mat4                world;
   Mat4                bindLocal;           // 0x38: the pose the skins were bound in (pos, rotation, scale)

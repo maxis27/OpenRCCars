@@ -132,6 +132,8 @@ const CharacterView::Model& CharacterView::model(const rc::Skeleton& sk) {
   return *m;
   }
 
+static constexpr float PoseDistance = 270.f; // metres from the camera
+
 void CharacterView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, Resources& res, const rc::Characters& chars,
                          const LevelMesh::Push& push) {
   verts.clear();
@@ -140,8 +142,8 @@ void CharacterView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, Resources& 
   for(auto* a:chars.actors()) {
     if(!a->visible || a->skeleton==nullptr)
       continue;
-    // not worth posing far away in the fog
-    if((a->world.translation()-camera).length()>push.cameraPos[3]+20.f)
+    // not worth posing far away
+    if((a->world.translation()-camera).length()>PoseDistance)
       continue;
     const rc::Skeleton& sk = *a->skeleton;
     const Model&        md = model(sk);

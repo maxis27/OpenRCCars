@@ -825,6 +825,12 @@ Vec3 Vehicle::centre() const {
   return fromBt(body->getCenterOfMassPosition())*(1.f/S);
   }
 
+Vec3 Vehicle::drawnCentre() const {
+  btTransform t;
+  motion->getWorldTransform(t);
+  return fromBt(t.getOrigin())*(1.f/S);
+  }
+
 Vec3 Vehicle::velocity() const {
   return fromBt(body->getLinearVelocity())*(1.f/S);
   }
@@ -840,6 +846,14 @@ void Vehicle::applyImpulse(const Vec3& impulse, const Vec3& at) {
 void Vehicle::addVelocity(const Vec3& dv) {
   body->activate(true);
   body->setLinearVelocity(body->getLinearVelocity()+toBt(dv)*S);
+  }
+
+void Vehicle::shotFrom(const Vec3& gun) {
+  Vec3 away = pose().translation()-gun;
+  away.y = 0;
+  const float l = away.length();
+  away = l>1e-6f ? away*(1.f/l) : Vec3{};
+  addVelocity(away*ShotPushOut+Vec3{0,ShotPushUp,0});
   }
 
 void Vehicle::hold(const Mat4& at) {

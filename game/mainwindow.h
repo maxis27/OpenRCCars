@@ -13,10 +13,13 @@
 #include <memory>
 
 #include "arrow.h"
+#include "formats/fog.h"
 #include "camera.h"
+#include "chasecamera.h"
 #include "effects.h"
 #include "hud.h"
 #include "physics/characters.h"
+#include "physics/traffic.h"
 #include "physics/checkpoints.h"
 #include "physics/opponents.h"
 #include "physics/race.h"
@@ -25,13 +28,15 @@
 #include "resources.h"
 #include "sounds.h"
 #include "world/characters.h"
+#include "world/traffic.h"
 #include "world/modelmesh.h"
 #include "world/level.h"
 #include "world/objects.h"
 
 class MainWindow : public Tempest::Window {
   public:
-    MainWindow(Tempest::Device& device, Resources& res, const std::string& level);
+    // `dev`: the -dev switch, RCCars.exe's developer mode (0x147d204); our debug keys work only with it
+    MainWindow(Tempest::Device& device, Resources& res, const std::string& level, bool dev = false);
     ~MainWindow() override;
 
   private:
@@ -59,9 +64,16 @@ class MainWindow : public Tempest::Window {
     std::vector<rc::Mat4> carPartPoses() const;
     std::vector<rc::Mat4> opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const;
     Hud::Info             hudInfo() const;
+    // the bursts fired in this update and the cars they can hit (fx::Gunfire)
+    std::vector<rc::fx::Gunfire::Order>  gunOrders()  const;
+    std::vector<rc::fx::Gunfire::Target> gunTargets() const;
+    ChaseCamera::Car      chaseCar() const;
     // the way on for the arrow: the point it shows, relative to the car's heading, radians, positive = left
     float                 wayDirection() const;
     DirectionArrow::Input arrowInput() const;
+    // F9 in the developer mode: the car flown by hand, see `flying`
+    void                  setFlying(bool on);
+    void                  fly(float dt);
 
     Tempest::Device&        device;
     Resources&              resources;
@@ -80,10 +92,13 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<Objects>          objects; // props: bodies in `physics`
     std::unique_ptr<rc::Characters>   characters; // people and animals: bodies in `physics`
     std::unique_ptr<CharacterView>    characterView;
+    std::unique_ptr<rc::Traffic>      traffic;    // road cars: bodies in `physics`
+    std::unique_ptr<TrafficView>      trafficView;
     std::unique_ptr<rc::Vehicle>      vehicle;
     std::unique_ptr<rc::Checkpoints>  checkpoints;
     std::unique_ptr<rc::Race>         race;
     rc::ResetVolumes                  resetVolumes; // refers to the level's scene
+    rc::Fog                           fog;
     // declared after `checkpoints` and `physics`: they refer to both
     std::unique_ptr<rc::Opponents>    opponents;
     rc::Opponents::Level              aiLevel = rc::Opponents::Level::Normal; // O: off, easy, normal, hard
@@ -105,11 +120,20 @@ class MainWindow : public Tempest::Window {
     bool                    besideDone   = false;
     bool                    jumpPressed = false;
     float                   upsideDown = 0; // seconds on the roof or side, then the car is put back
+    float                   shotTime   = -1; // seconds since a bullet hit the car (held, then put back), < 0 none
+    // RCCars.exe's developer mode (-dev, 0x147d204) and its F9 (0x147d254, the "ZERO" mode of 0x482900): the
+    // player's car leaves the physics and is flown by hand, the camera rigid behind it, and nothing puts the car
+    // back on the track
+    const bool              devMode;
+    bool                    flying     = false;
+    rc::Mat4                flightPose;     // the flown car, model -> world
+    float                   zeroSpeed  = 15.f; // m/s: "Set ZeroSpeed 15" in Autoexec.gm, 100 without it
+    float                   zeroAngle  = 90.f; // degrees/s: ZeroAngle, Autoexec.gm does not set it
     Camera                  camera;
-    float                   chaseYaw = 0;   // smoothed heading for the chase camera, degrees
-    bool                    freeCamera = false;
-    bool                    showCollision = false; // K: collision debug overlay
-    bool                    showGates     = false; // G: checkpoint gates outlined (debug)
+    ChaseCamera             chase;          // the camera behind the car (Settings\Camera.ini)
+    bool                    freeCamera = false; // V (developer mode)
+    bool                    showCollision = false; // K: collision debug overlay (developer mode)
+    bool                    showGates     = false; // G: checkpoint gates outlined (developer mode)
 
     Tempest::CommandBuffer  commands[MaxFramesInFlight];
     Tempest::Fence          fence[MaxFramesInFlight];

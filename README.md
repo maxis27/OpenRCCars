@@ -15,14 +15,16 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   wszystkie 1316 tekstur z archiwum dekodują się poprawnie
 - **.sb** (CREAT Studio Scene Project 6.0): hierarchia węzłów, siatki, UV, normalne, warstwy tekstur
   (BAS1/LM_1/ALP1/BAS2), osadzone lightmapy, markery (checkpointy `cp_*`); wszystkie 18 plików parsują się poprawnie
-- **renderer**: trasa z teksturami, lightmapami, mieszaniem tekstur terenu, alpha-testem, przezroczystością i mgłą;
+- **renderer**: trasa z teksturami, lightmapami, mieszaniem tekstur terenu, alpha-testem, przezroczystością i mgłą
+  każdej trasy jak w oryginale (`Settings/fog_<trasa>.ini`);
   przełączanie 10 tras
 - **auto**: model z `Car.sb` (Overkill, Buggy, Hummer) stoi na pozycji startowej gracza (`INST 'Player'`), osadzony
   na ziemi; nadwozie i koła są osobnymi częściami (pod obrót i skręt kół); kamera za autem albo kamera swobodna;
-  kamera za autem nie schodzi pod wodę, a karoseria, szyby i chromy mają odbicia z mapy otoczenia jak w oryginale
+  kamera za autem działa jak w oryginale (`Settings/Camera.ini`: odległość, opóźnienie wysokości i kąta, odsuwanie
+  przy prędkości i turbo, unoszenie, gdy teren zasłania auto), nie schodzi pod wodę, a karoseria, szyby i chromy mają odbicia z mapy otoczenia jak w oryginale
 - **kolizje trasy** z węzła `COLL`: siatka komórek nad trasą, w każdej lista ścian siatek renderu, które ją przecinają;
   z tego powstaje siatka kolizji (trójkąty w przestrzeni świata) z raycastem po komórkach (DDA). Auto staje na
-  ziemi wyznaczonej raycastem. Klawisz **K** pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
+  ziemi wyznaczonej raycastem. Klawisz **K** (w trybie `-dev`) pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
   ściany, niebieskie niewidoczne ściany (ściany bez tekstury)
 - **fizyka jazdy** jak w `RCCars.exe`: własny model auta (sprężyny, opony z poślizgiem, koła jako kule) na
   [Bullecie](https://github.com/bulletphysics/bullet3), który porusza nadwozie i zderza je z trasą i rekwizytami.
@@ -64,7 +66,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   `messagebox`, z punktami głównymi (`map_cp`, następny świeci) i autami (`map_arrow`: gracz i przeciwnicy); strzałka kierunku
   w nawiasach z `overtaking.csi`; w lewym górnym rogu miejsce (`place1..6`) w wyścigu z przeciwnikami. Czas i numer
   okrążenia metaliczne jak w oryginale, czas okrążenia miga pod czasem tylko po jego ukończeniu. Spoza
-  oryginału są tylko kule zaliczania punktów (1,6 m) obrysowane na trasie do debugowania (klawisz G, domyślnie wyłączone): następna główna zielona, kolejna żółta,
+  oryginału są tylko kule zaliczania punktów (1,6 m) obrysowane na trasie do debugowania (klawisz G w trybie `-dev`, domyślnie wyłączone): następna główna zielona, kolejna żółta,
   zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono, pośrednia, na którą wskazuje strzałka,
   niebieska. Każde zaliczenie trafia też do logu
 - **przeciwnicy**: jak w oryginale, dopóki nikt ich nie potrąci, nie jeżdżą z fizyką, tylko odtwarzają przejazdy nagrane na każdej trasie
@@ -95,13 +97,21 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
   baloniki, łuski, toczące się kłębki) stoją tam, gdzie kładzie je trasa (od 8 do 17 na trasie), i są bryłami
   sztywnymi: auto je potrąca, przewraca i pcha, a koła po nich przejeżdżają. Masa, sprężystość, tarcie, kształt
-  (kula, walec albo otoczka wypukła modelu) i środek masy pochodzą ze skryptu `SCRI` każdego modelu. Ruch uliczny
-  (`Roadcar.sb`) jeszcze się nie pojawia
+  (kula, walec albo otoczka wypukła modelu) i środek masy pochodzą ze skryptu `SCRI` każdego modelu
+- **ruch uliczny** (`Roadcar.sb`) jak w `RCCars.exe`: na beach_2 i beach_3 po drodze jeżdżą w obie strony hummer,
+  dwa kampery i trzy pikapy (w kilku malowaniach), na urban_1 hummer, a na beach_4 pływający BTR, który obraca
+  wieżę do aut przed sobą i strzela do nich seriami. Auta ruszają od startu wyścigu co kilka sekund po nagranych
+  ścieżkach (`Profiles/rdc_<trasa>_forw.gpf`, `_back.gpf`), skręcają przednimi kołami, pochylają się na
+  wzniesieniach, w tunelach zapalają światła, trąbią albo włączają syrenę, gdy kamera jest blisko. Auto gracza
+  potrącone przez samochód odlatuje w bok i w górę, a przeciwnik wypada z nagrania. Kampery i ciężarówki rzucają
+  przed siebie plamy światła reflektorów, a wolne auta (hummer z urban_1, BTR) mają pod kołami cienie
 - **ludzie i zwierzęta** (`people.sb`, `AIChars.sb`) zachowują się jak w `RCCars.exe`: plażowicze chodzą po
   nagranych ścieżkach (`Profiles/<nazwa>.dat`), kopią auto albo podnoszą je i rzucają; strażnicy obracają się do
   gracza, celują i kopią; mewy chodzą i odlatują z krzykiem, gdy ktoś podejdzie; kraby wychodzą z dziur i uciekają
   bokiem do morza; pająki biegają między dziurami, uciekają przed autem i giną pod kołami; psy gonią auto i
   szczekają; sępy krążą nad country_2. Potrącenie człowieka, strażnika albo psa to „Wielkie Łup!” i ich głos.
+  Idący plażowicze zostawiają na piasku ślady stóp (`sole_footprint`), na zmianę prawej i lewej, które po 20 s
+  zaczynają blednąć i znikają po 30 s
   Animacje szkieletowe są liczone na CPU
 - **efekty spod kół**: kurz na piasku, mokrym piasku, głębokim piasku i żwirze oraz bryzgi wody, gdy koło tnie
   lustro wody, jak w `RCCars.exe`: ustawienia z `Settings/car_dustx.ini`, `surf_*.crs` i `water_spray.crs`, krzywe
@@ -113,6 +123,11 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   i karoserią w wodzie ciągnie się kilwater i piana (`wtr_trace.crs`, `whr_horse.ini`), z końcówki dopalacza lecą
   spaliny z dużym ciemnym kłębem przy włączeniu turbo (`exhausted_gas.ini`, `eg_int.spl`), a kurz spod kół
   powoli brudzi karoserię auta gracza, woda ją zmywa (tekstury `dirt_car*`)
+- **efekty trasy**, też z `RCCars.exe`: rozbryzgi fal o skały przy znacznikach `water_splash_N`, fale łamiące się
+  przy brzegu przy znacznikach `water_wave_N` (płyną z falą morza do brzegu, tekstury `water_wave` i
+  `water_wave_alpha`) oraz strzały strażników i BTR: seria kul przechodzi w poprzek auta, trafienie w ziemię
+  wyrzuca grudki i kurz i zostawia na 8 s dziurę (`bullet_footprint`); trafione auto dymi, odskakuje od strzelca,
+  traci sterowanie i po 2 s wraca na ostatni punkt kontrolny (przeciwnik też); dźwięki `burst` i `bullet`
 - **narzędzia**: `rcinfo` (inspekcja/eksport danych i jazda testowa, bez GPU) i `rcshot` (render offscreen do PNG)
 
 ![Auto na starcie (beach_1)](docs/car_beach_1.jpg)
@@ -128,7 +143,11 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 
 ![Efekty: kurz za przeciwnikami na starcie, bryzgi spod kół w morzu (beach_1)](docs/effects_beach_1.jpg)
 
+![Efekty trasy: rozbryzg przy wodospadzie (beach_1), fale przy brzegu (beach_1), strażnik strzela do auta (beach_4)](docs/worldfx.jpg)
+
 ![Ślady opon na piasku, kilwater i piana w morzu, brud na karoserii: czysta, w połowie, najbrudniejsza (beach_1)](docs/effects2_beach_1.jpg)
+
+![Ślady stóp plażowicza wzdłuż brzegu, z góry (beach_1)](docs/footprints_beach_1.jpg)
 
 ![Rekwizyty: pachołek (beach_2), butelki (urban_1), kłębek przy werandzie (country_3), czajnik (country_1)](docs/objects.jpg)
 
@@ -160,6 +179,7 @@ build\bin\RelWithDebInfo\OpenRCCars.exe -g "D:\SteamLibrary\steamapps\common\RCC
 ```
 
 Opcje: `-g <folder gry>` (domyślnie bieżący katalog), `-l <trasa>` (domyślnie `beach_1`),
+`-dev` (tryb deweloperski jak w oryginale, z naszymi klawiszami debugowania, patrz niżej),
 `-dx12` (backend DirectX 12, eksperymentalnie), `-validation` (warstwy walidacji Vulkana).
 
 ### Linux
@@ -188,7 +208,6 @@ Jazda (kamera za autem):
 | Spacja | skok (przewrócone auto: na koła) |
 | Shift | dopalacz (zużywa turbo, ok. 10 s z pełnego zbiornika) |
 | B | zablokuj koła (tylne, do poślizgu) |
-| T | postaw auto na koła w miejscu |
 | R | powrót do ostatniego głównego punktu kontrolnego (przed pierwszym: na start) |
 | Enter | wyścig od nowa, od odliczania („Jeszcze raz”) |
 | L | liczba okrążeń: 3 / 5 / 7 (i wyścig od nowa) |
@@ -201,17 +220,42 @@ Pozostałe:
 
 | Klawisz | Akcja |
 |---|---|
+| F1–F10 | trasy: beach_1–4, country_1–4, urban_1–2 (w trybie dev urban_1 to Shift+F9) |
+| Esc | wyjście |
+
+Tryb deweloperski (`-dev`, jak `RCCars.exe -dev`):
+
+| Klawisz | Akcja |
+|---|---|
+| F9 | lot autem jak w oryginale: auto bez fizyki, kamera sztywno za nim, bez powrotu na punkt kontrolny; drugi raz: auto znowu jedzie z miejsca, w którym jest |
+| ↑ / ↓, W / S | (lot) do przodu / do tyłu, `ZeroSpeed` m/s (15 z `Autoexec.gm`) |
+| ← / → | (lot) obrót, `ZeroAngle` stopni/s (90) |
+| Alt + ↑ / ↓, Alt + ← / → | (lot) w górę / w dół, w bok |
+| A / Z | (lot) nos w górę / w dół |
+| End | (lot) wypoziomuj |
+| Shift | (lot) dwa razy szybciej |
+| F11 | natychmiastowe wyjście (oryginał: `WM_CLOSE`) |
 | V | kamera za autem ↔ kamera swobodna (auto wtedy stoi) |
-| K | nakładka kolizji (debug; turkusowa woda, fioletowy głęboki piasek) |
-| G | kule zaliczania punktów kontrolnych, 1,6 m (debug, domyślnie wyłączone) |
-| N | przeskok do następnego głównego punktu kontrolnego (debug, do sprawdzania okrążeń i mety) |
+| K | nakładka kolizji (turkusowa woda, fioletowy głęboki piasek) |
+| G | kule zaliczania punktów kontrolnych, 1,6 m |
+| N | przeskok do następnego głównego punktu kontrolnego (do sprawdzania okrążeń i mety) |
+| T | postaw auto na koła w miejscu |
 | W / S / A / D | ruch kamery swobodnej |
 | E, Spacja / Q, C | w górę / w dół |
 | Shift | szybciej ×4 |
 | przeciąganie myszą, strzałki | obrót kamery swobodnej |
 | kółko myszy | prędkość kamery |
-| F1–F10 | trasy: beach_1–4, country_1–4, urban_1–2 |
-| Esc | wyjście |
+
+Co `-dev` robi w `RCCars.exe` (0x4883dd ustawia flagę 0x147d204, w logu „-dev mode on”): klawisz F9 (0x48c0e3)
+przełącza flagę 0x147d254, F11 zamyka okno; wczytuje skrypt `debug.gm`, pomija przy starcie kilka kroków (m.in. styl
+dźwięku `Snd_Style`), dodaje polecenia konsoli (`GetInfo`, `GetStat`, `cash`, `stat`, `dt0`–`dtx`, `burst`, `constr`, „ZERO”
+`F`/`E1`/`E2`/`I`) i pozwala wczytać trasę wprost z instancją `Player`. Przy F9 auto gracza nie przechodzi przez
+fizykę (0x4f39e0 → 0x482900): w pierwszej klatce staje prosto, przodem tam, dokąd jechało po ziemi, a potem przesuwa
+się i obraca o `ZeroSpeed`·dt i `ZeroAngle`·dt (sekcja „Debug”, domyślnie 100 i 90, `Autoexec.gm` ustawia
+`ZeroSpeed 15`) klawiszami z 0x482320 (↑↓ przód/tył, ←→ obrót, Alt+↑↓ góra/dół, Alt+←→ oraz `,`/`.` w bok, A/Z
+pochylenie, End poziomo, Shift ×2). Kamera ma wtedy sprężyny bez luzu: 1,0443 m za autem i 0,409 m nad nim (0x500ce9),
+bez podnoszenia przez przeszkody (0x501183) i bez pilnowania wody; 0x508160 nie odsyła auta na punkt kontrolny.
+U nas klawisze debugowania (V, K, G, N, T) działają tylko w tym trybie.
 
 ## Narzędzia
 
@@ -229,6 +273,10 @@ rcinfo <folder_gry> ai RCCarsDB/beach_1.sb [poziom 1-3] [okrążenia]  # przeciw
 rcinfo <folder_gry> fx                            # ustawienia efektów, ile cząsteczek, śladów i kilwatera daje auto na każdej nawierzchni
 rcinfo <folder_gry> ram RCCarsDB/beach_1.sb [przeciwnik] [s] [side]  # gracz wjeżdża w przeciwnika: wypadnięcie z nagrania, powrót, „Łup!”
 rcinfo <folder_gry> drown RCCarsDB/beach_1.sb [auto 1-3]  # strefy powrotu, pudło kolizji, czas tonięcia na kilku głębokościach (też przeciwnika)
+rcinfo <folder_gry> fog beach_1                   # mgła trasy: gęstość, kolor, ile koloru zostaje w danej odległości
+rcinfo <folder_gry> traffic beach_2 [s]           # ruch uliczny: odjazdy, wysokość kół nad drogą, światła, cienie, potrącenie gracza
+rcinfo <folder_gry> shots beach_4 [auto 1-3] [s]  # strażnicy i BTR strzelają do auta: serie, trafienia, odrzut, powrót
+rcinfo <folder_gry> nodes RCCarsDB/Roadcar.sb Btr # drzewo węzłów modelu: położenie, osie, wierzchołki, tekstury
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
 rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
 rcshot <folder_gry> beach_1 shot.png [w h] [x y z yaw pitch]   # render offscreen, z autem i kamerą za nim
@@ -241,6 +289,11 @@ RCSHOT_DRIVE=1 RCSHOT_JUMP=0.8 RCSHOT_VIEW=90,0.6 rcshot ...   # z bliska, z lew
 RCSHOT_START="-8 -41 90" RCSHOT_DRIVE=1.6 rcshot ...            # auto najpierw w punkcie x z, obrócone o yaw (tu: do morza)
 RCSHOT_TIME=2.5 rcshot ...                                       # chwila animacji wody (fale, piana)
 RCSHOT_OBJECTS=0 rcshot ...                                      # bez rekwizytów
+RCSHOT_FX=2 rcshot ...                                           # najpierw 2 s efektów trasy (rozbryzgi, fale, strzały)
+RCSHOT_ACTOR=Guard RCSHOT_ACTOR_CAR=4 RCSHOT_FX=1 rcshot <gra> beach_4 ...  # strażnik strzela do auta
+RCSHOT_ACTOR=Man RCSHOT_ACTOR_CAR=8 RCSHOT_FX=42 rcshot <gra> beach_1 out.png 960 540 -12 1.6 -95.2 -90 -80  # ślady stóp
+RCSHOT_FOG=0 rcshot ...                                          # bez mgły
+RCSHOT_TRAFFIC=20 RCSHOT_TRAFFIC_CAR=0 rcshot ...                # 20 s ruchu ulicznego, kamera na pierwszym aucie na drodze
 ```
 
 ## Struktura
@@ -266,20 +319,24 @@ physics/        fizyka jazdy (Bullet, bez GPU)
   race.*        wyścig: odliczanie, okrążenia, czasy, zły kierunek, meta
   props.*       rekwizyty: parametry ze skryptu SCRI, kształt, bryła sztywna
   characters.*  ludzie i zwierzęta: zachowanie każdego rodzaju, kopnięcia i rzuty autem, „Wielkie Łup!”
+  traffic.*     ruch uliczny: odjazdy, jazda po ścieżce, koła, światła, odpychanie aut, wieża BTR
   opponents.*   przeciwnicy: odtwarzanie nagrań w tempie z gumką, okrążenia, kolejność w wyścigu
 fx/             efekty cząsteczkowe, bez GPU
   particles.*   emiter i cząsteczki jak system cząsteczek RCCars.exe
   careffects.*  efekty auta: ustawienia, kurz, bryzgi, spaliny, brud; sprite'y i czworokąty do narysowania
   tracks.*      ślady opon: pierścień punktów na koło, łączenie w pasy, zanikanie
   wake.*        kilwater i piana na wodzie wokół kół i karoserii
-  marks.h       czworokąty leżące w świecie (ślady, kilwater, piana)
+  marks.h       czworokąty leżące w świecie (ślady, kilwater, piana, fale, dziury po kulach, ślady stóp)
+  groundspots.* plamy cienia i światła położone na ścianach kolizji (cienie kół, reflektory ruchu ulicznego)
+  worldfx.*     efekty trasy: rozbryzgi przy water_splash_N, fale przy water_wave_N, strzały strażników, ślady stóp
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
-  camera.*      kamera swobodna
+  camera.*      kamera (oko, kierunek, rzutowanie); kamera swobodna
+  chasecamera.* kamera za autem według RCCars.exe i Settings/Camera.ini
   hud.*         kokpit wyścigu (obrazki i czcionka z Language/<język>)
-  effects.*     efekty aut gracza i przeciwników: sprite'y zwrócone do kamery, posortowane, z testem głębi
+  effects.*     efekty aut i trasy: sprite'y zwrócone do kamery, posortowane, z testem głębi
   world/        Level (trasa), LevelMesh (geometria na GPU, batche po teksturach), ModelMesh (auto, obiekt),
-                Objects (rekwizyty trasy), CollisionView (nakładka kolizji)
+                Objects (rekwizyty trasy), TrafficView (ruch uliczny), CollisionView (nakładka kolizji)
   mainwindow.*  okno, pętla, wejście
 shader/         GLSL kompilowany do SPIR-V i wbudowywany w plik wykonywalny
 tools/          rcinfo, rcshot
@@ -514,6 +571,15 @@ lib/Tempest     silnik (submoduł git)
   `seahole1`, `hole1..N`, `flightDir`) oraz `clother` (podmiana tekstur, np. `man_1`→`man1_1`). Siatki są
   związane ze szkieletem w pozie z elementu `0x38` węzła (pozycja, obrót w stopniach, skala; ręce w bok), a nie
   w pozie `0x0b`; `ANIM` węzła ma dla każdej sekwencji pozę spoczynkową i kanały `SPLN` (`ROTX` … w stopniach).
+  Ślady stóp (0x50f930, ustawienia `peop_sole.ini` 0x50fcb0, wartości przez 100): człowiek, który się rusza
+  (szybciej niż 0,01 m/s) w miejscu ścieżki o stanie 1, 2, 3 albo 5 (ścieżki mają 1, 2, 5, 7, na beach_3 0, 5, 6, 8),
+  co `TimeDelay` (0,68 s) kładzie ślad `ShiftX` (0,12 m) na prawo od stóp wzdłuż osi X modelu, potem na lewo (lustrzany
+  w poziomie), `ShiftY` (0,03 m) nad stopami, płasko (normalna w górę), palcami w stronę, w którą patrzy; `RepairMan`
+  śladów nie zostawia. Ślad to kwadrat o boku 2 × `Size` (0,36 m) z teksturą `sole_footprint`, „naklejka”
+  0x478440 (najwyżej 256 naraz, wspólne z dziurami po kulach): pojawia się przez 0,2 s, żyje 30 s, blednie przez
+  ostatnie 10 s. Rysuje się jak ślady opon (flagi `0x80000021`, mieszanie „x2”): kolor przechodzi w szarość 128,
+  która zostawia ziemię bez zmian (0x50fbc0). U nas ślady kładą tylko widoczni ludzie (do 50 m od gracza), a pula
+  256 jest osobna od dziur po kulach.
   Ludzie: ścieżka `.dat` to rekordy co drugi (0, 2, 4 …), są tylko do 50 m od gracza; auto bliżej niż 0,8 m od
   stóp (albo szybsze niż 15 km/h do 4 m przed nimi, w kącie 25°) dostaje kopniaka (`Pendal`, 4 m/s od nich i
   7 m/s w górę) albo raz na pięć, gdy jest 2,2 m miejsca, zostaje podniesione i rzucone (`Brosok`). Mewa odlatuje,
@@ -527,6 +593,33 @@ lib/Tempest     silnik (submoduł git)
   przeciwnika, wytrąca to auto z nagrania (0x4fd9d0): przeciwnik, który potrąci człowieka, psa albo rozjedzie kraba,
   jedzie dalej sam.
   Sępy lecą po `Profiles/vlt_<trasa>_<1|2>.gpf` (nagłówek 0x28 bajtów, potem pozycja, przód i góra na klucz).
+- **Ruch uliczny** (klasa `RDCR`, 0x516650; `physics/traffic.h`): wszystkie auta stoją w jednym miejscu poza
+  trasą. `Settings/rdc_<trasa>.ini` (bez pliku nie ma ruchu): `Freq`/100 s między autami, `Disp`/100 tego w obie
+  strony losowo, `Accel`/10 tempo odtwarzania nagrania, `Wheel` obrót kół w °/s, `Slow` (hummer z urban_1 i BTR:
+  słabsze odepchnięcie i dźwięk `roadcar_slow`). Od startu (komunikat 0x259) co `Freq`±`Disp` rusza pierwsze
+  stojące auto, na zmianę po `rdc_<trasa>_forw.gpf` i `_back.gpf` (8 liczb na klucz: pozycja 0,75 m nad
+  początkiem modelu, kierunek, skręt, pochylenie; nagrania beach_2 i beach_3 zaczynają się kluczami cofającymi się
+  w czasie, które gra przeskakuje), a na końcu ścieżki wraca do kolejki. Model z `Roadcar.sb` ma obrócony węzeł
+  główny, który gra zastępuje pozą auta. Do 60 m od kamery auto jest rysowane i animowane: przechylone o
+  −atan(pochylenie/4,2), opuszczone o 0,75·cos tego kąta, przednie koła skręcone o 150·skręt (do 30°), koła kręcą
+  się, gdy auto jedzie. Tabela modeli (0x574230) podaje pudło kolizji (z całym poddrzewem) i koła; pudło i
+  `<koło>_body` dostają flagę 4 i nie są rysowane. Malowanie ze skryptu `INST` (`body` 1/2: `trailer_txt_0N`,
+  `box`). Światła (`fara*_body`, tekstura z połówką zgaszoną i zapaloną) świecą w bryłach `roadcar_*` (tunele).
+  Zderzenie (0x534880 → 0x5165a0 → 0x4f3470): przeciwnik wypada z nagrania, auto gracza dostaje 6 m/s od
+  samochodu i 1,5 m/s w górę (`Slow`: 2 i 0,5) przy każdym dotknięciu; hummer stoi 0,6 m nad drogą, więc autko
+  zmieści się pod nim między kołami. BTR (`roadcar.ini`: `TowerVel`, `TowerShootT`) celuje w auto w klinie 20 m
+  ±15° przed lufą, po 0,33 s strzela serią (komunikat 0x261 do `BURST_MNG`, jak strażnik, więc trafienia działają
+  tak samo, także na przeciwników), potem co 1,25 s, cztery razy, dopóki cel jest bliżej niż 25 m; zgubiwszy
+  cel, wodzi wieżą ±50°.
+  Cienie i poświaty (0x516f50, przy `VIDEO_RoadCarShadow`) idą do kolejki świateł gry (0x44c640, do 100 na
+  klatkę), która kładzie je na pobliskie ściany trasy (0x44c750, 0x45a220): od ściany odległej o h < R plama ma
+  promień √(R²−h²), uv = 0,5 + d·0,453125/ten promień, a siłę (1/255)^((h/R)²). Poświata: kampery i ciężarówki
+  (ta sama flaga co światła), przy każdym reflektorze punkt 2 m przed nim, R = 2 m, biała tekstura `shex_wht`
+  dodana do obrazu, niezależnie od tego, czy światła się palą. Cienie: tylko auta `Slow`, przy każdym kole punkt
+  `ShadowY`/100 m (0,48) pod osią, R = `ShadowR`/100 m (0,46) z `roadcar.ini`, tekstura `wheel_shd` obrócona
+  wzdłuż koła, odejmowana od obrazu (tryby mieszania 4 i 5 z 0x45c410 to nasze odczytanie). U nas plamy nie leżą
+  na morzu (fale je poruszają), więc pływający BTR ma cienie tylko na brzegu. `rcinfo traffic` podaje, na ilu
+  ścianach leżą (hummer na urban_1: 4 cienie na około 10 ścianach).
 - `SCRI` modelu w `stone.sb` (tekst `u32 długość` + treść w formacie `Section Keys`): `Geom` `type` (1 kula,
   2 walec, 3 stożek, 4 butelka, 5 wiadro, 6 łuska, 7 czajnik, 8 balonik), `shiftCenterMassOY` (środek masy nad
   węzłem głównym, m); `Params` `mass` (kg), `coeffHookNorm` (odbicie: 0,7 piłki, 0,3 reszta), `coeffFrict`;
@@ -589,6 +682,44 @@ lib/Tempest     silnik (submoduł git)
   czystym autem a teksturami `dirt_car<auto>_1` i `_2` (auta 2 i 3 mają osobne `a`/`b` dla dwóch tekstur
   karoserii `car_askin*` i `car_bskin*`) i miesza sąsiednie; brud kładzie się na lakier według swojej
   przezroczystości. Tylko auta graczy.
+- **Rozbryzgi fal** (`WATER_SPLASH` 0x5272f0, `WATER_SPLASH_MNG` 0x527d80, znaczniki 0x5277a0, co klatkę
+  0x527a40): znacznik `water_splash_N` (do 16) bliżej niż `ActiveRad` (20 m w poziomie) od kamery i na ekranie
+  co `TimeDelay ± TimeDelayDisp` s (1 ± 0,25) rozbryzguje się w losowym miejscu `Radius` (5 cm) od siebie; na
+  znacznik są dwa emitery. Rozbryzg przez `EmitLife` (0,15 s) wyrzuca 540 kropli na sekundę wachlarzem w
+  płaszczyźnie zwróconej do kamery: krople startują obok siebie w odstępie do `SplashLen` (5 cm) i lecą w górę i na
+  boki najwyżej `AngleSpan` (45°) od pionu z prędkością `VelLen ± VelLenDisp`, bez grawitacji, zwalniając do
+  `VelAttenuation` na koniec życia; maleją do `Scale` (0,5) i bledną od połowy życia. Tekstura `particle`, rozmiar
+  zależny od odległości (flaga 0x800), więc to drobne krople. Dźwięk to `water_splash` z `AmbientSounds`.
+- **Fale przy brzegu** (`WaterLOD_Wave` 0x525c10, liczby całkowite; `Water_Wave_New` 0x52a550; znaczniki
+  0x5255c0, co klatkę 0x525700, fale 0x529dd0, rysowanie 0x52a030): tylko na morzu `more1` (albo pierwszym z
+  falami). Znacznik `water_wave_N` (do 8) w promieniu `ActiveRad` (40 m) i na ekranie co `TimeLong` (2 s) puszcza
+  długą falę na grzbiecie fali 2 morza tuż za znacznikiem, obróconą losowo o `Angle` (5°), a co `TimeShort`
+  (0,5 s) krótką w losowym miejscu do `Len` (3,5 m) od niego; jest ich najwyżej 32. Każda płynie z falą 2 do
+  środka morza z prędkością `period2 × length2` m/s, leży na wodzie (znika, gdy wody nie ma) i żyje
+  `TimeLifeLong` albo `TimeLifeShort ± Disp` s. To czworokąt na grzbiecie, `Len` (1,7 m) w każdą stronę, stojący
+  `Height` (0,58 m) × jasność nad wodą i obrócony wokół grzbietu do kamery; całość zanurza się wzdłuż normalnej
+  wody o `DHeight − 1`. Tekstura `water_wave` przesuwa się wzdłuż grzbietu skokami (`AnimSpeed` co `AnimWait`),
+  `water_wave_alpha` wygasza brzegi; jasność rośnie do `IncTime` życia i maleje od `DecTime`.
+- **Strzały strażnika i BTR** (`BURST_MNG` 0x52d570–0x52df20): strażnik (0x51a950) jest aktywny, gdy auto
+  gracza jest w jego `visibilityVolume`. Celuje w najbliższe auto w `guardVolume` (gracza albo przeciwnika; auto,
+  do którego strzelał ostatnio, liczy się jak dwa razy dalsze, 0x5359f0), odwraca się do niego i 0,15 s po
+  namierzeniu wysyła komunikat 0x261 z broni 1,5 m nad stopami, potem co 1,25 s, trzy razy, i znów wybiera cel
+  (detektor 0x535720 z parametrami 0,15 / 1,25 / 2; BTR ma 0,33 / 1,25 / 3). Każdy komunikat zaczyna serię od
+  nowa (0x52de30), wygrywa ostatni. Seria to `NShoots` (6) strzałów co `TimeShoot` (0,1 s), przechodzących
+  w poprzek auta od `+r` do `−r` × `Radius` (losowy kierunek `r`), celowanych w auto z wyprzedzeniem
+  `prędkość × Offset / 2`; promień sięga 1,5 raza dalej (co najmniej 10 m). Kula, która nie trafi w ziemię,
+  przepada. Kula w ziemi wyrzuca stożek grudek `BULLET_EXPLODE`, kłąb `BULLET_DUST` i zostawia dziurę
+  `bullet_footprint` (10 cm, 8 s, blednie przez ostatnie 4 s, najwyżej 256), także gdy po drodze trafiła auto.
+  Dźwięki: `burst` przy broni na początku serii, `bullet` w miejscu trafienia pierwszej kuli.
+- **Trafienie auta** (0x508290, 0x508560, 0x508ae0): po drodze do ziemi kula przechodzi przez pudło wokół
+  karoserii (`ENVIR_CAR_BODY`) dwa razy większe w każdą stronę (połówki wymiarów brane ×4 od narożnika) i trafia
+  z szansą `rand() / 32767 × 100 < p`: gracz Overkillem i Hummerem 20%, Buggy 10% (`Geometry typeCar` 0/2 i 1),
+  auta komputera 15%. Pierwsze trafienie zapala dym `BULLET_SMOKE` (`TimeEmit`), każde pcha auto 6,5 m/s od
+  strzelca i 3,25 m/s w górę (0x4f3470, jak przy psie i ruchu ulicznym) i liczy się w `car+0x5724`. Dopóki
+  licznik nie jest zerem, gra co klatkę zeruje klawisze auta i trzyma `Brake` (klawisz 7, ręczny; 0x4f6b20),
+  a 2 s po pierwszym trafieniu (kolejne nie przedłużają) stawia auto na ostatnim punkcie kontrolnym jak `R`
+  (0x508b50). Przeciwnik wypada z nagrania, autopilot nim jedzie (nadpisuje wyzerowane klawisze) i po 2 s też
+  wraca na swój punkt. Komunikat 0x4e86 o trafieniu trafia tylko do dziennika gry sieciowej, nie przenosimy go.
 - **Mapa otoczenia (odbicia)** (`RCCars.exe` 0x463360, 0x465aa0, 0x48f530): siatki, które ją mają, rysuje drugi
   raz z teksturą `cubemap_racer` (sześć jednakowych ścian sześcianu: miękka biała plama na czarnym), dodaną do obrazu
   (`SrcAlpha, One`) z siłą równą alfie `TEXTUREFACTOR` razy krycie siatki. Współrzędne to wektor odbicia w przestrzeni
@@ -599,11 +730,59 @@ lib/Tempest     silnik (submoduł git)
   `Settings/carEnvMap.ini` (0x4f9d00, 0x5080b0, 0x507d80): karoseria `EnvMapBody` 112/255, `*GRE1*` (szyby,
   chromy) `EnvMapGRE1` 255/255, `*GRE2*` (lampy, zderzaki) `EnvMapGRE2` 137/255; reszta z flagą (np. rekwizyty ze
   `stone.sb`) całą mapę. `EnvMapUpgrades` (156) dotyczy ulepszeń, których jeszcze nie pokazujemy. U nas to jeden
-  przebieg `shader/level.frag` (`environment()`), który dodaje mapę do koloru przed mgłą.
+  przebieg `shader/level.frag` (`environment()`), który dodaje mapę do koloru; takie siatki oryginał rysuje bez mgły.
+- **Paski bieżnika na trasach** (`wt_wetsand`, 151 siatek na wszystkich 10 trasach): to nie ślady aut, tylko
+  część mapy. Słowo 4 nagłówka `0x08` węzła `MESH` (`SbMesh::renderFlags`) mówi, jak siatkę rysować (0x48e4b0,
+  0x451310): `0x1000` przezroczystość z alfy tekstury, `0x2000` morza, `0x40000000` mnożenie przez to, co pod spodem
+  (×2, ten sam stan `0x121` co ślady opon). Ten ostatni bit mają tylko paski `wt_wetsand`: ich szare tło (128)
+  zostawia piasek, a ciemniejszy bieżnik go przyciemnia. U nas `ScenePipelines::modulate` po nieprzezroczystych,
+  bez światła; mgła ciągnie je do szarości, która nic nie zmienia. Czy oryginał kładzie na nie lightmapę
+  (country_4), nie wiadomo; pomijamy ją, bo przyciemniłaby piasek dwa razy.
+- **Kamera za autem** (`game/chasecamera.*`; 0x5007a0 co klatkę, 0x501180 przy rysowaniu, ustawienia
+  `Settings/Camera.ini` czyta 0x4f9da0, suwaki 1..100 liniowo na zakresy wpisane w kod): kamera trzyma własne oko
+  i co klatkę ogląda je z układu auta: środek auta (stan bryły, +0x5884) z kierunkiem nosa położonym płasko (gdy nos
+  celuje mniej niż 30° od pionu w górę, nos i tył dachu razem, 0x500840). W tym układzie oko ma odległość po
+  ziemi, wysokość i kąt wokół auta (0 = prosto z tyłu); każdą ciągnie „sprężyna” 0x4722c0 (cel, tolerancja, pasmo
+  pod i nad celem, z którego wartość wraca od razu, tempo powrotu w paśmie, opcjonalnie × (odległość/pasmo)^wykładnik),
+  a oko wraca tam, gdzie mówią, patrząc na środek auta (0x471ca0). Odległość `defDistXZ` (30 → 0,79 m) bez
+  opóźnienia, plus do połowy więcej od 4 m/s (całość przy 8 m/s, narasta 1 m/s) i 1/5 więcej przy wciśniętym turbo
+  z gazem (0,5 m/s, wraca 0,3 m/s); wysokość `defDistY` (0,36 m) w paśmie ±75% wraca `accDistY` (0,71 m/s); kąt
+  w paśmie ±20° wraca z `accAlpha`×200 (99°/s) × (kąt/20)², ale 30°/s, gdy auto kręci się szybciej niż 180°/s
+  (0x500a80). Po resecie auta wszystko staje na celu (dt = 2e6, 0x508b50). Rysowany widok (bez wpływu na
+  sprężyny, 0x500e60): gdy teren przecina odcinek od 15 cm nad autem do 6 cm pod okiem (0x500d60), oko obraca się
+  w górę wokół auta do `CDT_AngleUp` (29°) z `CDT_AngleUpSpeed` (29°/s), a widok podnosi się o `VisTurn`
+  (70 → 11,8°) plus do `CDT_AngleUp_DIR_ADD` (13°) proporcjonalnie do tego obrotu, z
+  `CDT_AngleUp_SPEED_DIR_ADD` (suwak 151 poza 1..100, 1,51°/s). `CDT_DistSpeed*` i `CDT_radius` gra pomija.
+  Domyślna kamera gry ma poziome pole widzenia 80° przy 4:3 (pionowe 64,4°, 0x405d40). Założone: punkt, na który
+  kamera patrzy (macierz obiektu +0xf8), to też środek bryły. Gdy człowiek łapie auto (Brosok, 0x5111f0 →
+  0x4f3640), oko w tej jednej klatce skacze na 2 m za autem i 1 m w górę (w paśmie wysokości, czyli ≥0,73 m), a
+  potem stoi w miejscu (tylko obraca się za autem), dopóki człowiek trzyma auto (+0xe828, co klatkę 0x4f3700) i
+  przez 3 s od złapania (+0xe830); po rzucie (0x4f3690) i tych 3 s sprężyny ciągną je z powrotem. Nie przeniesione:
+  flaga 0x147d254 to tryb deweloperski (F9, tylko z argumentem `-dev`, 0x4883dd): sztywna kamera 1,04 m za i
+  0,41 m nad autem, bez obrotu CDT i poprawki nad wodą, bez resetu na punkcie kontrolnym (0x508160).
 - **Kamera nad wodą** (0x501180, ostatni krok kamery za autem): jeśli punkt 7 cm pod okiem kamery jest pod wodą
   (promień tylko po wodzie, 0x5350d0), oko idzie na 14 cm nad jej powierzchnię; kierunek patrzenia zostaje.
   Powierzchnia to animowana siatka morza (0x5353b0 bierze bieżące wierzchołki), więc liczymy ją z falami
   (`Level::waterHeight`, `WaterWaves::lift`). Kamera nigdy nie schodzi pod wodę i oryginał nie ma widoku spod wody.
+- **Mgła** (moduł „Fog”, 0x5324c0; `formats/fog.h`): po wczytaniu trasy gra czyta `Settings/fog_<trasa>.ini`
+  (0x532870): `Density` × 0,001, `ColorR/G/B`; `Start` i `End` też, ale bez znaczenia, bo Direct3D dostaje mgłę
+  wykładniczą `D3DFOG_EXP` w tablicy (0x461970): piksel w odległości `w` od kamery zachowuje `exp(-density·w)`
+  swojego koloru, reszta to kolor mgły. Gęstości: beach 0,006–0,020, country 0,009–0,026, urban 0,023–0,025
+  (beach_1: po 100 m zostaje 55% koloru; country_1: 12%). Kolor mgły barwi też niebo. Siatki z mapą otoczenia
+  (morze, karoserie) mają mgłę wyłączoną (0x464e50 … 0x4658b0). Każda zmiana przechodzi liniowo w 0,5 s
+  (0x532aa0), także na starcie z „braku mgły”. Obiekt z sekcją `FOG` (`FOG_Start`, `FOG_End`, `FOG_EndInt` jako
+  gęstość, `FOG_Color`) mógłby zmieniać mgłę na zdarzenia 126/127 (wjazd i powrót do mgły trasy), ale żadna trasa
+  takiego obiektu nie ma. W oryginale wyłącza ją `VIDEO_UseFog 0` w `Config.gm`, u nas jest zawsze. Efekty
+  aut (kurz, bryzgi, spaliny, ślady opon, kilwater, piana) oryginał rysuje z włączoną mgłą, więc u nas też;
+  ślady opon, mieszane „x2”, idą ku połowie koloru mgły, jak przebieg 0x463e70 dla takich mieszań.
+- **Szum morza** (kanał `water` z `RCCars.sb`: pętla `water.wav`, pełna głośność do 3 m, -20 dB w 10 m, dalej cisza;
+  0x522ed0, 0x522f60, 0x523140): gra bierze ostatnie znalezione morze (węzły z „more” w nazwie szukane w głąb,
+  dzieci węzła od najnowszego, 0x51eff0, 0x44ed80), czyli `more1`, a nie lagunę `more2` na beach_1. Dźwięk stoi
+  w narożniku obrysu tego morza najbliższym kamerze w płaszczyźnie xz, na wysokości `offset` z `WLOD_*` (oryginał
+  bierze to przesunięcie jako wysokość, więc na beach_2, gdzie morze leży na 1,54 m, dźwięk jest 1,5 m pod wodą).
+  Gdy promień tylko po wodzie (morze, strumienie, kałuże) z 10 m nad kamerą w dół na 20 m trafi wodę (0x535130),
+  dźwięk idzie pod kamerę: na tę wodę albo na kamerę, jeśli jest pod nią. Trasy bez morza (country_1/2/4, urban)
+  nie mają tego dźwięku, także nad strumieniami.
 - Rozpoznane, jeszcze nieprzeniesione: pluski w stałych miejscach tras (markery `water_splash_N` na beach_1,
   beach_3, country_3; 0x5272f0), fale `Water_Wave_New` i `BURST_MNG`.
 
@@ -617,13 +796,14 @@ lib/Tempest     silnik (submoduł git)
      ostatniego punktu kontrolnego, strefy `car_reset_volume_*`); ~~kurz i bryzgi spod kół, ślady opon, kilwater,
      spaliny, brudzenie auta~~ (zrobione)
 4. Węzły `INST` (instancje obiektów): ~~rekwizyty~~ (zrobione: bryły sztywne z parametrami ze skryptów; brakuje
-   wiatru dla kłębków i dźwięków uderzeń `SNCH`); ~~postacie i zwierzęta~~ (zrobione; brakuje efektu strzału
-   strażnika, śladów stóp i rozgniecenia kraba); ruch uliczny czeka. Do tego `HHID` (widoczność/sektory)
+   wiatru dla kłębków i dźwięków uderzeń `SNCH`); ~~postacie i zwierzęta~~ (zrobione, ze śladami stóp;
+   brakuje rozgniecenia kraba; ~~efekt strzału strażnika~~ zrobiony); ~~ruch uliczny~~ (zrobione; brakuje tekstów
+   z `RCCars.tbl` przy potrąceniu). Do tego `HHID` (widoczność/sektory)
 5. ~~Dźwięk~~ (zrobione według `RCCars.exe`: kanały `SNCH` z `RCCars.sb` i `Sound\*.wav` z archiwum we własnym
    mikserze, silnik gracza i rywali, punkty kontrolne, turbo, hamulec, lot i lądowanie, toczenie się po
    nawierzchniach, uderzenia i otarcia, buksowanie, fale przy brzegu `water_splash_N`, wodospady `WATER_FALL_N`,
-   muzyka MP3 z `Tracks/` w kolejności z `Autoexec.gm`, głosy ludzi, mew i psów; brakuje szumu morza `water`
-   i ruchu ulicznego)
+   szum morza `water`, muzyka MP3 z `Tracks/` w kolejności z `Autoexec.gm`, głosy ludzi, mew i psów, ruch
+   uliczny)
 6. ~~Logika wyścigu: punkty kontrolne, okrążenia, czasy, kokpit~~ (zrobione dla jednego gracza; brakuje
    menu i zapisu rekordów)
 7. ~~Przeciwnicy: linie jazdy AI z `CarProfiles/` (`Scripts/ailayouts.ini`), miejsca w wyścigu (`place1..6`)~~

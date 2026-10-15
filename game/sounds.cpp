@@ -7,6 +7,7 @@
 #include "resources.h"
 #include "formats/settings.h"
 #include "physics/characters.h"
+#include "physics/traffic.h"
 
 using namespace Tempest;
 
@@ -67,6 +68,18 @@ void Sounds::play(const std::string& channel, const std::string& sound) {
   it->second.play(sound);
   }
 
+void Sounds::playAt(const std::string& channel, const rc::Vec3& at, const rc::Vec3& ear, const rc::Vec3& right) {
+  auto it = channels.find(channel);
+  if(it==channels.end())
+    it = channels.emplace(channel,rc::BankChannel(mix,*lib,channel)).first;
+  auto&          ch = it->second;
+  const rc::Vec3 to = at-ear;
+  const float    d  = to.length();
+  ch.setPlace(d,d>1e-3f ? rc::Vec3::dot(to,right)/d : 0.f);
+  if(ch.size()>0)
+    ch.play(0);
+  }
+
 void Sounds::stopAll() {
   mix.stopAll();
   }
@@ -75,7 +88,7 @@ void Sounds::setPaused(bool p) {
   mix.setPaused(p);
   }
 
-void Sounds::setTrack(const rc::SbScene& scene) {
+void Sounds::setTrack(const rc::SbScene& scene, const std::vector<rc::Vec3>& coast) {
   ambient.stop();
   rc::SliderFile ini;
   try {
@@ -85,11 +98,11 @@ void Sounds::setTrack(const rc::SbScene& scene) {
   catch(const std::exception& e) {
     Log::e("water_splash_mng.ini: ",e.what());
     }
-  ambient = rc::AmbientSounds(mix,*lib,scene,ini);
+  ambient = rc::AmbientSounds(mix,*lib,scene,ini,coast);
   }
 
-void Sounds::tickAmbient(const rc::Vec3& ear, const rc::Vec3& right, float dt) {
-  ambient.update(ear,right,dt);
+void Sounds::tickAmbient(const rc::Vec3& ear, const rc::Vec3& right, float dt, std::optional<float> waterAtEar) {
+  ambient.update(ear,right,dt,waterAtEar);
   }
 
 void Sounds::tickCharacters(const rc::Characters& chars, const rc::Vec3& ear, const rc::Vec3& right) {
@@ -120,6 +133,32 @@ void Sounds::tickCharacters(const rc::Characters& chars, const rc::Vec3& ear, co
     ch.setPlace(d,d>1e-3f ? rc::Vec3::dot(to,right)/d : 0.f);
     if(!a->sound.empty())
       ch.play(a->sound);
+    }
+  }
+
+void Sounds::tickTraffic(const rc::Traffic& traffic, const rc::Vec3& ear, const rc::Vec3& right) {
+  if(lib==nullptr)
+    return;
+  const auto& cars = traffic.cars();
+  while(trafficChannels.size()<cars.size())
+    trafficChannels.emplace_back(mix,*lib,traffic.slow() ? "Roadcar_slow" : "Roadcar");
+  auto place = [&](rc::BankChannel& ch, const rc::Vec3& at) {
+    const rc::Vec3 to = at-ear;
+    const float    d  = to.length();
+    ch.setPlace(d,d>1e-3f ? rc::Vec3::dot(to,right)/d : 0.f);
+    };
+  for(size_t i=0; i<cars.size(); ++i) {
+    auto& own = trafficChannels[i];
+    const rc::Traffic::Car& c = *cars[i];
+    if(!c.onRoad) {
+      if(own.isPlaying())
+        own.stop();
+      continue;
+      }
+    const rc::Vec3 at = c.pose.translation();
+    place(own,at);
+    if(c.sound>=0 && !own.isPlaying() && size_t(c.sound)<own.size())
+      own.play(c.sound);
     }
   }
 

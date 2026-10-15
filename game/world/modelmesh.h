@@ -8,6 +8,7 @@
 
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "formats/scene.h"
@@ -26,18 +27,37 @@ class ModelMesh {
       rc::Vec3    pivot;  // model space centre of the part (a wheel's hub); part vertices are relative to it
       };
 
+    // other models than the cars (the road traffic of Roadcar.sb)
+    struct Options {
+      // nodes that are parts of their own (with everything below them), in this order (parts() 1, 2 ..); their
+      // pivot is the node's origin. Empty: the cars' WHEEL_* nodes, pivot at the wheel's centre
+      std::vector<std::string> parts;
+      // textures worn instead of the model's own: {model's texture, the one to use}
+      std::vector<std::pair<std::string,std::string>> textures;
+      // nodes not drawn, with everything below them (the road cars' collision boxes)
+      std::vector<std::string> hidden;
+      // nodes of head lights whose texture holds them lit and unlit side by side (RCCars.exe 0x517460): drawn
+      // with the texture coordinate `lightAxis` (0 u, 1 v) moved by 0.5 when they are switched the other way
+      // than modelled (`modelledLit`)
+      std::vector<std::string> lights;
+      int                      lightAxis   = 0;
+      bool                     modelledLit = false;
+      };
+
     // `origin`: model space point that becomes the origin (ObjectLibrary::Model::origin). `skin` > 0 paints a car
     // with another of its liveries: Textures*/car_askin<car><1..4>.csi (and car_bskin..), the model using 1;
     // skin 1 is the second one and so on (a guess: Scripts/ailayouts.ini gives the opponents skins 1 .. 3)
     ModelMesh(Tempest::Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
               const rc::Vec3& origin = {}, int skin = 0);
+    ModelMesh(Tempest::Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
+              const rc::Vec3& origin, const Options& options);
 
     // `world` places the model (rotation, translation and a uniform scale); `partPoses`, if given, places each part in model
     // space (index as in parts(); rotation, translation, a spring's stretch), default: translate(pivot) - the modelled
-    // position
+    // position. `lightsOn`: how the Options::lights are switched
     void                     draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, const rc::Mat4& viewProj,
                                   const LevelMesh::Push& frame, const rc::Mat4& world,
-                                  const std::vector<rc::Mat4>* partPoses = nullptr) const;
+                                  const std::vector<rc::Mat4>* partPoses = nullptr, bool lightsOn = false) const;
 
     // how dirty the car is, 0 clean .. 2 (Effects::dirt): its paint (car_askin<car>*, car_bskin<car>*) gets the
     // dirt_car<car>_1/_2 textures (with a/b for the two paints of cars 2 and 3) laid over it
@@ -49,6 +69,9 @@ class ModelMesh {
     rc::Vec3                 bboxMax() const { return bbox[1]; }
 
   private:
+    ModelMesh(Tempest::Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
+              const rc::Vec3& origin, const Options& options, int skin);
+
     struct Batch {
       size_t                    part  = 0;
       size_t                    first = 0;
@@ -57,6 +80,7 @@ class ModelMesh {
       rc::AlphaMode             mode  = rc::AlphaMode::Opaque;
       const Tempest::Texture2d* dirt[2] = {};
       float                     envMap = 0; // LevelMesh::Push::envMap
+      int8_t                    lit    = -1; // Options::lights: drawn only with the lights on (1) / off (0)
       };
 
     std::string                           modelName;

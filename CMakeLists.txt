@@ -28,6 +28,7 @@ add_library(rcformats STATIC
   formats/settings.h  formats/settings.cpp
   formats/objects.h   formats/objects.cpp
   formats/water.h     formats/water.cpp
+  formats/fog.h       formats/fog.cpp
   formats/carprofile.h formats/carprofile.cpp
   formats/soundbank.h  formats/soundbank.cpp
   formats/skeleton.h   formats/skeleton.cpp
@@ -71,6 +72,7 @@ add_library(rcphysics STATIC
   physics/props.h       physics/props.cpp
   physics/opponents.h   physics/opponents.cpp
   physics/characters.h  physics/characters.cpp
+  physics/traffic.h     physics/traffic.cpp
   physics/btconvert.h
   )
 target_link_libraries(rcphysics PUBLIC rcformats PRIVATE bullet)
@@ -93,6 +95,8 @@ add_library(rcfx STATIC
   fx/marks.h
   fx/tracks.h     fx/tracks.cpp
   fx/wake.h       fx/wake.cpp
+  fx/worldfx.h    fx/worldfx.cpp
+  fx/groundspots.h fx/groundspots.cpp
   )
 target_link_libraries(rcfx PUBLIC rcformats)
 
@@ -117,6 +121,7 @@ add_subdirectory(shader)
 # --- renderer shared by the game and tools ---
 add_library(rcengine STATIC
   game/camera.h            game/camera.cpp
+  game/chasecamera.h       game/chasecamera.cpp
   game/resources.h         game/resources.cpp
   game/hud.h               game/hud.cpp
   game/arrow.h             game/arrow.cpp
@@ -128,6 +133,7 @@ add_library(rcengine STATIC
   game/world/collisionview.h game/world/collisionview.cpp
   game/world/objects.h     game/world/objects.cpp
   game/world/characters.h  game/world/characters.cpp
+  game/world/traffic.h     game/world/traffic.cpp
   )
 target_include_directories(rcengine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} lib/Tempest/Engine/include)
 target_link_libraries(rcengine PUBLIC rcformats rcphysics rcaudio rcfx Tempest Shaders)

@@ -10,14 +10,16 @@ const uint F_MASK     = 8u;  // ALP1 without BAS2: the mask is the base texture'
 const uint F_WAVES    = 32u; // sea with WLOD waves (Water block): inUvMask.x is the distance to its outline
 const uint F_TESS     = 64u; // drawn with water.tesc/.tese, which move the vertices instead of level.vert
 const uint F_DIRT     = 128u; // a car's paint: texMask/texBase2 are its dirt textures, `time` how dirty (0..2)
+const uint F_MODULATE = 256u; // blended as twice the source times the destination: 0.5 leaves the ground as it is
 
 layout(push_constant, std430) uniform Push {
   mat4  viewProj;
-  vec4  cameraPos;    // xyz, w = fog distance
+  vec4  cameraPos;    // xyz, w = fog density (formats/fog.h)
   vec4  sunDir;       // xyz, w = lightmap scale
   uint  flags;
   float time;         // seconds; with F_DIRT how dirty the car is
   float envMap;       // strength of the environment map (texEnv), 0 = none
+  uint  fogColor;     // 0x00RRGGBB
   vec4  carPos;       // the player's car
   } push;
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -97,6 +99,30 @@ class CollisionMesh {
 
     // indices into triangles() of those listed in the cells the box lo..hi touches, each once
     std::vector<uint32_t>        trianglesIn(const Vec3& lo, const Vec3& hi) const;
+
+    // indices into triangles() of those listed in the cells the box lo..hi touches; a triangle in several of
+    // them comes several times
+    template<class F>
+    void forEachNear(const Vec3& lo, const Vec3& hi, F&& fn) const {
+      if(tris.empty())
+        return;
+      const float o[3] = {origin.x,origin.y,origin.z}, cs[3] = {cell.x,cell.y,cell.z};
+      const float a[3] = {lo.x,lo.y,lo.z}, b[3] = {hi.x,hi.y,hi.z};
+      int from[3], to[3];
+      for(int i=0; i<3; ++i) {
+        if(b[i]<o[i] || a[i]>o[i]+cs[i]*float(dims[i]))
+          return;
+        from[i] = std::clamp(int(std::floor((a[i]-o[i])/cs[i])),0,int(dims[i])-1);
+        to[i]   = std::clamp(int(std::floor((b[i]-o[i])/cs[i])),0,int(dims[i])-1);
+        }
+      for(int x=from[0]; x<=to[0]; ++x)
+        for(int y=from[1]; y<=to[1]; ++y)
+          for(int z=from[2]; z<=to[2]; ++z) {
+            const size_t c = size_t(z) + size_t(dims[2])*(size_t(y) + size_t(dims[1])*size_t(x));
+            for(uint32_t i=cellStart[c]; i<cellStart[c+1]; ++i)
+              fn(cellTris[i]);
+            }
+      }
 
     // triangles listed in a cell; the same triangle shows up in every cell it touches
     template<class F>

@@ -646,15 +646,17 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
       }
     maxSpeed = std::max(maxSpeed,veh.speed());
     onSurface[veh.surface()] += dt;
-    // in the sea for too long, out of the collision box or in a reset volume: back to the last checkpoint, as
-    // the game does
+    // in the sea for too long, out of the collision box, in a reset volume or stuck in the track: back to the
+    // last checkpoint, as the game does
     const rc::Vec3 at   = veh.pose().translation();
     const auto&    box  = scene.collision;
     const bool     out  = at.x<box.min.x || at.x>box.max.x || at.z<box.min.z || at.z>box.max.z || at.y<box.min.y-0.1f;
     const bool     drown = veh.drowned();
-    if(drown || out || resets.tick(at,dt)) {
+    const bool     stuckIn = veh.stuck();
+    if(drown || out || stuckIn || resets.tick(at,dt)) {
       std::printf("%6.2f %s at (%.2f %.2f %.2f), back to %s\n",t,
-                  drown ? "drowned" : out ? "out of the track" : "in a reset volume",at.x,at.y,at.z,
+                  drown ? "drowned" : out ? "out of the track" : stuckIn ? "stuck in the track" : "in a reset volume",
+                  at.x,at.y,at.z,
                   route[cps.lastPassed()].name.c_str());
       resets.reset();
       veh.reset(cps.respawn(geom.min.y));

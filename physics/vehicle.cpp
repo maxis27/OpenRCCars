@@ -992,9 +992,10 @@ void Vehicle::tires(float h, Vec3& force, Vec3& torque) {
   const float im   = 1.f/prm.mass;
   const bool  drift = drifting();
 
-  // the acceleration of the body by the other forces, gravity included
-  const Vec3 a  = (force+Vec3{0,-PhysicsWorld::Gravity*prm.mass,0})*im;
-  const Vec3 al = inv(torque);
+  // the acceleration of the body by the other forces (gravity is among them, Vehicle::forces), and its angular
+  // acceleration with the gyroscopic part (0x476ba0)
+  const Vec3 a  = force*im;
+  const Vec3 al = inv(torque-Vec3::cross(omega,st.L));
 
   Vec3  d[2], r[2];
   float b[2];
@@ -1015,7 +1016,11 @@ void Vehicle::tires(float h, Vec3& force, Vec3& torque) {
       }
     const float grip = wh.front ? prm.gripFront : prm.gripRear*(drift ? prm.driftGrip : 1.f);
     const float lim  = (!wh.front || drift ? 10.f : 5.f)*grip;
-    b[k] = std::clamp(-Vec3::dot(a+Vec3::cross(al,r[k]),d[k]),-lim,lim);
+    // the acceleration of the wheel's point along d, d turning with the car (0x476c50): with the centripetal part
+    // and the velocity along the turning d
+    const Vec3  ap = a+Vec3::cross(al,r[k])+Vec3::cross(omega,Vec3::cross(omega,r[k]));
+    const float ad = Vec3::dot(ap,d[k])+Vec3::dot(pv,Vec3::cross(omega,d[k]));
+    b[k] = std::clamp(-ad,-lim,lim);
     const float vd = Vec3::dot(pv,d[k]);
     if(std::abs(vd)>0.0005f)
       b[k] -= std::clamp(vd/h,-10.f*grip,10.f*grip);

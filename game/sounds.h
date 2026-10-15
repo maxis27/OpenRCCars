@@ -50,7 +50,7 @@ class Sounds {
     void tickCharacters(const rc::Characters& chars, const rc::Vec3& ear, const rc::Vec3& right);
 
     // the road traffic (RCCars.exe 0x517530): each car's engine (channel Roadcar_slow, all the time) or horn and
-    // siren (channel Roadcar, when rc::Traffic asks), the BTR's bursts (channel burst), heard from `ear`
+    // siren (channel Roadcar, when rc::Traffic asks), heard from `ear`; the BTR's bursts are fx::Gunfire's
     void tickTraffic(const rc::Traffic& traffic, const rc::Vec3& ear, const rc::Vec3& right);
 
     // call once per frame
@@ -73,7 +73,7 @@ class Sounds {
     // by model and the actor's number among those of its model; the mixer keeps its channels, so they are reused
     std::map<std::pair<std::string,int>,rc::BankChannel> actorChannels;
     // per road car: its own sound and its gun
-    std::vector<std::pair<rc::BankChannel,rc::BankChannel>> trafficChannels;
+    std::vector<rc::BankChannel> trafficChannels;
     bool                                         musicOn = false;
 
     std::unique_ptr<Tempest::SoundDevice>        device;

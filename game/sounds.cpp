@@ -141,15 +141,14 @@ void Sounds::tickTraffic(const rc::Traffic& traffic, const rc::Vec3& ear, const 
     return;
   const auto& cars = traffic.cars();
   while(trafficChannels.size()<cars.size())
-    trafficChannels.emplace_back(rc::BankChannel(mix,*lib,traffic.slow() ? "Roadcar_slow" : "Roadcar"),
-                                 rc::BankChannel(mix,*lib,"burst"));
+    trafficChannels.emplace_back(mix,*lib,traffic.slow() ? "Roadcar_slow" : "Roadcar");
   auto place = [&](rc::BankChannel& ch, const rc::Vec3& at) {
     const rc::Vec3 to = at-ear;
     const float    d  = to.length();
     ch.setPlace(d,d>1e-3f ? rc::Vec3::dot(to,right)/d : 0.f);
     };
   for(size_t i=0; i<cars.size(); ++i) {
-    auto& [own,gun] = trafficChannels[i];
+    auto& own = trafficChannels[i];
     const rc::Traffic::Car& c = *cars[i];
     if(!c.onRoad) {
       if(own.isPlaying())
@@ -158,17 +157,8 @@ void Sounds::tickTraffic(const rc::Traffic& traffic, const rc::Vec3& ear, const 
       }
     const rc::Vec3 at = c.pose.translation();
     place(own,at);
-    place(gun,at);
     if(c.sound>=0 && !own.isPlaying() && size_t(c.sound)<own.size())
       own.play(c.sound);
-    }
-  // a burst at the gun that fired it (the BTR is beach_4's only car)
-  for(auto& shot:traffic.shots()) {
-    if(trafficChannels.empty())
-      break;
-    auto& gun = trafficChannels.front().second;
-    place(gun,shot.gun);
-    gun.play(0);
     }
   }
 

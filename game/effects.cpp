@@ -119,8 +119,9 @@ Effects::Effects(Device& device, Resources& res)
 void Effects::clear(bool keep) {
   if(player)
     player->clear(keep);
-  gunfire.clear();
   if(!keep) {
+    // a car put back keeps its smoke and the bullet holes stay (RCCars.exe 0x508b50)
+    gunfire.clear();
     splashes.clear();
     shore.clear();
     footprints.clear();
@@ -203,20 +204,14 @@ void Effects::setTrack(const rc::SbScene& scene, const rc::WaterWaves* sea) {
   }
 
 void Effects::tickWorld(float dt, const rc::fx::View& view, float time, const rc::fx::ShoreWaves::Water& water,
-                        const std::vector<rc::Vec3>& guns, const rc::Vehicle* car, const rc::CollisionMesh& track,
+                        const std::vector<rc::fx::Gunfire::Order>& bursts,
+                        const std::vector<rc::fx::Gunfire::Target>& cars, const rc::CollisionMesh& track,
                         const std::vector<rc::fx::Footprints::Walker>& walkers) {
   if(!worldLoaded || dt<=0)
     return;
   splashes.update(view,dt,rnd);
   shore.update(view,time,dt,water,rnd);
-  rc::fx::Gunfire::Target target;
-  if(car!=nullptr) {
-    target.pose     = car->pose();
-    target.velocity = car->velocity();
-    target.boxMin   = car->geometry().bodyMin;
-    target.boxMax   = car->geometry().bodyMax;
-    }
-  gunfire.update(guns,car!=nullptr ? &target : nullptr,track,dt,rnd);
+  gunfire.update(bursts,cars,track,dt,rnd);
   footprints.update(walkers,dt);
   }
 

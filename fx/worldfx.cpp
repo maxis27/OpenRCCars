@@ -503,15 +503,24 @@ void Gunfire::clear() {
     d.puffs.clear();
     d.emit = -1;
     }
-  smoke.puffs.clear();
-  smoke.emit = -1;
+  for(auto& p:smoke) {
+    p.puffs.clear();
+    p.emit = -1;
+    }
   holes.clear();
   heard.clear();
+  struck.clear();
   }
 
 std::vector<Gunfire::Sound> Gunfire::sounds() {
   std::vector<Sound> r;
   r.swap(heard);
+  return r;
+  }
+
+std::vector<Gunfire::Hit> Gunfire::hits() {
+  std::vector<Hit> r;
+  r.swap(struck);
   return r;
   }
 
@@ -538,8 +547,8 @@ void Gunfire::puffs(Puffs& p, const WorldSettings::Puff& s, const Vec3& at, floa
   p.emit -= dt;
   }
 
-void Gunfire::update(const std::vector<Vec3>& guns, const Target* car, const CollisionMesh& track, float dt,
-                     Random& rnd) {
+void Gunfire::update(const std::vector<Order>& orders, const std::vector<Target>& targets,
+                     const CollisionMesh& track, float dt, Random& rnd) {
   if(set==nullptr)
     return;
   const auto& ex = set->explode;
@@ -571,12 +580,17 @@ void Gunfire::update(const std::vector<Vec3>& guns, const Target* car, const Col
   for(size_t i=0; i<dust.size(); ++i)
     puffs(dust[i],set->bulletDust,dustAt[i],dt,rnd);
   // the smoke of a car that was hit comes from its body
-  Vec3 body;
-  if(car!=nullptr)
-    body = car->pose.point((car->boxMin+car->boxMax)*0.5f);
-  puffs(smoke,set->bulletSmoke,body,dt,rnd);
-  if(car==nullptr)
-    smoke.emit = -1;
+  if(smoke.size()<targets.size())
+    smoke.resize(targets.size());
+  for(size_t i=0; i<smoke.size(); ++i) {
+    if(i>=targets.size()) {
+      smoke[i].emit = -1;
+      puffs(smoke[i],set->bulletSmoke,Vec3{},dt,rnd);
+      continue;
+      }
+    const Target& t = targets[i];
+    puffs(smoke[i],set->bulletSmoke,t.pose.point((t.boxMin+t.boxMax)*0.5f),dt,rnd);
+    }
 
   // the holes stay 8 s, fading out over the last 4 (0x4789f0)
   for(auto& h:holes)
@@ -586,31 +600,30 @@ void Gunfire::update(const std::vector<Vec3>& guns, const Target* car, const Col
     for(auto& v:h.quad.v)
       v.rgba[3] = std::min(1.f,h.left/4.f);
 
-  // the burst (0x52da00). RCCars.exe starts it again on every message from a guard, which comes every frame
-  // while the car is in the guard's guardVolume; here a new one follows when the last has ended
+  // a message starts the burst again (0x52de30): the sweep goes across the car from +r to -r, r random; the
+  // gun sounds
   const auto& b     = set->burst;
   const float total = float(b.shots-1)*b.timeShoot+Eps;
-  if(timer<0) {
-    shot = -1;
-    if(guns.empty() || car==nullptr)
-      return;
-    // 0x52de30: the sweep goes across the car from +r to -r, r random; the gun sounds
+  for(auto& o:orders) {
     const Vec3 r = randomDir(rnd);
-    gun    = guns.front();
+    gun    = o.gun;
+    target = o.target;
     sweepA = r*b.radius;
     sweepB = r*-b.radius;
     timer  = total;
+    shot   = -1;
     heard.push_back({Sound::Burst,gun});
     }
-  if(car==nullptr) {
+  // 0x52da00: the shot due now, and where along the sweep it goes
+  if(timer<0 || target>=targets.size()) {
+    shot  = -1;
     timer = -1;
     return;
     }
-  // 0x52ddd0: the shot due now, and where along the sweep it goes
   const int idx = std::abs(b.timeShoot)>Eps ? int((total-timer)/b.timeShoot) : 0;
   if(idx!=shot) {
     shot = idx;
-    shoot(*car,track,rnd);
+    shoot(targets[target],track,rnd);
     }
   timer -= dt;
   }
@@ -620,7 +633,8 @@ void Gunfire::shoot(const Target& car, const CollisionMesh& track, Random& rnd) 
   const float t = float(shot)/float(b.shots);
   const Vec3  sweep = sweepA*(1.f-t)+sweepB*t;
 
-  // 0x52dc50: at the car, a little ahead of it, plus the sweep; the ray reaches 1.5 times as far, at least 10 m
+  // 0x52dc50: at the car, a little ahead of it, plus the sweep; the ray reaches 1.5 times as far, at least 10 m.
+  // A bullet that hits nothing is gone
   const Vec3  fwd   = car.pose.vector({0,0,1}).normalized();
   const float speed = Vec3::dot(car.velocity,fwd);
   const Vec3  aim   = car.pose.translation()+fwd*(speed*b.offset*0.5f)+sweep;
@@ -630,53 +644,48 @@ void Gunfire::shoot(const Target& car, const CollisionMesh& track, Random& rnd) 
     return;
   dir = dir*(1.f/len);
   const float reach = std::max(10.f,1.5f*len);
-  auto hit = track.raycast(gun,dir,reach);
+  const auto  hit   = track.raycast(gun,dir,reach);
+  if(!hit)
+    return;
+  const Vec3 at = hit->point;
 
-  // the car's body in the way (0x508290): it smokes (0x508560 -> 0x52d0d0)
-  bool hitCar = false;
-  Vec3 at, normal{0,1,0};
+  // 0x508290: on its way to the ground the bullet passes through a box round the car's body, twice its size each
+  // way (the half sizes are taken four times over the axes from the box's corner), and hits the car with its
+  // chance (0x40c4c0): the car smokes, the game takes the hit (0x508560 -> 0x52d0d0)
   {
-    const Mat4 inv  = car.pose.inverse();
-    const Vec3 o    = inv.point(gun);
-    const Vec3 d    = inv.vector(dir);
-    float      t0   = 0, t1 = hit ? hit->distance : reach;
-    int        axis = -1;
-    float      sgn  = 0;
-    const float lo[3] = {car.boxMin.x,car.boxMin.y,car.boxMin.z}, hi[3] = {car.boxMax.x,car.boxMax.y,car.boxMax.z};
+    const Mat4  inv  = car.pose.inverse();
+    const Vec3  c    = (car.boxMin+car.boxMax)*0.5f;
+    const Vec3  e    = car.boxMax-car.boxMin;
+    const Vec3  o    = inv.point(gun);
+    const Vec3  d    = inv.vector(dir);
+    const float lo[3] = {c.x-e.x,c.y-e.y,c.z-e.z}, hi[3] = {c.x+e.x,c.y+e.y,c.z+e.z};
     const float oo[3] = {o.x,o.y,o.z}, dd[3] = {d.x,d.y,d.z};
-    bool inside = true;
-    for(int i=0; i<3 && inside; ++i) {
+    float t0 = 0, t1 = hit->distance;
+    bool  through = true;
+    for(int i=0; i<3 && through; ++i) {
       if(std::abs(dd[i])<Eps) {
-        inside = oo[i]>=lo[i] && oo[i]<=hi[i];
+        through = oo[i]>=lo[i] && oo[i]<=hi[i];
         continue;
         }
-      float a = (lo[i]-oo[i])/dd[i], c = (hi[i]-oo[i])/dd[i];
-      if(a>c)
-        std::swap(a,c);
-      if(a>t0) {
-        t0   = a;
-        axis = i;
-        sgn  = dd[i]>0 ? -1.f : 1.f;
-        }
-      t1 = std::min(t1,c);
-      inside = t0<=t1;
+      float a = (lo[i]-oo[i])/dd[i], z = (hi[i]-oo[i])/dd[i];
+      if(a>z)
+        std::swap(a,z);
+      t0 = std::max(t0,a);
+      t1 = std::min(t1,z);
+      through = t0<=t1;
       }
-    if(inside && axis>=0) {
-      hitCar = true;
-      at     = gun+dir*t0;
-      Vec3 n;
-      (axis==0 ? n.x : axis==1 ? n.y : n.z) = sgn;
-      normal = car.pose.vector(n).normalized();
+    const size_t who = target;
+    if(through && rnd.chance(car.chance)) {
+      if(smoke.size()<=who)
+        smoke.resize(who+1);
+      // 0x508560: the smoke starts with the first hit until the car is put back (0x4fca60 stops it)
+      if(smoke[who].emit<0)
+        smoke[who].emit = set->bulletSmoke.timeEmit;
+      struck.push_back({who,gun});
       }
-    }
-  if(!hitCar) {
-    if(!hit)
-      return;
-    at     = hit->point;
-    normal = hit->normal;
-    }
+  }
 
-  // 0x52db60: grit and dust where it hit, a hole in the ground, the bullet's sound
+  // 0x52db60: grit and dust where it hit, a hole in the ground; the bullets sound with the first shot
   auto g = std::find_if(grit.begin(),grit.end(),[](const Grit& g){ return g.emit<0; });
   if(g==grit.end())
     g = grit.begin();
@@ -689,30 +698,33 @@ void Gunfire::shoot(const Target& car, const CollisionMesh& track, Random& rnd) 
       dustAt[i]    = at;
       break;
       }
-  if(hitCar)
-    smoke.emit = set->bulletSmoke.timeEmit;
-  else if(holes.size()<256) {
-    // bullet_footprint, 5 cm each way, lying on the ground
-    Vec3 tx = Vec3::cross(normal,std::abs(normal.y)<0.9f ? Vec3{0,1,0} : Vec3{1,0,0}).normalized();
-    const float a = rnd.unit()*2.f*Pi;
-    const Vec3  ty0 = Vec3::cross(normal,tx);
-    tx = tx*std::cos(a)+ty0*std::sin(a);
-    const Vec3  ty = Vec3::cross(normal,tx);
-    const float h  = 0.05f;
-    const Vec3  c  = at+normal*0.01f;
-    Hole hole;
-    hole.left      = 8.f;
-    hole.quad.kind = Mark::Decal;
-    const Vec3  corner[4] = {c-tx*h-ty*h,c+tx*h-ty*h,c+tx*h+ty*h,c-tx*h+ty*h};
-    const float u[4] = {0,1,1,0}, v[4] = {0,0,1,1};
-    for(int i=0; i<4; ++i) {
-      hole.quad.v[i].pos    = corner[i];
-      hole.quad.v[i].uv[0]  = hole.quad.v[i].uv2[0] = u[i];
-      hole.quad.v[i].uv[1]  = hole.quad.v[i].uv2[1] = v[i];
-      }
-    holes.push_back(hole);
+  hole(at,hit->normal,rnd);
+  if(shot==0)
+    heard.push_back({Sound::Bullet,at});
+  }
+
+void Gunfire::hole(const Vec3& at, const Vec3& normal, Random& rnd) {
+  if(holes.size()>=256)
+    return;
+  // bullet_footprint, 5 cm each way, lying on the ground
+  Vec3 tx = Vec3::cross(normal,std::abs(normal.y)<0.9f ? Vec3{0,1,0} : Vec3{1,0,0}).normalized();
+  const float a = rnd.unit()*2.f*Pi;
+  const Vec3  ty0 = Vec3::cross(normal,tx);
+  tx = tx*std::cos(a)+ty0*std::sin(a);
+  const Vec3  ty = Vec3::cross(normal,tx);
+  const float h  = 0.05f;
+  const Vec3  c  = at+normal*0.01f;
+  Hole hole;
+  hole.left      = 8.f;
+  hole.quad.kind = Mark::Decal;
+  const Vec3  corner[4] = {c-tx*h-ty*h,c+tx*h-ty*h,c+tx*h+ty*h,c-tx*h+ty*h};
+  const float u[4] = {0,1,1,0}, v[4] = {0,0,1,1};
+  for(int i=0; i<4; ++i) {
+    hole.quad.v[i].pos    = corner[i];
+    hole.quad.v[i].uv[0]  = hole.quad.v[i].uv2[0] = u[i];
+    hole.quad.v[i].uv[1]  = hole.quad.v[i].uv2[1] = v[i];
     }
-  heard.push_back({Sound::Bullet,at});
+  holes.push_back(hole);
   }
 
 void Gunfire::collect(std::vector<Billboard>& out) const {
@@ -722,7 +734,8 @@ void Gunfire::collect(std::vector<Billboard>& out) const {
     collectDrops(g.drops,set->explode,out);
   for(auto& d:dust)
     collectPuffs(d.puffs,set->bulletDust,out);
-  collectPuffs(smoke.puffs,set->bulletSmoke,out);
+  for(auto& p:smoke)
+    collectPuffs(p.puffs,set->bulletSmoke,out);
   }
 
 void Gunfire::collect(std::vector<Mark>& out) const {

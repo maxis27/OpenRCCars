@@ -45,6 +45,9 @@ constexpr float DogPushOut     = 0.5f;     // m/s: a dog touched pushes the car 
 constexpr float DogPushUp      = 0.12f;    // .. and up
 constexpr float DogPainPause   = 0.5f;     // s without a hit before the dog whines again (ours)
 constexpr float GuardHitSpeed  = 10.f;     // km/h: hitting a guard
+constexpr float GuardFirst     = 0.15f;    // s from locking on a car to the first burst (0x51a6f6 -> 0x535720) ..
+constexpr float GuardNext      = 1.25f;    // .. and between the next ones,
+constexpr int   GuardBursts    = 3;        // three in all, then it picks the nearest car again
 constexpr float HitPause       = 2.f;      // s between two "Wielkie Łup!" for the same kind
 constexpr float HitBoost       = 5.f;      // turbo units for one
 constexpr float BodyRadius     = 0.2f;     // people: 3 spheres 0, 0.2 and 0.4 m above the feet (0x511e30)
@@ -143,6 +146,14 @@ struct Characters::State {
   bool              holding  = false;
   float             noHit    = 0;      // s the car can't hurt this one (just kicked or thrown)
   float             sinceHurt = 1e3f;  // s since a car hurt this one: the voice once per hit
+  // guard: the car it aims at (Shot::car, NoCar none), the one it turns to, the one it fired at last; the time
+  // locked on and the bursts fired at it (the detector of 0x535720)
+  static constexpr int NoCar = -2;
+  int               aimAt    = NoCar;
+  int               facing   = NoCar;
+  int               firedAt  = NoCar;
+  float             aimTime  = 0;
+  int               bursts   = 0;
   std::string       voice;
 
   // animals
@@ -388,6 +399,9 @@ void Characters::restart() {
     s.act      = State::Act::None;
     s.holding  = false;
     s.noHit    = 0;
+    s.aimAt    = s.facing = s.firedAt = State::NoCar;
+    s.aimTime  = 0;
+    s.bursts   = 0;
     s.pathTime = 0;
     s.state    = 0;
     s.dead     = false;
@@ -661,15 +675,67 @@ bool Characters::attack(State& s, float dt, Vehicle* player) {
 
 void Characters::guard(State& s, float dt, Vehicle* player, std::vector<Car>& cars) {
   s.noHit = std::max(0.f,s.noHit-dt);
-  const Vec3 car  = player ? player->pose().translation() : Vec3{0,1e6f,0};
-  const bool sees = player!=nullptr && s.inst->volume("visibilityVolume")->contains(car);
-  const bool aims = player!=nullptr && s.inst->volume("guardVolume")->contains(car);
-  s.actor.visible = sees || aims;
+  // the guard is there while the player's car is in its visibilityVolume (0x535900)
+  const Vec3      car   = player ? player->pose().translation() : Vec3{0,1e6f,0};
+  const SbVolume& zone  = *s.inst->volume("guardVolume");
+  const bool      sees  = player!=nullptr && s.inst->volume("visibilityVolume")->contains(car);
+  auto where = [&](int id, Vec3& at) {
+    if(id==PlayerCar && player!=nullptr) {
+      at = car;
+      return true;
+      }
+    if(id>=0 && size_t(id)<cars.size()) {
+      at = cars[size_t(id)].pos;
+      return true;
+      }
+    return false;
+    };
+  s.actor.visible = sees;
   if(!s.actor.visible) {
     s.act = State::Act::None;
     play(s,s.sStand,true);
     return;
     }
+
+  // the detector (0x5357e0): locked on a car while it stays in the guardVolume, a burst 0.15 s after locking on
+  // and then every 1.25 s, three in all; without a lock, the nearest car in the guardVolume (any car but a
+  // ghost; the one fired at last counts twice as far, 0x5359f0)
+  bool fire = false;
+  Vec3 at;
+  if(s.aimAt!=State::NoCar && (!where(s.aimAt,at) || !zone.contains(at)))
+    s.aimAt = State::NoCar;
+  if(s.aimAt!=State::NoCar) {
+    s.aimTime += dt;
+    if(s.aimTime>=(s.bursts==0 ? GuardFirst : GuardNext)) {
+      fire       = true;
+      s.firedAt  = s.aimAt;
+      s.aimTime  = 0;
+      if(++s.bursts>=GuardBursts)
+        s.aimAt = State::NoCar;
+      }
+    }
+  else {
+    float best = 0;
+    for(int id=PlayerCar; id<int(cars.size()); ++id) {
+      if(!where(id,at) || !zone.contains(at))
+        continue;
+      float d = (at-s.pos).length();
+      if(id==s.firedAt)
+        d *= 2.f;
+      if(s.aimAt==State::NoCar || d<best) {
+        s.aimAt = id;
+        best    = d;
+        }
+      }
+    if(s.aimAt!=State::NoCar) {
+      s.facing  = s.aimAt;
+      s.aimTime = 0;
+      s.bursts  = 0;
+      }
+    }
+  if(s.aimAt!=State::NoCar)
+    s.facing = s.aimAt;
+
   for(auto& c:cars)
     touches(c,s.pos,BodyRadius,0.6f);
   if(s.noHit<=0 && hitBy(s,player,GuardHitSpeed) && sinceGuard>HitPause) {
@@ -678,12 +744,14 @@ void Characters::guard(State& s, float dt, Vehicle* player, std::vector<Car>& ca
     player->addBoost(HitBoost);
     }
   if(!attack(s,dt,player)) {
-    // turns to face the car (0x510a40, 360 degrees per second) and shoots while it is in the guard volume
-    turnTo(s,car-s.pos,TurnToCar*dt);
-    play(s,aims && s.sShoot>=0 ? s.sShoot : s.sStand,true);
+    // turns to face the car (0x510a40, 360 degrees per second) and shoots at it
+    Vec3 to;
+    if(s.facing!=State::NoCar && where(s.facing,to))
+      turnTo(s,to-s.pos,TurnToCar*dt);
+    play(s,s.aimAt!=State::NoCar && s.sShoot>=0 ? s.sShoot : s.sStand,true);
     // the gun, 1.5 m above its feet (0x51a950 sends BURST_MNG the message 0x261 from there)
-    if(aims)
-      guns.push_back(s.pos+Vec3{0,1.5f,0});
+    if(fire)
+      guns.push_back({s.pos+Vec3{0,1.5f,0},s.firedAt});
     }
   else if(s.done) {
     s.act = State::Act::None;

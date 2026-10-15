@@ -604,6 +604,14 @@ void Vehicle::addVelocity(const Vec3& dv) {
   body->setLinearVelocity(body->getLinearVelocity()+toBt(dv)*S);
   }
 
+void Vehicle::shotFrom(const Vec3& gun) {
+  Vec3 away = pose().translation()-gun;
+  away.y = 0;
+  const float l = away.length();
+  away = l>1e-6f ? away*(1.f/l) : Vec3{};
+  addVelocity(away*ShotPushOut+Vec3{0,ShotPushUp,0});
+  }
+
 void Vehicle::hold(const Mat4& at) {
   const btTransform t = toBt(at*Mat4::translate(com));
   body->setWorldTransform(t);

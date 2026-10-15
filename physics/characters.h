@@ -91,8 +91,14 @@ class Characters {
     void                        restart();
 
     const std::vector<Actor*>&  actors() const { return view; }
-    // the guns of the guards shooting at the player's car in this update (fx::Gunfire)
-    const std::vector<Vec3>&    shooting() const { return guns; }
+    // a burst a guard fires in this update (message 0x261 to BURST_MNG, fx::Gunfire): from its gun at a car,
+    // PlayerCar or an index of `cars`
+    static constexpr int        PlayerCar = -1;
+    struct Shot {
+      Vec3 gun;
+      int  car = PlayerCar;
+      };
+    const std::vector<Shot>&    shooting() const { return guns; }
     // someone took the player's car in their hand in this update (0x5111f0 -> 0x4f3640: the chase camera holds still)
     bool                        grabbedPlayer() const { return grabbed; }
     // someone holds the player's car after this update (0x4f3690 lets go of it when thrown)
@@ -146,7 +152,7 @@ class Characters {
     std::map<const ObjectLibrary::Model*,std::unique_ptr<Skeleton>> skeletons;
     std::vector<std::unique_ptr<State>>           states;
     std::vector<Actor*>                           view;
-    std::vector<Vec3>                             guns;
+    std::vector<Shot>                             guns;
     std::mt19937                                  rng{20061013};
     float                                         sincePerson = 1e3f; // s since the last "Wielkie Łup!" per kind
     float                                         sinceDog    = 1e3f;

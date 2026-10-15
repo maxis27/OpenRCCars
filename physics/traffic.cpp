@@ -648,7 +648,7 @@ void Traffic::turret(State& s, float dt, Vehicle* player, const std::vector<Char
     s.lockTime   += dt;
     if(s.lockTime>=(s.bursts==0 ? TowerFirst : TowerNext)) {
       s.lockTime = 0;
-      fired.push_back({gun,at});
+      fired.push_back({gun,at,s.lockedOn==-2 ? Characters::PlayerCar : s.lockedOn});
       if(++s.bursts>=TowerBursts) {
         s.lockedOn  = -1;
         s.searching = true;

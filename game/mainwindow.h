@@ -63,6 +63,9 @@ class MainWindow : public Tempest::Window {
     std::vector<rc::Mat4> carPartPoses() const;
     std::vector<rc::Mat4> opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const;
     Hud::Info             hudInfo() const;
+    // the bursts fired in this update and the cars they can hit (fx::Gunfire)
+    std::vector<rc::fx::Gunfire::Order>  gunOrders()  const;
+    std::vector<rc::fx::Gunfire::Target> gunTargets() const;
     ChaseCamera::Car      chaseCar() const;
     // the way on for the arrow: the point it shows, relative to the car's heading, radians, positive = left
     float                 wayDirection() const;
@@ -116,6 +119,7 @@ class MainWindow : public Tempest::Window {
     bool                    besideDone   = false;
     bool                    jumpPressed = false;
     float                   upsideDown = 0; // seconds on the roof or side, then the car is put back
+    float                   shotTime   = -1; // seconds since a bullet hit the car (held, then put back), < 0 none
     // RCCars.exe's developer mode (-dev, 0x147d204) and its F9 (0x147d254, the "ZERO" mode of 0x482900): the
     // player's car leaves the physics and is flown by hand, the camera rigid behind it, and nothing puts the car
     // back on the track

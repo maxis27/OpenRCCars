@@ -230,6 +230,7 @@ void Opponent::restart() {
     }
   sinceCar     = 1e3f;
   shakeLeft    = 0;
+  shotTime     = -1;
   resumeFade   = 0;
   cur          = 0;
   playTime     = 0;
@@ -387,12 +388,22 @@ bool Opponent::trackRules(float dt) {
   const bool  out   = at.x<boxMin.x || at.x>boxMax.x || at.z<boxMin.z || at.z>boxMax.z || at.y<boxMin.y-0.1f;
   const float drown = Vehicle::drownRate(owner.track(),at,prm);
   drownTimer = drown>0 ? drownTimer+drown*dt : 0.f;
-  bool back = out || drownTimer>prm.drownTime || resets.tick(at,dt);
+  // 0x508ae0: shot, back after a while
+  if(shotTime>=0)
+    shotTime += dt;
+  bool back = out || drownTimer>prm.drownTime || resets.tick(at,dt) || shotTime>Vehicle::ShotHold;
   for(size_t i=0; !back && knocked() && i<resets.volumes().size(); ++i)
     back = resets.volumes()[i].volume->contains(at);
   if(back)
     putBack();
   return back;
+  }
+
+void Opponent::shotFrom(const Vec3& gun) {
+  knock();
+  driven->shotFrom(gun);
+  if(shotTime<0)
+    shotTime = 0;
   }
 
 void Opponent::putBack() {
@@ -406,6 +417,7 @@ void Opponent::putBack() {
   knock();
   driven->reset(to);
   ++putBacks;
+  shotTime   = -1;
   driveTime  = 0;
   sinceTouch = 0;
   stuckTime  = 0;

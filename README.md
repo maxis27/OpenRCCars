@@ -124,8 +124,9 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   powoli brudzi karoserię auta gracza, woda ją zmywa (tekstury `dirt_car*`)
 - **efekty trasy**, też z `RCCars.exe`: rozbryzgi fal o skały przy znacznikach `water_splash_N`, fale łamiące się
   przy brzegu przy znacznikach `water_wave_N` (płyną z falą morza do brzegu, tekstury `water_wave` i
-  `water_wave_alpha`) oraz strzały strażników: seria kul przechodzi w poprzek auta, trafienie w ziemię wyrzuca
-  grudki i kurz i zostawia na 8 s dziurę (`bullet_footprint`), trafione auto dymi; dźwięki `burst` i `bullet`
+  `water_wave_alpha`) oraz strzały strażników i BTR: seria kul przechodzi w poprzek auta, trafienie w ziemię
+  wyrzuca grudki i kurz i zostawia na 8 s dziurę (`bullet_footprint`); trafione auto dymi, odskakuje od strzelca,
+  traci sterowanie i po 2 s wraca na ostatni punkt kontrolny (przeciwnik też); dźwięki `burst` i `bullet`
 - **narzędzia**: `rcinfo` (inspekcja/eksport danych i jazda testowa, bez GPU) i `rcshot` (render offscreen do PNG)
 
 ![Auto na starcie (beach_1)](docs/car_beach_1.jpg)
@@ -273,6 +274,7 @@ rcinfo <folder_gry> ram RCCarsDB/beach_1.sb [przeciwnik] [s] [side]  # gracz wje
 rcinfo <folder_gry> drown RCCarsDB/beach_1.sb [auto 1-3]  # strefy powrotu, pudło kolizji, czas tonięcia na kilku głębokościach (też przeciwnika)
 rcinfo <folder_gry> fog beach_1                   # mgła trasy: gęstość, kolor, ile koloru zostaje w danej odległości
 rcinfo <folder_gry> traffic beach_2 [s]           # ruch uliczny: odjazdy, wysokość kół nad drogą, światła, cienie, potrącenie gracza
+rcinfo <folder_gry> shots beach_4 [auto 1-3] [s]  # strażnicy i BTR strzelają do auta: serie, trafienia, odrzut, powrót
 rcinfo <folder_gry> nodes RCCarsDB/Roadcar.sb Btr # drzewo węzłów modelu: położenie, osie, wierzchołki, tekstury
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
 rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
@@ -568,8 +570,9 @@ lib/Tempest     silnik (submoduł git)
   Zderzenie (0x534880 → 0x5165a0 → 0x4f3470): przeciwnik wypada z nagrania, auto gracza dostaje 6 m/s od
   samochodu i 1,5 m/s w górę (`Slow`: 2 i 0,5) przy każdym dotknięciu; hummer stoi 0,6 m nad drogą, więc autko
   zmieści się pod nim między kołami. BTR (`roadcar.ini`: `TowerVel`, `TowerShootT`) celuje w auto w klinie 20 m
-  ±15° przed lufą, po 0,33 s strzela serią (komunikat 0x261, kanał `burst`), potem co 1,25 s, cztery razy, dopóki
-  cel jest bliżej niż 25 m; zgubiwszy cel, wodzi wieżą ±50°.
+  ±15° przed lufą, po 0,33 s strzela serią (komunikat 0x261 do `BURST_MNG`, jak strażnik, więc trafienia działają
+  tak samo, także na przeciwników), potem co 1,25 s, cztery razy, dopóki cel jest bliżej niż 25 m; zgubiwszy
+  cel, wodzi wieżą ±50°.
   Cienie i poświaty (0x516f50, przy `VIDEO_RoadCarShadow`) idą do kolejki świateł gry (0x44c640, do 100 na
   klatkę), która kładzie je na pobliskie ściany trasy (0x44c750, 0x45a220): od ściany odległej o h < R plama ma
   promień √(R²−h²), uv = 0,5 + d·0,453125/ten promień, a siłę (1/255)^((h/R)²). Poświata: kampery i ciężarówki
@@ -659,15 +662,26 @@ lib/Tempest     silnik (submoduł git)
   `Height` (0,58 m) × jasność nad wodą i obrócony wokół grzbietu do kamery; całość zanurza się wzdłuż normalnej
   wody o `DHeight − 1`. Tekstura `water_wave` przesuwa się wzdłuż grzbietu skokami (`AnimSpeed` co `AnimWait`),
   `water_wave_alpha` wygasza brzegi; jasność rośnie do `IncTime` życia i maleje od `DecTime`.
-- **Strzały strażnika** (`BURST_MNG` 0x52d570–0x52df20): strażnik (0x51a950), gdy auto jest w jego
-  `guardVolume`, wysyła co klatkę komunikat 0x261 z broni 1,5 m nad stopami, a każdy komunikat zaczyna serię od
-  nowa (0x52de30). Seria to `NShoots` (6) strzałów co `TimeShoot` (0,1 s), przechodzących w poprzek auta od `+r`
-  do `−r` × `Radius` (losowy kierunek `r`), celowanych w auto z wyprzedzeniem `prędkość × Offset / 2`; promień
-  sięga 1,5 raza dalej (co najmniej 10 m). Kula w karoserii (prostopadłościan auta, 0x508290) zapala dym
-  `BULLET_SMOKE` na 2 s i w oryginale wyłącza sterowanie auta do powrotu na trasę (u nas nie); kula w ziemi
-  wyrzuca stożek grudek `BULLET_EXPLODE`, kłąb `BULLET_DUST` i zostawia dziurę `bullet_footprint` (10 cm, 8 s,
-  blednie przez ostatnie 4 s, najwyżej 256). Dźwięki: `burst` przy strażniku, `bullet` w miejscu trafienia. U nas
-  nowa seria zaczyna się po końcu poprzedniej, a nie co klatkę, żeby tempo strzałów nie zależało od liczby klatek.
+- **Strzały strażnika i BTR** (`BURST_MNG` 0x52d570–0x52df20): strażnik (0x51a950) jest aktywny, gdy auto
+  gracza jest w jego `visibilityVolume`. Celuje w najbliższe auto w `guardVolume` (gracza albo przeciwnika; auto,
+  do którego strzelał ostatnio, liczy się jak dwa razy dalsze, 0x5359f0), odwraca się do niego i 0,15 s po
+  namierzeniu wysyła komunikat 0x261 z broni 1,5 m nad stopami, potem co 1,25 s, trzy razy, i znów wybiera cel
+  (detektor 0x535720 z parametrami 0,15 / 1,25 / 2; BTR ma 0,33 / 1,25 / 3). Każdy komunikat zaczyna serię od
+  nowa (0x52de30), wygrywa ostatni. Seria to `NShoots` (6) strzałów co `TimeShoot` (0,1 s), przechodzących
+  w poprzek auta od `+r` do `−r` × `Radius` (losowy kierunek `r`), celowanych w auto z wyprzedzeniem
+  `prędkość × Offset / 2`; promień sięga 1,5 raza dalej (co najmniej 10 m). Kula, która nie trafi w ziemię,
+  przepada. Kula w ziemi wyrzuca stożek grudek `BULLET_EXPLODE`, kłąb `BULLET_DUST` i zostawia dziurę
+  `bullet_footprint` (10 cm, 8 s, blednie przez ostatnie 4 s, najwyżej 256), także gdy po drodze trafiła auto.
+  Dźwięki: `burst` przy broni na początku serii, `bullet` w miejscu trafienia pierwszej kuli.
+- **Trafienie auta** (0x508290, 0x508560, 0x508ae0): po drodze do ziemi kula przechodzi przez pudło wokół
+  karoserii (`ENVIR_CAR_BODY`) dwa razy większe w każdą stronę (połówki wymiarów brane ×4 od narożnika) i trafia
+  z szansą `rand() / 32767 × 100 < p`: gracz Overkillem i Hummerem 20%, Buggy 10% (`Geometry typeCar` 0/2 i 1),
+  auta komputera 15%. Pierwsze trafienie zapala dym `BULLET_SMOKE` (`TimeEmit`), każde pcha auto 6,5 m/s od
+  strzelca i 3,25 m/s w górę (0x4f3470, jak przy psie i ruchu ulicznym) i liczy się w `car+0x5724`. Dopóki
+  licznik nie jest zerem, gra co klatkę zeruje klawisze auta i trzyma `Brake` (klawisz 7, ręczny; 0x4f6b20),
+  a 2 s po pierwszym trafieniu (kolejne nie przedłużają) stawia auto na ostatnim punkcie kontrolnym jak `R`
+  (0x508b50). Przeciwnik wypada z nagrania, autopilot nim jedzie (nadpisuje wyzerowane klawisze) i po 2 s też
+  wraca na swój punkt. Komunikat 0x4e86 o trafieniu trafia tylko do dziennika gry sieciowej, nie przenosimy go.
 - **Mapa otoczenia (odbicia)** (`RCCars.exe` 0x463360, 0x465aa0, 0x48f530): siatki, które ją mają, rysuje drugi
   raz z teksturą `cubemap_racer` (sześć jednakowych ścian sześcianu: miękka biała plama na czarnym), dodaną do obrazu
   (`SrcAlpha, One`) z siłą równą alfie `TEXTUREFACTOR` razy krycie siatki. Współrzędne to wektor odbicia w przestrzeni

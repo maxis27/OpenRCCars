@@ -102,6 +102,9 @@ void ChaseCamera::reset(const Car& car) {
   extraBoost = 0;
   swing      = 0;
   lookUp     = 0;
+  held       = false;
+  grabFrame  = false;
+  sinceGrab  = 1e9f;
   update(car,Huge);
   }
 
@@ -116,18 +119,45 @@ void ChaseCamera::update(const Car& car, float dt) {
     }
 
   // 0x500a80: this frame's springs
-  const float base  = cfg.distXZ;
-  const float speed = car.velocity.length();
-  float       add   = 0;
-  if(speed>=4.f)
-    add = speed>8.f ? base*0.5f : base*0.5f*(speed-4.f)*0.25f;
-  extraSpeed = toward(extraSpeed,add,1.f,dt);
-  extraBoost = car.boost ? toward(extraBoost,base*0.2f,0.5f,dt) : toward(extraBoost,0.f,0.3f,dt);
+  if(car.grabbed) {
+    // 0x4f3640
+    held      = true;
+    grabFrame = true;
+    sinceGrab = 0;
+    }
+  else if(!car.held) {
+    held = false;  // thrown (0x4f3690)
+    }
+  if(dt<Huge)
+    sinceGrab += dt;
 
-  Spring dist {base+extraSpeed+extraBoost, 0, Huge, Huge, Huge, Huge, 0};
+  const float base = cfg.distXZ;
+  Spring dist {base, 0, Huge, Huge, Huge, Huge, 0};
   Spring high {cfg.distY, 0, cfg.distY*0.75f, cfg.distY*0.75f, cfg.accDistY, Huge, 0};
-  const float alphaRate = car.spin/DegToRad<180.f ? cfg.accAlpha*200.f : 30.f;
-  Spring alpha{0, 0, 20.f, 20.f, alphaRate, alphaRate, 2.f};
+  Spring alpha{0, 0, 90.f, 90.f, cfg.accAlpha, Huge, 1.2f};  // as 0x4f9da0 leaves it
+  if(held || sinceGrab<3.f) {
+    if(grabFrame) {
+      // the frame it is taken: 2 m behind, 1 m up
+      dist.target = 2.f;
+      high.target = 1.f;
+      grabFrame   = false;
+      }
+    else {
+      // all zero: nothing moves
+      dist = high = alpha = Spring();
+      }
+    }
+  else {
+    const float speed = car.velocity.length();
+    float       add   = 0;
+    if(speed>=4.f)
+      add = speed>8.f ? base*0.5f : base*0.5f*(speed-4.f)*0.25f;
+    extraSpeed = toward(extraSpeed,add,1.f,dt);
+    extraBoost = car.boost ? toward(extraBoost,base*0.2f,0.5f,dt) : toward(extraBoost,0.f,0.3f,dt);
+    dist.target = base+extraSpeed+extraBoost;
+    const float alphaRate = car.spin/DegToRad<180.f ? cfg.accAlpha*200.f : 30.f;
+    alpha = Spring{0, 0, 20.f, 20.f, alphaRate, alphaRate, 2.f};
+    }
 
   // 0x471ca0: the eye in the car's frame, pulled, and put back
   const Vec3  p = eye-o;
@@ -168,4 +198,15 @@ void ChaseCamera::apply(const Car& car, const rc::CollisionMesh* coll, float dt,
   camera.lookAt(at);
   // 0x501180: the view looks up by VisTurn and the extra of the swing (no clamp: pitch stays well inside +-90)
   camera.pitch += cfg.visTurn + lookUp;
+  }
+
+void ChaseCamera::applyRigid(const Car& car, Camera& camera) {
+  const Vec3 f = heading(car);
+  eye    = car.centre - f*DevDistXZ + Vec3{0,DevDistY,0};
+  valid  = true;
+  swing  = 0;
+  lookUp = 0;
+  camera.position = eye;
+  camera.lookAt(car.centre);
+  camera.pitch += cfg.visTurn;
   }

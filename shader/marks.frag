@@ -2,7 +2,7 @@
 
 layout(push_constant, std430) uniform Push {
   mat4 viewProj;
-  uint mode;
+  uint mode;      // 0 tyre track, 1 texture with a second one's opacity, 2 a spot laid onto the track
   uint  fogColor;   // 0x00RRGGBB
   float fogDensity; // formats/fog.h
   } push;
@@ -31,6 +31,13 @@ void main() {
     // fogged towards half the fog's colour, as RCCars.exe does for its x2 blends (0x463e70): what it fogs is
     // doubled by the blend
     outColor.rgb = mix(unpackUnorm4x8(push.fogColor).bgr*0.5, outColor.rgb, fogKeep());
+    return;
+    }
+  if(push.mode==2u) {
+    // a light or shadow laid onto the track (game/world/traffic.cpp): the texture times the colour, added to what
+    // is under it or taken off it by the blend; the fog leaves less of it. No alpha: the blends would take it off
+    // the frame's
+    outColor = vec4(texture(tex, inUv).rgb*inColor.rgb*fogKeep(), 0.0);
     return;
     }
   vec4 c = texture(tex, inUv)*inColor;

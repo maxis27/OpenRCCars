@@ -47,6 +47,15 @@ void main() {
   vec4 color  = texture(texBase, inUvBase);
   vec3 normal = normalize(inNormal);
 
+  if((push.flags & F_MODULATE)!=0u) {
+    // tread strips on the ground: the ground under them is lit and fogged already, so they are not; the fog takes
+    // them to the grey that changes nothing. Whether RCCars.exe puts the lightmap of the few that have one
+    // (country_4) on them is not known; it would darken the ground twice, so it is left out
+    float keep = exp(-push.cameraPos.w/gl_FragCoord.w);
+    outColor   = vec4(mix(vec3(0.5), color.rgb, keep), 1.0);
+    return;
+    }
+
   if((push.flags & F_BLEND)!=0u) {
     // ALP1 mask selects between the two terrain textures
     float m  = texture(texMask, inUvMask).a;

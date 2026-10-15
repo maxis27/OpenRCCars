@@ -30,6 +30,9 @@ class CollisionMesh;
 // under the eye (0x500d60), the eye swings up round the car by CDT_AngleUp degrees (at CDT_AngleUpSpeed degrees/s),
 // and the view looks up by VisTurn degrees plus up to CDT_AngleUp_DIR_ADD while it is swung up (at
 // CDT_AngleUp_SPEED_DIR_ADD degrees/s). Those turns are only for the picture: the springs keep the unturned eye.
+// When a person picks the car up (0x5111f0 -> 0x4f3640), the eye jumps back to 2 m behind and at least 0.73 m up
+// for that one frame, then stands still (it only turns to follow the car) while the car is held and until 3 s after
+// it was taken; then the springs pull it back as usual (0x500a80).
 class ChaseCamera {
   public:
     // Settings\Camera.ini, "CAMERA" sliders
@@ -62,6 +65,8 @@ class ChaseCamera {
       rc::Vec3  velocity;      // m/s
       float spin  = 0;     // angular speed, rad/s
       bool  boost = false; // boost and gas held
+      bool  grabbed = false; // someone took the car in their hand in this update (Characters::grabbedPlayer)
+      bool  held    = false; // someone holds it (Characters::holdingPlayer)
       };
 
     ChaseCamera();
@@ -74,6 +79,11 @@ class ChaseCamera {
     void update(const Car& car, float dt);
     // the view: `camera` gets the eye and where it looks; `coll` hides the car (nullptr: never)
     void apply(const Car& car, const rc::CollisionMesh* coll, float dt, Camera& camera);
+    // the developer mode's F9 camera (0x500ce9, 0x501183): the springs set to DevDistXZ behind and DevDistY over
+    // the car with no give at all, no swing up round the ground, only VisTurn; the next update() goes on from it
+    static constexpr float DevDistXZ = 1.0443f;
+    static constexpr float DevDistY  = 0.4091f;
+    void applyRigid(const Car& car, Camera& camera);
 
   private:
     rc::Vec3     heading(const Car& car);
@@ -86,4 +96,7 @@ class ChaseCamera {
     float    extraBoost = 0;   // car +0x6e4
     float    swing      = 0;   // car +0x6ec, degrees the eye is swung up
     float    lookUp     = 0;   // car +0x6f0, degrees added to VisTurn
+    bool     held       = false; // car +0xe828: in someone's hand
+    bool     grabFrame  = false; // car +0xe82c: the update it was taken
+    float    sinceGrab  = 1e9f;  // car +0xe830, s
   };

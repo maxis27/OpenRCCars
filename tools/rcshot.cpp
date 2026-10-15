@@ -17,8 +17,8 @@
 //   env RCSHOT_FX=<seconds> runs the track's effects (splashes, breaking waves, the guards' gunfire at the parked car)
 //   that long, seen from the final camera, and draws them; the water's time goes on from RCSHOT_TIME.
 //   env RCSHOT_TRAFFIC=<seconds> lets the road traffic run that long after the start of the race and, with
-//   RCSHOT_TRAFFIC_CAR=<n>, looks at the n-th car on the road from RCSHOT_ACTOR_DIST m (default 8) and
-//   RCSHOT_ACTOR_SIDE degrees round it (default 30).
+//   RCSHOT_TRAFFIC_CAR=<n>, looks at the n-th car on the road from RCSHOT_ACTOR_DIST m (default 8),
+//   RCSHOT_ACTOR_SIDE degrees round it (default 30) and RCSHOT_ACTOR_RISE times that distance up (default 0.35).
 
 #include <Tempest/Device>
 #include <Tempest/Fence>
@@ -234,7 +234,7 @@ int main(int argc, const char** argv) {
         const float    side = env("RCSHOT_ACTOR_SIDE",30.f)*3.14159265f/180.f;
         const float    yaw  = std::atan2(f.x,f.z)+side;
         const float    dist = env("RCSHOT_ACTOR_DIST",8.f);
-        cam.position = at+rc::Vec3{std::sin(yaw),0,std::cos(yaw)}*dist+rc::Vec3{0,dist*0.35f,0};
+        cam.position = at+rc::Vec3{std::sin(yaw),0,std::cos(yaw)}*dist+rc::Vec3{0,dist*env("RCSHOT_ACTOR_RISE",0.35f),0};
         cam.lookAt(at+rc::Vec3{0,1.f,0});
         // once more, so the car near the camera is posed (wheels, lights) and drawn
         world.step(1.f/60.f);
@@ -332,7 +332,7 @@ int main(int argc, const char** argv) {
       if(fx)
         fx->drawTracks(enc,0,viewProj,cam.position);
       if(traffic)
-        trafficView.draw(enc,*traffic,viewProj,push);
+        trafficView.draw(enc,0,*traffic,viewProj,push,&level.collision());
       level.mesh().draw(enc,push,LevelMesh::Pass::Translucent,sky);
       if(fx)
         fx->draw(enc,0,int(w),int(h),viewProj,cam.position);

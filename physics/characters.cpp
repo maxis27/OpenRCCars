@@ -488,6 +488,8 @@ bool Characters::touches(Car& c, const Vec3& at, float radius, float height) {
 
 bool Characters::update(float dt, Vehicle* player, std::vector<Car>& cars) {
   greatHit = false;
+  grabbed  = false;
+  carried  = false;
   guns.clear();
   // the speed the car hit with: the step that brought it into contact has already stopped it
   const float nowKmh = player ? player->velocity().length()*3.6f : 0.f;
@@ -633,7 +635,7 @@ bool Characters::attack(State& s, float dt, Vehicle* player) {
   if(!s.holding) {
     turnTo(s,to,TurnToCar*dt);
     if(s.seq==s.sThrow && s.t>GrabFrom && s.t<GrabTo && dist<GrabDistance && s.hand>=0)
-      s.holding = true;
+      s.holding = grabbed = true;
     }
   if(s.holding) {
     std::vector<Mat4> pose;
@@ -647,6 +649,7 @@ bool Characters::attack(State& s, float dt, Vehicle* player) {
       player->addVelocity(facing(s.yaw)*ThrowForward+Vec3{0,ThrowUp,0}-player->velocity());
       }
     }
+  carried = carried || s.holding;
   if(s.done) {
     s.act     = State::Act::None;
     s.holding = false;

@@ -325,6 +325,7 @@ class Vehicle {
     bool                                  braking = false; // the wheels hold the car instead of the engine pulling
     bool                                  brakeKey = false;
     float                                 drive = 0;      // m/s^2 the engine pulls with (backwards < 0)
+    float                                 climb = 0;      // m/s^2 of CarParams::climb while it pulls forwards
     float                                 movingTime = 0; // s since the car last went slower than 5 km/h
     bool                                  settling   = false; // placed: gravity and springs only (car data +0xa4)
     bool                                  keysHeld   = false; // throttle, brake, steering or turbo held

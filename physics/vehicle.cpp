@@ -450,9 +450,12 @@ void Vehicle::update(const Input& in, float dt) {
   // engine (0x4eea50): while it pulls it also cancels the resistance
   const float resist = prm.airDrag*ls*ls + prm.rolling;
   drive = 0;
+  climb = 0;
   if(!braking && in.throttle>0 && gear>0) {
-    if(float a = prm.acceleration(v,in.throttle,boostOn); a>0.001f)
+    if(float a = prm.acceleration(v,in.throttle,boostOn); a>0.001f) {
       drive = a + resist;
+      climb = prm.climbing(v,in.throttle);
+      }
     }
   else if(!braking && in.throttle<0 && gear<0) {
     const float full = (boostOn ? 1.5f : 1.f)*prm.reverseAccel*(-in.throttle);
@@ -554,11 +557,13 @@ void Vehicle::step(float h) {
 //  - the air and the bearings (0x4ed970): coeffAirResistance v^2 + coeffFrictionBearings against the motion;
 //  - the springs (0x4f0f80): each wheel touching the ground pushes the body along its up axis at the top of the
 //    spring with springK * (springLength - length - 0.02 r) - springDamping * (rate of change of the length), as
-//    long as the spring is shorter than that. The body is pushed by what of it is along the ground's normal, and
+//    long as the spring is shorter than that; the damper may outdo the spring and pull the body down (it is held
+//    below 2e6 x the spring's force, which it never reaches). The body is pushed by what of it is along the ground's normal, and
 //    turned by the spring's moment about the car's own axes, the pitch times springPitch, the roll times
 //    springRoll, none about the up axis;
-//  - the engine (0x4eea50): `drive` (at most 20 x the rear grip) on each driven wheel standing on ground less
-//    steep than 46 degrees, half each, along the ground under the wheel;
+//  - the engine (0x4eea50): `drive` (at most 20 x the rear grip, drifting included) on each driven wheel standing
+//    on ground less steep than 46 degrees, half each, along the ground under the wheel; with `climb` added
+//    (0x4ee5e0, CarParams::climb);
 //  - the tires (Vehicle::tires).
 // A car being placed (settling) only has gravity and the springs.
 void Vehicle::forces(float h) {
@@ -576,27 +581,27 @@ void Vehicle::forces(float h) {
       force = force-vel*(prm.mass*(prm.airDrag*ls*ls+prm.rolling)/ls);
 
   // springs
+  Vec3 springs;
   for(auto& wh:wheels) {
     const float l = wh.length+0.02f*wh.radius;
     if(!wh.contact || l>prm.springLength)
       continue;
-    // the damper gives no more than the spring (0x4f0f80): the wheel never pulls the car down
     const float k = springK*(prm.springLength-l);
-    const float f = k - std::clamp(prm.springDamping*wh.rate,-k,k);
-    if(f<=0)
-      continue;
+    const float f = k - prm.springDamping*wh.rate;
     const Vec3 at = m.point(wh.mount);
     const Vec3 fs = up*f;
     const Vec3 fn = wh.normal*Vec3::dot(fs,wh.normal);
-    force = force+fn;
+    springs = springs+fn;
     const Vec3 t = Vec3::cross(at-c,fs);
     torque = torque+axis(0)*(Vec3::dot(axis(0),t)*prm.springPitch)+axis(2)*(Vec3::dot(axis(2),t)*prm.springRoll);
     }
+  force = force+springs;
 
   if(!settling) {
     // engine
     if(!braking && drive!=0) {
-      const float a = std::clamp(drive,-20.f*prm.gripRear,20.f*prm.gripRear)*prm.mass;
+      const float grip = prm.gripRear*(drifting() ? prm.driftGrip : 1.f);
+      const float a    = std::clamp(drive,-20.f*grip,20.f*grip)*prm.mass;
       for(int i:rearPair) {
         if(i<0)
           continue;
@@ -604,7 +609,14 @@ void Vehicle::forces(float h) {
         if(!wh.contact || wh.normal.y<std::cos(46.f*Pi/180.f))
           continue;
         const Vec3 d = (fwd-wh.normal*Vec3::dot(fwd,wh.normal)).normalized();
-        const Vec3 f = d*(0.5f*a);
+        Vec3 f = d*(0.5f*a);
+        // climbing: against what of the springs' push lies along d on the level, the drive less than 80 degrees
+        // from the vertical
+        const float back = springs.x*d.x+springs.z*d.z;
+        if(climb!=0 && d.y>std::cos(80.f*Pi/180.f) && back<0) {
+          const float c = 0.5f*climb*prm.mass;
+          f = f+d*(c<=0 || c<=-back ? c : -back);
+          }
         force  = force+f;
         torque = torque+Vec3::cross(wh.point-c,f);
         }
@@ -952,6 +964,10 @@ bool Vehicle::suspension(float h, bool hit) {
       wh.spin = std::fmod(wh.spin+Vec3::dot(v,fwd)/wh.radius*h,2.f*Pi);
     }
   shape->recalculateLocalAabb();
+  // a spring that cannot take the ground in gives the dampers no rate of change (0x4fb340)
+  if(blocked)
+    for(auto& wh:wheels)
+      wh.rate = 0;
   return blocked;
   }
 
@@ -1009,9 +1025,10 @@ void Vehicle::tires(float h, Vec3& force, Vec3& torque) {
     r[k] = wh.point-c;
     const Vec3 pv = pointVelocity(wh.point);
     d[k] = Vec3::cross(heading,wh.normal).normalized();
-    if(braking) {
-      const Vec3 slide = pv-wh.normal*Vec3::dot(pv,wh.normal);
-      if(slide.length()>1e-4f)
+    if(braking && pv.length()>=1e-6f) {
+      const Vec3 u     = pv.normalized();
+      const Vec3 slide = u-wh.normal*Vec3::dot(u,wh.normal);
+      if(slide.length()>=1e-6f)
         d[k] = slide.normalized();
       }
     const float grip = wh.front ? prm.gripFront : prm.gripRear*(drift ? prm.driftGrip : 1.f);

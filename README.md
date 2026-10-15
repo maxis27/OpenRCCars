@@ -373,7 +373,11 @@ lib/Tempest     silnik (submoduł git)
   - silnik (`engine<N>.ini`): bez dopalacza przyspieszenie = krzywa auta w punkcie `v·3,6 / (gaz · RESONATORS)`,
     razy `RESONATORS *_SPL_OY`; powyżej `speedBaseMax + 0,1` km/h × `RESONATORS` silnik nie ciągnie. Z dopalaczem
     krzywa jest rozciągnięta o `speedBoostMax / speedBaseMax`, ×1,2, a limit to `speedBoostMax + 0,1`. Kiedy silnik
-    ciągnie, dodaje też opór (niżej), więc na płaskim auto przyspiesza dokładnie wg krzywej. Wsteczny: 4 m/s²
+    ciągnie, dodaje też opór (niżej), więc na płaskim auto przyspiesza dokładnie wg krzywej. Siła silnika najwyżej
+    20 × przyczepność tyłu (w poślizgu razem z `coeffDriftRear`). Pod górę (napęd ponad 10° od poziomu), gdy
+    sprężyny spychają auto w dół zbocza, każde tylne koło dodaje połowę krzywej `Splines/<auto>_RESTRICT.bspl`
+    w punkcie `v·3,6 / (gaz · RESONATORS)`, najwyżej tyle, ile spychają (0x4ee5e0): Overkill +2 m/s² do 15 km/h,
+    Hummer +6 do 20 km/h, Buggy −4 do 25 km/h (pod górę słabszy). Wsteczny: 4 m/s²
     (z dopalaczem 6) do 2,83 m/s, dalej malejąco do zera przy 3,33 m/s (12 km/h);
   - opór (`resistance<N>.ini`): `a = coeffAirResistance·v² + coeffFrictionBearings` przeciw ruchowi, zakresy 0..0,1
     i 0..10 (Overkill 0,032 i 0,51);
@@ -402,8 +406,9 @@ lib/Tempest     silnik (submoduł git)
   - sprężyny (`springs<N>.ini`, 0x4f91b0, 0x4f0f80): `length` 0,01..0,5 m, `lenMin` × 0,1..0,9, `lenMax`
     × 1,1..2, ugięcie `kPos` = (length − lenMin) × 0,1..0,9, tłumienie `kSpeed` 1..10, mocowanie `touchPoint`
     (0..1 m) nad piastą. Sztywność k = m·g / (liczba kół · ugięcie). Koło dotykające ziemi pcha auto wzdłuż jego osi
-    „w górę” siłą k·(length − długość − 0,02 r) − kSpeed·(zmiana długości)/dt, tłumienie najwyżej tyle co
-    sprężyna; do ruchu liczy się tylko część wzdłuż normalnej podłoża, a moment w osiach auta razy
+    „w górę” siłą k·(length − długość − 0,02 r) − kSpeed·(zmiana długości)/dt; tłumienie może przeważyć
+    sprężynę i ściągać auto w dół (gra ogranicza je do 2·10⁶ × siła sprężyny, czyli praktycznie wcale), a gdy
+    któraś sprężyna nie mieści podłoża, zmiana długości liczy się jako zero; do ruchu liczy się tylko część wzdłuż normalnej podłoża, a moment w osiach auta razy
     `coeffMomentOX` (0,5..2, pochylenie) i `coeffMomentOZ` (1..3, przechył), bez obrotu wokół pionu.
     Koło wciśnięte w ziemię od razu idzie w górę (najwyżej do `lenMin`), w dół opada do spoczynku (`length`, a
     gdy auto jedzie wolniej niż 5 km/h i w tej części kroku uderzyło w trasę albo któraś sprężyna nie mieści

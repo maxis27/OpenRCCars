@@ -29,6 +29,10 @@ struct CarParams {
   Spline  accel;                // Splines\OVERKILL|BUGGY|HUMMER.bspl (splAccelBase<N>.bspl is not used by the game)
   float   topSpeed      = 9.f;  // m/s, engine<N>.ini speedBaseMax (km/h) * RESONATORS: no engine force above it
   float   boostTopSpeed = 10.f; // m/s, speedBoostMax (km/h) * RESONATORS
+  // climbing (RCCars.exe 0x4ee5e0): while the engine pulls up a slope steeper than 10 degrees that the springs push
+  // the car back down, each driven wheel adds half of this curve's value (m/s^2 over the same speed as `accel`,
+  // never the boost's) along its drive, at most as much as the springs push back
+  Spline  climb;                // Splines\OVERKILL|BUGGY|HUMMER_RESTRICT.bspl
   float   boostAccel    = 1.2f; // the curve times this while boosting
   float   resonator   = 1.f;    // RESONATORS upgrade: stretches the curve and the top speeds
   float   accelScale  = 1.f;    // RESONATORS *_SPL_OY upgrade: scales the curve
@@ -114,6 +118,7 @@ struct CarParams {
 
   // engine acceleration at forward speed `v` (m/s) with the throttle 0..1, upgrades included, resistance not
   float   acceleration(float v, float throttle = 1.f, bool boost = false) const;
+  float   climbing(float v, float throttle = 1.f) const;
   };
 
 }

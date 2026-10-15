@@ -397,7 +397,9 @@ bool Opponent::trackRules(float dt) {
   // 0x508ae0: shot, back after a while
   if(shotTime>=0)
     shotTime += dt;
-  bool back = out || drownTimer>prm.drownTime || resets.tick(at,dt) || shotTime>Vehicle::ShotHold;
+  // 0x4f5e50: stuck in the track
+  bool back = out || drownTimer>prm.drownTime || resets.tick(at,dt) || shotTime>Vehicle::ShotHold ||
+              (knocked() && driven->stuck());
   for(size_t i=0; !back && knocked() && i<resets.volumes().size(); ++i)
     back = resets.volumes()[i].volume->contains(at);
   if(back)
@@ -746,11 +748,11 @@ int Opponents::place(float playerFinish) const {
   return 1;
   }
 
-// RCCars.exe 0x533990 for two cars that touch: both knocked off their recordings (0x4fd9d0) and pushed apart by an
-// impulse along the line between their centres, through the middle (0x534be0, 0x4f0730); the slower one's centre
-// counts 0.1 m higher (the player's opponent's when they go about as fast), so the one hit is also lifted. Bullet
-// does the push here; the lift is added. A car is knocked already when it is about to be touched, so that Bullet
-// meets two cars of the same weight and not one that cannot be moved.
+// RCCars.exe 0x533990 for two cars that touch, once a frame: both knocked off their recordings (0x4fd9d0) and pushed
+// apart by impulses along the line between their centres of mass, through the middle (Vehicle::bounce). When the
+// player is one of them and both last hit a car more than 2 s ago, the slower one's centre counts 0.1 m higher
+// (the opponent's when they go about as fast), so the one hit is also lifted. A car is knocked already when it is
+// about to be touched, so that two cars meet and not a car and a recording.
 Vehicle::Hit Opponents::collide(Vehicle& pl, float dt) {
   constexpr float CarHitPause = 2.f;    // s both cars since their last hit (0x56f4)
   constexpr float ShakeTime   = 0.5f;   // s of the window (0x5334b0)
@@ -802,32 +804,29 @@ Vehicle::Hit Opponents::collide(Vehicle& pl, float dt) {
         cars[size_t(i)]->knock();
         cars[size_t(i)]->touched();
         }
-    float& sa = a<0 ? playerSinceCar : cars[size_t(a)]->sinceCar;
-    float& sb = b<0 ? playerSinceCar : cars[size_t(b)]->sinceCar;
-    if(sa<=CarHitPause || sb<=CarHitPause)
-      continue;
-    sa = 0;
-    sb = 0;
-    if(a>=0 && b>=0)
-      continue;
-    // the player hit opponent `o`: it is lifted unless the player is clearly the slower one, and judged
-    Opponent&  o  = *cars[size_t(a<0 ? b : a)];
-    Vehicle*   ov = o.vehicle();
-    if(ov==nullptr)
-      continue;
-    const Vec3  vp = flat(pl.velocity()), vo = flat(ov->velocity());
-    const bool  liftPlayer = vp.length()*1.1f<vo.length();
-    Vehicle&    up = liftPlayer ? pl : *ov;
-    Vehicle&    by = liftPlayer ? *ov : pl;
-    const Vec3  d  = up.centre()-by.centre();
-    const Vec3  n  = flat(d).normalized();
-    const float closing = Vec3::dot(by.velocity()-up.velocity(),n);
-    if(closing>0) {
-      // the share of an equal-mass push (restitution 0.1) that the lifted centre turns upwards
-      const float j  = up.params().mass*closing*0.55f;
-      const Vec3  dl = d+Vec3{0,Lift,0};
-      up.applyImpulse(Vec3{0,j*Lift/std::max(dl.length(),0.05f),0},(up.centre()+by.centre())*0.5f);
+    float&     sa = a<0 ? playerSinceCar : cars[size_t(a)]->sinceCar;
+    float&     sb = b<0 ? playerSinceCar : cars[size_t(b)]->sinceCar;
+    const bool fresh = sa>CarHitPause && sb>CarHitPause;
+    if(fresh) {
+      sa = 0;
+      sb = 0;
       }
+    Vehicle* va = a<0 ? &pl : cars[size_t(a)]->vehicle();
+    Vehicle* vb = b<0 ? &pl : cars[size_t(b)]->vehicle();
+    if(va==nullptr || vb==nullptr)
+      continue;
+    Vec3 ca = va->centre(), cb = vb->centre();
+    if(fresh && (a<0 || b<0)) {
+      // the slower one by more than a tenth, or about as fast, the opponent
+      const float fa = flat(va->velocity()).length(), fb = flat(vb->velocity()).length();
+      const bool  liftA = fa*1.1f<fb ? true : (fb*1.1f<fa ? false : b<0);
+      (liftA ? ca : cb).y += Lift;
+      }
+    Vehicle::bounce(*va,*vb,ca,cb);
+    if(!fresh || (a>=0 && b>=0))
+      continue;
+    // the player hit opponent `o`: judged
+    Opponent& o = *cars[size_t(a<0 ? b : a)];
     o.shakeLeft = ShakeTime;
     o.shake     = Vec3{};
     }

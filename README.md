@@ -26,10 +26,10 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   z tego powstaje siatka kolizji (trójkąty w przestrzeni świata) z raycastem po komórkach (DDA). Auto staje na
   ziemi wyznaczonej raycastem. Klawisz **K** (w trybie `-dev`) pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
   ściany, niebieskie niewidoczne ściany (ściany bez tekstury)
-- **fizyka jazdy** jak w `RCCars.exe`: własny model auta (sprężyny, opony z poślizgiem, koła jako kule) na
-  [Bullecie](https://github.com/bulletphysics/bullet3), który porusza nadwozie i zderza je z trasą i rekwizytami.
-  Nadwozie to 9 kul z `cdt<N>.ini`, koła to kule wisące na sprężynach i opadające na trójkąty siatki `COLL`
-  (ściany, słupy, niewidoczne bariery) i rekwizyty. Parametry każdego auta z
+- **fizyka jazdy** jak w `RCCars.exe`: własny model auta (sprężyny, opony z poślizgiem, koła jako kule) i jego
+  własny ruch i zderzenia z trasą, autami, rekwizytami i postaciami; [Bullet](https://github.com/bulletphysics/bullet3)
+  porusza tylko rekwizyty i mówi autu, czego dotyka. Nadwozie to 9 kul z `cdt<N>.ini`, koła to kule wisące na
+  sprężynach i opadające na trójkąty siatki `COLL` (ściany, słupy, niewidoczne bariery). Parametry każdego auta z
   `Settings/engine|springs|tires|steering|resistance|cdt<N>.ini`, silnik, dopalacz, turbo, skręt, skok, opory oraz
   głęboki piasek i woda tak jak w kodzie `RCCars.exe` (krzywa `Splines/OVERKILL|BUGGY|HUMMER.bspl`, zob. „Fizyka wg
   `RCCars.exe`”), ulepszenia (dopalacze, rezonatory, opony) z `Scripts/upgrades.ini`. Koła kręcą się, skręcają i pracują na
@@ -86,8 +86,10 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   koła do 35° (przez pierwszą sekundę co najmniej 30°, z prędkością 90°/s); zablokowane (wolniej niż 2 km/h
   albo dociśnięte do przeszkody) cofa przez 1,5 s. Po 2 s wraca do odtwarzania, gdy jest 10 cm od punktu
   nagrania i jedzie w jego kierunku (do 10°), a po 5 s wraca od razu, jeśli gracz go nie widzi (u nas: dalej niż
-  50 m albo za graczem, zgadnięte). Powrót płynnie przechodzi w nagranie przez sekundę. Przy zderzeniu wolniejsze
-  auto (przy podobnej prędkości przeciwnik) dostaje impuls lekko w górę, bo gra liczy jego środek 10 cm wyżej.
+  50 m albo za graczem, zgadnięte). Powrót płynnie przechodzi w nagranie przez sekundę. Stykające się auta odbijają
+  się sprężyście wzdłuż linii środków mas (0x533990); gdy jednym z nich jest gracz, a oba ostatnio zderzyły się z
+  autem ponad 2 s temu, wolniejsze auto (przy podobnej prędkości przeciwnik) ma środek liczony 10 cm wyżej, więc
+  dostaje impuls lekko w górę.
   Przeciwników obowiązują te same zasady powrotu na trasę co gracza (utonięcie, pudło kolizji, strefy
   `car_reset_volume_*`), a wypchnięty z nagrania wraca od razu po wjechaniu w dowolną strefę (0x4fe3f0). Trafia na
   ostatni minięty główny punkt kontrolny (przed pierwszym na swoje miejsce na starcie) i stamtąd autopilot prowadzi
@@ -96,8 +98,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   (`place1..6.csi`: „1szy” … „6ty”), a meta tabelę wyników, w którą wpadają czasy kolejnych kierowców
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
   baloniki, łuski, toczące się kłębki) stoją tam, gdzie kładzie je trasa (od 8 do 17 na trasie), i są bryłami
-  sztywnymi: auto je potrąca, przewraca i pcha, a koła po nich przejeżdżają. Masa, sprężystość, tarcie, kształt
-  (kula, walec albo otoczka wypukła modelu) i środek masy pochodzą ze skryptu `SCRI` każdego modelu
+  sztywnymi: auto je potrąca, przewraca i odbija jak oryginał (koła na nich nie stają). Masa, sprężystość, tarcie,
+  kształt (kula, walec albo otoczka wypukła modelu) i środek masy pochodzą ze skryptu `SCRI` każdego modelu
 - **ruch uliczny** (`Roadcar.sb`) jak w `RCCars.exe`: na beach_2 i beach_3 po drodze jeżdżą w obie strony hummer,
   dwa kampery i trzy pikapy (w kilku malowaniach), na urban_1 hummer, a na beach_4 pływający BTR, który obraca
   wieżę do aut przed sobą i strzela do nich seriami. Auta ruszają od startu wyścigu co kilka sekund po nagranych
@@ -310,11 +312,11 @@ formats/        formaty danych, czyste C++ bez zależności
   carprofile.*  nagrane przejazdy przeciwników (CarProfiles/*.dat), Scripts/ailayouts.ini
   skeleton.*    szkielet modelu .sb: kości, sekwencje ASEQ, poza w chwili animacji
   actorpath.*   ścieżki postaci (Profiles/<nazwa>.dat) i lotu sępów (Profiles/vlt_*.gpf)
-physics/        fizyka jazdy (Bullet, bez GPU)
+physics/        fizyka jazdy (RCCars.exe i Bullet dla rekwizytów, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
   carrig.*      jak oryginał rysuje koła i zawieszenie: wychylenie osi, wahacze, skręt, amortyzatory
-  vehicle.*     świat Bulleta trasy, auto jak w RCCars.exe (sprężyny, opony, kule kół), nawierzchnie i woda
+  vehicle.*     świat Bulleta trasy, auto jak w RCCars.exe (sprężyny, opony, kule kół, ruch i zderzenia), nawierzchnie i woda
   checkpoints.* punkty kontrolne w kolejności, zaliczanie (1,6 m), postęp auta, powrót do ostatniego punktu
   race.*        wyścig: odliczanie, okrążenia, czasy, zły kierunek, meta
   props.*       rekwizyty: parametry ze skryptu SCRI, kształt, bryła sztywna
@@ -364,8 +366,8 @@ lib/Tempest     silnik (submoduł git)
   32 km/h, Buggy 9 → 0 przy 38, Hummer 4 → 0 przy 30. `splAccelBase<N>.bspl`, `splAccelGrav<N>.bspl`,
   `Height2Stiffness.bspl`, `AngleSteer2RearDrift.spl` i `Settings/Water.ini` zostały w danych z edytora; `RCCars.exe`
   ich nie czyta.
-- Auto: osie X w lewo, Y w górę, Z do przodu; koła `WHEEL_FRONT_LEFT` itd. (Hummer ma 6 kół). Fizyka liczy w Bullecie
-  w skali ×10 (z grawitacją ×10), bo Bullet nie lubi obiektów 0,4 m; na zewnątrz wszystko jest w metrach.
+- Auto: osie X w lewo, Y w górę, Z do przodu; koła `WHEEL_FRONT_LEFT` itd. (Hummer ma 6 kół). Bullet liczy w skali
+  ×10 (z grawitacją ×10), bo nie lubi obiektów 0,4 m; na zewnątrz wszystko jest w metrach.
 - **Fizyka wg `RCCars.exe`** (odszyfrowany kod, tylko do analizy). Oryginał ma własny silnik fizyki: auto waży 1 kg,
   grawitacja to 10 m/s², więc siły są przyspieszeniami. Suwak `s` (1..100) przechodzi w `od + (s-1)·(do-od)/99`:
   - silnik (`engine<N>.ini`): bez dopalacza przyspieszenie = krzywa auta w punkcie `v·3,6 / (gaz · RESONATORS)`,
@@ -429,6 +431,24 @@ lib/Tempest     silnik (submoduł git)
     × `coeffDriftRear` (1..0,1) i oba koła limit 10. Z kołami prosto opony gaszą też obrót auta (1/s);
   - głęboki piasek i woda (`tires<N>.ini`, 0..1): każde koło w głębokim piasku dokłada `coeffDeepSand·v²` przeciw
     ruchowi w swoim punkcie, a w wodzie `coeffWater·v²`, od zera przy kole zanurzonym w 30% do całości przy 90%;
+  - ruch i trasa (0x4f5e50): krok dzieli się na najwyżej 3 części. Każda najpierw przycina pęd do 20 i moment pędu
+    do 1 (0x4f5770), potem przesuwa auto krokiem Eulera (0x4f5590) o tyle, ile kroku zostało, a gdy po drodze kula
+    przeszłaby przez ścianę, tylko o tyle, by żaden punkt kuli nie przeszedł więcej niż 0,9 promienia, połowiąc, aż
+    żaden nie przejdzie więcej niż 0,99 (0x4f5b60). Jeśli potem kula nadwozia jest w ścianie (albo kula koła, którego
+    sprężyna nie mieści podłoża, 0x4fb340), auto wraca i w 5 próbach szuka chwili zderzenia: najpierw 0,2 drogi od
+    wolnego do zajętego, potem w połowie, aż kula jest 6 mm od ściany (0x4f0270). Wtedy pierwsza dotykająca kula
+    nadwozia traci poślizg wzdłuż ściany, najwyżej 10 m/s × przebyty czas (0x4f0560), a każdy styk dostaje impuls,
+    po którym odjeżdża od ściany z prędkością 0,05 m/s, bez odbicia (0x4f0750, do 10 przejść). Reszta kroku
+    przepada; auto, które zrobiło mniej niż 5% kroku, podnosi się o 2ⁿ·3 mm (albo, gdy to w ścianie, schodzi
+    o 15 mm), a po 5 takich krokach z rzędu wraca na ostatni punkt kontrolny (0x508b30). Nasze dodatki: kula już w
+    ścianie na początku części kroku (koło, które sprężyna opuściła przy ścianie) nie zatrzymuje ruchu, tylko jest
+    wypychana, a kula koła może wejść w ścianę na 2 mm (stoi na niej);
+  - inne ciała (0x534d00, raz na klatkę): auto i rekwizyt odbijają się sprężyście wzdłuż linii środków mas, przez
+    jej środek, co najmniej z prędkością 0,2 m/s (0x533ee0, 0x4f0750 z drugim ciałem: impuls na podwójną prędkość
+    zbliżania); człowiek, strażnik i pies odpychają samo auto od punktu styku do 0,05 m/s (0x534340, 0x5344f0,
+    0x5349d0); ruch uliczny tylko pcha (0x534880). Koła nie stają na rekwizytach (oryginał pyta o podłoże tylko
+    trasę, 0x4fbd70), lecz w nie uderzają. Oryginał bierze kule rekwizytu z tablic kształtów (0x50dc50), my styk
+    z Bulleta;
   - R (co najmniej 1 s od poprzedniego) stawia auto na markerze ostatniego zaliczonego punktu, przodem w stronę
     następnego markera trasy; przed pierwszym punktem na starcie;
   - punkt kontrolny `cp_N` zalicza się, gdy auto gracza minie jego marker bliżej niż 1,6 m (auta AI: 2,88 m).

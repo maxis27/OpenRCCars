@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <iterator>
 
 #include "btconvert.h"
@@ -15,7 +16,7 @@ namespace {
 constexpr float Pi = 3.14159265f;
 }
 
-// RCCars.exe's car physics runs on every fixed step of the world, after Bullet has moved the body
+// RCCars.exe's car physics runs on every fixed step of the world, after Bullet has moved the props
 class Vehicle::Action : public btActionInterface {
   public:
     explicit Action(Vehicle& v) : car(v) {}
@@ -75,7 +76,85 @@ uint8_t PhysicsWorld::groundSound(int triangle) const {
   }
 
 void PhysicsWorld::step(float dt) {
+  // what Bullet keeps of the frame time (btDiscreteDynamicsWorld::stepSimulation)
+  localTime += dt;
+  if(localTime>=FixedDt)
+    localTime -= float(int(localTime/FixedDt))*FixedDt;
   world->stepSimulation(dt,8,FixedDt);
+  }
+
+namespace {
+// the point of triangle abc nearest to p (Ericson, Real-Time Collision Detection 5.1.5)
+Vec3 nearestOnTriangle(const Vec3& p, const Vec3& a, const Vec3& b, const Vec3& c) {
+  const Vec3  ab = b-a, ac = c-a, ap = p-a;
+  const float d1 = Vec3::dot(ab,ap), d2 = Vec3::dot(ac,ap);
+  if(d1<=0 && d2<=0)
+    return a;
+  const Vec3  bp = p-b;
+  const float d3 = Vec3::dot(ab,bp), d4 = Vec3::dot(ac,bp);
+  if(d3>=0 && d4<=d3)
+    return b;
+  const float vc = d1*d4-d3*d2;
+  if(vc<=0 && d1>=0 && d3<=0)
+    return a+ab*(d1/(d1-d3));
+  const Vec3  cp = p-c;
+  const float d5 = Vec3::dot(ab,cp), d6 = Vec3::dot(ac,cp);
+  if(d6>=0 && d5<=d6)
+    return c;
+  const float vb = d5*d2-d1*d6;
+  if(vb<=0 && d2>=0 && d6<=0)
+    return a+ac*(d2/(d2-d6));
+  const float va = d3*d6-d5*d4;
+  if(va<=0 && d4-d3>=0 && d5-d6>=0)
+    return b+(c-b)*((d4-d3)/((d4-d3)+(d5-d6)));
+  const float den = 1.f/(va+vb+vc);
+  return a+ab*(vb*den)+ac*(vc*den);
+  }
+}
+
+int PhysicsWorld::touchTrack(const Vec3& centre, float reach, TrackTouch* out, int max) const {
+  auto& tris = coll.triangles();
+  if(seen.size()!=tris.size())
+    seen.assign(tris.size(),0);
+  if(++query==0) {
+    std::fill(seen.begin(),seen.end(),0);
+    query = 1;
+    }
+  int n = 0;
+  const Vec3 r = {reach,reach,reach};
+  coll.forEachNear(centre-r,centre+r,[&](uint32_t i) {
+    if(seen[i]==query)
+      return;
+    seen[i] = query;
+    auto& t = tris[i];
+    if(t.surface==Surface::Water)
+      return;
+    const Vec3  p = nearestOnTriangle(centre,t.a,t.b,t.c);
+    const Vec3  d = centre-p;
+    const float l = d.length();
+    if(l>=reach)
+      return;
+    TrackTouch tt;
+    tt.point    = p;
+    tt.distance = l;
+    tt.normal   = l>1e-6f ? d*(1.f/l) : t.normal;
+    tt.sound    = t.sound;
+    // keep the nearest `max`, in order
+    int k = std::min(n,max-1);
+    if(n==max && out[k].distance<=l)
+      return;
+    while(k>0 && out[k-1].distance>l) {
+      out[k] = out[k-1];
+      --k;
+      }
+    out[k] = tt;
+    n = std::min(n+1,max);
+    });
+  return n;
+  }
+
+bool PhysicsWorld::crossesTrack(const Vec3& from, const Vec3& to) const {
+  return coll.raycast(from,to-from,1.f).has_value();
   }
 
 Vehicle::Vehicle(PhysicsWorld& w, const CarGeometry& g, const CarParams& p, const Mat4& start)
@@ -106,17 +185,16 @@ Vehicle::Vehicle(PhysicsWorld& w, const CarGeometry& g, const CarParams& p, cons
     }
   springK = wheels.empty() ? 0.f : prm.mass*PhysicsWorld::Gravity/(float(wheels.size())*std::max(prm.springSag,1e-3f));
 
-  // the body: the spheres of cdt<N>.ini, and the wheels' spheres, which Vehicle::suspension keeps where the wheels
-  // are (a little higher, so that the ground under a wheel is left to its spring): what the wheels run into
+  // the shape other bodies find the car by: the spheres of cdt<N>.ini, and the wheels' spheres, which
+  // Vehicle::suspension keeps where the wheels are (a little higher, so that the ground under a wheel is left to
+  // its spring)
   shape = std::make_unique<btCompoundShape>();
-  float smallest = 1e9f;
   auto  sphere   = [&](const Vec3& at, float r) {
-    spheres.push_back(std::make_unique<btSphereShape>(r*S));
+    sphereShapes.push_back(std::make_unique<btSphereShape>(r*S));
     btTransform local;
     local.setIdentity();
     local.setOrigin(toBt(at-com)*S);
-    shape->addChildShape(local,spheres.back().get());
-    smallest = std::min(smallest,r);
+    shape->addChildShape(local,sphereShapes.back().get());
     };
   for(auto& s:prm.body)
     sphere(s.at,s.radius);
@@ -128,29 +206,22 @@ Vehicle::Vehicle(PhysicsWorld& w, const CarGeometry& g, const CarParams& p, cons
   // inertia (0x4f2270, 0x4752b0): a solid box over the whole model, the Buggy's about its forward axis doubled
   const Vec3 size = geom.max-geom.min;
   const float m12 = prm.mass/12.f;
-  btVector3 inertia(m12*(size.y*size.y+size.z*size.z),
-                    m12*(size.x*size.x+size.z*size.z),
-                    m12*(size.x*size.x+size.y*size.y));
+  inertiaBody = {m12*(size.y*size.y+size.z*size.z),
+                 m12*(size.x*size.x+size.z*size.z),
+                 m12*(size.x*size.x+size.y*size.y)};
   if(prm.car==2)
-    inertia.setZ(inertia.z()*2);
-  inertia *= S*S;
+    inertiaBody.z *= 2;
 
+  // kinematic and without a response of its own: Bullet neither moves it nor pushes anything with it, but finds
+  // what it touches, the other kinematic bodies (people, the road traffic, the other cars) included
   motion = std::make_unique<btDefaultMotionState>();
-  btRigidBody::btRigidBodyConstructionInfo ci(prm.mass,motion.get(),shape.get(),inertia);
-  // the original answers a hit with next to no bounce and the tires do the gripping, not the body
-  ci.m_friction       = 0.3f;
-  ci.m_restitution    = 0.f;
-  ci.m_linearDamping  = 0.f;
-  ci.m_angularDamping = 0.f;
+  btRigidBody::btRigidBodyConstructionInfo ci(0,motion.get(),shape.get());
   body = std::make_unique<btRigidBody>(ci);
+  body->setCollisionFlags(body->getCollisionFlags()|btCollisionObject::CF_KINEMATIC_OBJECT|
+                          btCollisionObject::CF_NO_CONTACT_RESPONSE);
   body->setActivationState(DISABLE_DEACTIVATION);
   body->setUserIndex(PhysicsWorld::CarTag);
-  // fast and small: sweep a sphere against thin walls
-  if(smallest<1e9f) {
-    body->setCcdMotionThreshold(smallest*S*0.5f);
-    body->setCcdSweptSphereRadius(smallest*S*0.8f);
-    }
-  owner.bullet().addRigidBody(body.get());
+  owner.bullet().addRigidBody(body.get(),btBroadphaseProxy::DefaultFilter,btBroadphaseProxy::AllFilter);
 
   action = std::make_unique<Action>(*this);
   owner.bullet().addAction(action.get());
@@ -164,24 +235,114 @@ Vehicle::~Vehicle() {
   owner.bullet().removeRigidBody(body.get());
   }
 
-void Vehicle::reset(const Mat4& start) {
-  // drop in from slightly above the given pose so the springs settle
-  btTransform t = toBt(start*Mat4::translate(com+Vec3{0,0.02f,0}));
+namespace {
+// the rotation of a Mat4 as a quaternion w, x, y, z
+void toQuat(const Mat4& m, float q[4]) {
+  const float t = m.m[0][0]+m.m[1][1]+m.m[2][2];
+  if(t>0) {
+    const float s = std::sqrt(t+1.f)*2.f;
+    q[0] = 0.25f*s;
+    q[1] = (m.m[2][1]-m.m[1][2])/s;
+    q[2] = (m.m[0][2]-m.m[2][0])/s;
+    q[3] = (m.m[1][0]-m.m[0][1])/s;
+    }
+  else if(m.m[0][0]>m.m[1][1] && m.m[0][0]>m.m[2][2]) {
+    const float s = std::sqrt(1.f+m.m[0][0]-m.m[1][1]-m.m[2][2])*2.f;
+    q[0] = (m.m[2][1]-m.m[1][2])/s;
+    q[1] = 0.25f*s;
+    q[2] = (m.m[0][1]+m.m[1][0])/s;
+    q[3] = (m.m[0][2]+m.m[2][0])/s;
+    }
+  else if(m.m[1][1]>m.m[2][2]) {
+    const float s = std::sqrt(1.f+m.m[1][1]-m.m[0][0]-m.m[2][2])*2.f;
+    q[0] = (m.m[0][2]-m.m[2][0])/s;
+    q[1] = (m.m[0][1]+m.m[1][0])/s;
+    q[2] = 0.25f*s;
+    q[3] = (m.m[1][2]+m.m[2][1])/s;
+    }
+  else {
+    const float s = std::sqrt(1.f+m.m[2][2]-m.m[0][0]-m.m[1][1])*2.f;
+    q[0] = (m.m[1][0]-m.m[0][1])/s;
+    q[1] = (m.m[0][2]+m.m[2][0])/s;
+    q[2] = (m.m[1][2]+m.m[2][1])/s;
+    q[3] = 0.25f*s;
+    }
+  }
+
+Mat4 fromQuat(const float q[4]) {
+  const float w = q[0], x = q[1], y = q[2], z = q[3];
+  Mat4 m;
+  m.m[0][0] = 1-2*(y*y+z*z); m.m[0][1] = 2*(x*y-w*z);   m.m[0][2] = 2*(x*z+w*y);
+  m.m[1][0] = 2*(x*y+w*z);   m.m[1][1] = 1-2*(x*x+z*z); m.m[1][2] = 2*(y*z-w*x);
+  m.m[2][0] = 2*(x*z-w*y);   m.m[2][1] = 2*(y*z+w*x);   m.m[2][2] = 1-2*(x*x+y*y);
+  return m;
+  }
+
+// q turned by the angular velocity w for t s (0x4f5400: dq/dt = 1/2 (0, w) q), normalised (0x4078d0)
+void turned(const float q[4], const Vec3& w, float t, float out[4]) {
+  const float h = 0.5f*t;
+  out[0] = q[0] + h*(-w.x*q[1]-w.y*q[2]-w.z*q[3]);
+  out[1] = q[1] + h*( w.x*q[0]+w.y*q[3]-w.z*q[2]);
+  out[2] = q[2] + h*( w.y*q[0]+w.z*q[1]-w.x*q[3]);
+  out[3] = q[3] + h*( w.z*q[0]+w.x*q[2]-w.y*q[1]);
+  const float l = std::sqrt(out[0]*out[0]+out[1]*out[1]+out[2]*out[2]+out[3]*out[3]);
+  if(l>=1e-6f)
+    for(int i=0; i<4; ++i)
+      out[i] /= l;
+  }
+}
+
+void Vehicle::set(const Body& b) {
+  st  = b;
+  rot = fromQuat(st.q);
+  vel = st.P*(1.f/prm.mass);
+  omega = invInertia(st.L);
+  }
+
+Vec3 Vehicle::invInertia(const Vec3& v) const {
+  const Vec3 l = {Vec3::dot(axis(0),v)/inertiaBody.x,Vec3::dot(axis(1),v)/inertiaBody.y,Vec3::dot(axis(2),v)/inertiaBody.z};
+  return axis(0)*l.x+axis(1)*l.y+axis(2)*l.z;
+  }
+
+Vec3 Vehicle::inertia(const Vec3& v) const {
+  const Vec3 l = {Vec3::dot(axis(0),v)*inertiaBody.x,Vec3::dot(axis(1),v)*inertiaBody.y,Vec3::dot(axis(2),v)*inertiaBody.z};
+  return axis(0)*l.x+axis(1)*l.y+axis(2)*l.z;
+  }
+
+Vec3 Vehicle::pointVelocity(const Vec3& p) const {
+  return vel+Vec3::cross(omega,p-st.x);
+  }
+
+void Vehicle::syncChassis() {
+  Mat4 m = rot;
+  m.m[0][3] = st.x.x; m.m[1][3] = st.x.y; m.m[2][3] = st.x.z;
+  const btTransform t = toBt(m);
   body->setWorldTransform(t);
   motion->setWorldTransform(t);
-  // Bullet writes the interpolated transform back to the motion state on a frame shorter than its fixed step:
-  // without this the car was at the world's origin for one frame after a reset
-  body->setInterpolationWorldTransform(t);
-  body->setInterpolationLinearVelocity(btVector3(0,0,0));
-  body->setInterpolationAngularVelocity(btVector3(0,0,0));
-  body->setLinearVelocity(btVector3(0,0,0));
-  body->setAngularVelocity(btVector3(0,0,0));
-  body->clearForces();
+  }
+
+void Vehicle::reset(const Mat4& start) {
+  // drop in from slightly above the given pose so the springs settle
+  place(start*Mat4::translate(Vec3{0,0.02f,0}),{},{});
+  }
+
+void Vehicle::place(const Mat4& pose, const Vec3& velocity, const Vec3& spin) {
+  Body b;
+  b.x = pose.point(com);
+  toQuat(pose,b.q);
+  set(b);
+  st.P = velocity*prm.mass;
+  st.L = inertia(spin);
+  set(st);
+  syncChassis();
+  frameForce = frameTorque = {};
+  stepTouch  = Contact{};
+  stuckFor   = 0;
   for(auto& wh:wheels) {
     wh.length  = prm.springLength-prm.springSag;
     wh.rate    = 0;
     wh.contact = false;
-    wh.ground  = nullptr;
+    wh.blocked = false;
     wh.spin    = 0;
     }
   steer        = 0;
@@ -196,23 +357,10 @@ void Vehicle::reset(const Mat4& start) {
   wet          = 0;
   underWater   = 0;
   lastHit      = Hit::None;
-  wheelProp    = false;
   sinceProp    = 1e3f;
   touch        = Contact{};
   bump         = false;
   carBefore    = false;
-  }
-
-void Vehicle::place(const Mat4& pose, const Vec3& velocity, const Vec3& spin) {
-  reset(pose);
-  const btTransform t = toBt(pose*Mat4::translate(com));
-  body->setWorldTransform(t);
-  motion->setWorldTransform(t);
-  body->setInterpolationWorldTransform(t);
-  body->setLinearVelocity(toBt(velocity)*S);
-  body->setAngularVelocity(toBt(spin));
-  body->setInterpolationLinearVelocity(body->getLinearVelocity());
-  body->setInterpolationAngularVelocity(body->getAngularVelocity());
   }
 
 void Vehicle::recover() {
@@ -235,9 +383,9 @@ void Vehicle::addBoost(float units) {
   }
 
 void Vehicle::update(const Input& in, float dt) {
-  const float v      = speed();
-  const btVector3 lv = body->getLinearVelocity();
-  const float     ls = float(lv.length())/S;
+  const float v  = speed();
+  const float ls = vel.length();
+  frameForce = frameTorque = {};
 
   // steering (RCCars.exe): the position runs towards the side held, slower the faster the car goes, until the
   // wheels reach AngleSteer; back to the middle (and across to the other side) it runs at SteerBack
@@ -314,16 +462,17 @@ void Vehicle::update(const Input& in, float dt) {
   // back on its wheels instead
   jumpTimer += dt;
   if(in.jump && jumpTimer>=CarParams::JumpCooldown) {
-    const btVector3 up = body->getWorldTransform().getBasis().getColumn(1);
-    if(up.y()<std::cos(CarParams::JumpFlipAngle*3.14159265f/180.f)) {
+    const Vec3 up = axis(1);
+    if(up.y<std::cos(CarParams::JumpFlipAngle*3.14159265f/180.f)) {
       recover();
       jumpTimer = 0;
       }
     else if(onGround()) {
-      body->setLinearVelocity(body->getLinearVelocity()+up*(prm.jumpSpeed*S));
-      btVector3 w = body->getAngularVelocity();
-      w.setY(w.y()*1.5f);
-      body->setAngularVelocity(w);
+      st.P = st.P+up*(prm.jumpSpeed*prm.mass);
+      Vec3 w = omega;
+      w.y *= 1.5f;
+      st.L = inertia(w);
+      set(st);
       jumpTimer = 0;
       }
     }
@@ -331,7 +480,7 @@ void Vehicle::update(const Input& in, float dt) {
   // air and bearings resistance on the body (fading in over the first 0.1 m/s so that it does not shake a car
   // standing still)
   if(ls>1e-4f)
-    body->applyCentralForce(-lv.normalized()*(prm.mass*S*resist*std::min(ls/0.1f,1.f)));
+    frameForce = frameForce-vel.normalized()*(prm.mass*resist*std::min(ls/0.1f,1.f));
 
   surfaces(dt);
   hits(dt);
@@ -346,32 +495,19 @@ void Vehicle::update(const Input& in, float dt) {
 //  - the engine (0x4eea50): `drive` (at most 20 x the rear grip) on each driven wheel standing on ground less
 //    steep than 46 degrees, half each, along the ground under the wheel;
 //  - the tires (Vehicle::tires).
-// Bullet adds gravity and stops the body's spheres at the track and the props. The car's speed stays below 20 m/s
-// and its angular momentum below 1 kg m^2/s.
+// With gravity they move the car (Vehicle::move).
 void Vehicle::step(float h) {
   if(h<=0)
     return;
   suspension(h);
 
-  const btTransform& t     = body->getWorldTransform();
-  const btMatrix3x3& basis = t.getBasis();
-  const Vec3 up  = fromBt(basis.getColumn(1));
-  const Vec3 fwd = fromBt(basis.getColumn(2));
-  const Vec3 c   = fromBt(body->getCenterOfMassPosition())*(1.f/S);
-  // the body where Bullet has just put it (pose() is where it is drawn, as of the last frame)
-  const Mat4 m   = fromBt(t)*Mat4::translate(com*-1.f);
+  const Vec3 up  = axis(1);
+  const Vec3 fwd = axis(2);
+  const Vec3 c   = st.x;
+  Mat4 m = rot*Mat4::translate(com*-1.f);
+  m.m[0][3] += c.x; m.m[1][3] += c.y; m.m[2][3] += c.z;
 
   Vec3 force, torque;
-  // reactions on the props the wheels stand on
-  auto react = [&](const Wheel& wh, const Vec3& f) {
-    if(wh.ground==nullptr || wh.ground==&owner.ground())
-      return;
-    auto* prop = const_cast<btRigidBody*>(btRigidBody::upcast(wh.ground));
-    if(prop!=nullptr && prop->getInvMass()>0) {
-      prop->activate();
-      prop->applyImpulse(toBt(f*(-h))*S,toBt(wh.point)*S-prop->getCenterOfMassPosition());
-      }
-    };
 
   // springs
   for(auto& wh:wheels) {
@@ -387,12 +523,8 @@ void Vehicle::step(float h) {
     const Vec3 fs = up*f;
     const Vec3 fn = wh.normal*Vec3::dot(fs,wh.normal);
     force = force+fn;
-    react(wh,fn);
-    Vec3 tl = fromBt(basis.transpose()*toBt(Vec3::cross(at-c,fs)));
-    tl.x *= prm.springPitch;
-    tl.y  = 0;
-    tl.z *= prm.springRoll;
-    torque = torque+fromBt(basis*toBt(tl));
+    const Vec3 t = Vec3::cross(at-c,fs);
+    torque = torque+axis(0)*(Vec3::dot(axis(0),t)*prm.springPitch)+axis(2)*(Vec3::dot(axis(2),t)*prm.springRoll);
     }
 
   // engine
@@ -408,24 +540,242 @@ void Vehicle::step(float h) {
       const Vec3 f = d*(0.5f*a);
       force  = force+f;
       torque = torque+Vec3::cross(wh.point-c,f);
-      react(wh,f);
       }
     }
 
   tires(h,force,torque);
 
-  body->applyCentralImpulse(toBt(force*h)*S);
-  body->applyTorqueImpulse(toBt(torque*h)*(S*S));
+  moveForce  = force+frameForce+Vec3{0,-PhysicsWorld::Gravity*prm.mass,0};
+  moveTorque = torque+frameTorque;
+  move(h);
+  syncChassis();
+  }
 
-  // limits (0x4f5e50): |P| <= 20 m, |L| <= 1
-  btVector3   lv  = body->getLinearVelocity();
-  const float top = 20.f*S;
-  if(lv.length2()>top*top)
-    body->setLinearVelocity(lv*(top/lv.length()));
-  const btMatrix3x3 iw = body->getInvInertiaTensorWorld().inverse()*(1.f/(S*S)); // real kg m^2
-  const btVector3   L  = iw*body->getAngularVelocity();
-  if(L.length2()>1.f)
-    body->setAngularVelocity(body->getAngularVelocity()*(1.f/float(L.length())));
+// RCCars.exe's car meets the track (0x4f5e50): the step is cut into at most 3 parts, each one
+//  - first holds the momentum below 20 kg m/s (20 m/s) and the angular momentum below 1 kg m^2/s (0x4f5770);
+//  - moves the body by an Euler step (0x4f5590) as far as is left of the step, or, where a sphere of the car would
+//    go through the track on the way, as far as no point of a sphere moves more than 0.9 of its radius at its
+//    velocity, halved until none moves more than 0.99 of it (0x4f5b60);
+//  - looks whether a body sphere is in the track after it (0x4efdc0), or a wheel's, where a spring cannot take
+//    the ground in (0x4fb340). Then it goes back and finds the moment of the hit, between the step and none, in
+//    5 tries: 0.2 of the way from what is free to what is not the first time and halfway after, until a sphere
+//    is within 6 mm of the track (0x4f0270). Then the first body sphere touching the track loses its sliding
+//    along it, up to 10 m/s x the time moved (0x4f0560), and every touch is pushed out of the track until it
+//    leaves it at 0.05 m/s (0x4f0750).
+// What is left after the parts is lost; a car that got less than 5 % of the step done is lifted 2^n x 3 mm
+// (or, if that is in the track, put 15 mm lower) for the n-th step in a row, and after StuckSteps of them the
+// game puts it back at the last checkpoint (0x508b30).
+namespace {
+constexpr float TouchMargin  = 0.006f;  // m (0x3bc49ba6)
+constexpr float WheelSink    = 0.002f;  // m a wheel's sphere may be in the track: it stands on it (ours)
+constexpr float LeaveSpeed   = 0.05f;   // m/s (0x554514)
+constexpr float StillSpeed   = 0.02f;   // m/s (0x55458c)
+}
+
+Vehicle::Body Vehicle::advanced(const Body& from, float h) const {
+  // the velocities of `from`: the body is at `from` whenever this is called
+  Body to = from;
+  to.x = from.x+vel*h;
+  turned(from.q,omega,h,to.q);
+  to.P = from.P+moveForce*h;
+  to.L = from.L+moveTorque*h;
+  return to;
+  }
+
+void Vehicle::spheres(std::vector<Sphere>& out, Which which) const {
+  out.clear();
+  Mat4 m = rot*Mat4::translate(com*-1.f);
+  m.m[0][3] += st.x.x; m.m[1][3] += st.x.y; m.m[2][3] += st.x.z;
+  if(which&WheelSpheres)
+    for(auto& wh:wheels)
+      out.push_back({m.point(wh.mount-Vec3{0,wh.length,0}),wh.radius,true});
+  if(which&BodySpheres)
+    for(auto& b:prm.body)
+      out.push_back({m.point(b.at),b.radius,false});
+  }
+
+bool Vehicle::penetrates(Which which) const {
+  auto& sp = const_cast<std::vector<Sphere>&>(sphereBuf[0]);
+  spheres(sp,AllSpheres);
+  PhysicsWorld::TrackTouch t;
+  for(size_t i=0; i<sp.size(); ++i) {
+    auto& s = sp[i];
+    if(!(which&(s.wheel ? WheelSpheres : BodySpheres)) || (i<inside.size() && inside[i]))
+      continue;
+    if(owner.touchTrack(s.c,s.wheel ? s.r-WheelSink : s.r,&t,1)>0)
+      return true;
+    }
+  return false;
+  }
+
+void Vehicle::findInside() {
+  inside.clear();
+  spheres(sphereBuf[0],AllSpheres);
+  PhysicsWorld::TrackTouch t;
+  for(auto& s:sphereBuf[0])
+    inside.push_back(owner.touchTrack(s.c,s.wheel ? s.r-WheelSink : s.r,&t,1)>0);
+  }
+
+void Vehicle::touches(float margin, std::vector<Touch>& out) const {
+  constexpr size_t MaxTouches = 50;
+  out.clear();
+  auto& sp = const_cast<std::vector<Sphere>&>(sphereBuf[0]);
+  spheres(sp,AllSpheres);
+  PhysicsWorld::TrackTouch t[5];
+  for(auto& s:sp) {
+    const int n = owner.touchTrack(s.c,s.r+margin,t,5);
+    for(int i=0; i<n && out.size()<MaxTouches; ++i)
+      out.push_back({s.c-t[i].normal*s.r,t[i].normal,s.wheel,t[i].sound});
+    }
+  }
+
+float Vehicle::sweep(const Body& from, float rest) {
+  auto& a = sphereBuf[1];
+  spheres(a,AllSpheres);
+  // the fastest a point of a sphere goes, at the start
+  float most = 2e6f;
+  for(auto& s:a) {
+    const float v = pointVelocity(s.c).length();
+    most = std::min(most,v>0.001f ? 0.9f*s.r/v : 1.f);
+    }
+  set(advanced(from,rest));
+  auto& b = sphereBuf[0];
+  spheres(b,AllSpheres);
+  bool through = false;
+  for(size_t i=0; i<a.size() && !through; ++i)
+    through = owner.crossesTrack(a[i].c,b[i].c);
+  if(!through)
+    return rest;
+  float h = std::min(most,rest);
+  for(int i=0; ; ++i) {
+    set(from);
+    set(advanced(from,h));
+    spheres(b,AllSpheres);
+    bool far = false;
+    for(size_t k=0; k<a.size() && !far; ++k)
+      far = (b[k].c-a[k].c).length()>0.99f*a[k].r;
+    if(!far)
+      return h;
+    h *= 0.5f;
+    if(i>=9) {
+      set(from);
+      return 0;
+      }
+    }
+  }
+
+float Vehicle::impact(const Body& from, float hi, std::vector<Touch>& out) {
+  float lo = 0, w = 0.8f;
+  bool  found = false;
+  for(int i=0; i<5 && !found; ++i) {
+    const float t = lo*w+(1.f-w)*hi;
+    set(from);
+    set(advanced(from,t));
+    if(penetrates(AllSpheres)) {
+      hi = t;
+      w  = 0.8f;
+      continue;
+      }
+    lo = t;
+    w  = 0.5f;
+    touches(TouchMargin,out);
+    found = !out.empty();
+    }
+  set(from);
+  set(advanced(from,lo));
+  if(!found)
+    touches(TouchMargin,out);
+  return lo;
+  }
+
+void Vehicle::slide(const std::vector<Touch>& at, float t) {
+  for(auto& c:at) {
+    if(c.wheel)
+      continue;
+    const Vec3  v  = pointVelocity(c.point);
+    const Vec3  vt = v-c.normal*Vec3::dot(v,c.normal);
+    const float l  = vt.length();
+    if(l<1e-6f)
+      continue;
+    applyImpulse(vt*(-std::min(l,std::max(10.f*t,0.f))/l),c.point);
+    return;
+    }
+  }
+
+void Vehicle::resolve(const std::vector<Touch>& at) {
+  const float im = 1.f/prm.mass;
+  for(int pass=0; pass<10; ++pass) {
+    bool again = false;
+    for(auto& c:at) {
+      const float vn = Vec3::dot(pointVelocity(c.point),c.normal);
+      if(vn>StillSpeed)
+        continue;
+      again = true;
+      const Vec3  r = c.point-st.x;
+      const float k = im+Vec3::dot(Vec3::cross(invInertia(Vec3::cross(r,c.normal)),r),c.normal);
+      if(k<1e-6f)
+        continue;
+      applyImpulse(c.normal*(std::max(LeaveSpeed-vn,0.f)/k),c.point);
+      }
+    if(!again)
+      break;
+    }
+  }
+
+void Vehicle::unstick() {
+  const Body was = st;
+  Body b = st;
+  b.x.y += std::pow(2.f,float(std::min(stuckFor,StuckSteps)))*0.003f;
+  set(b);
+  if(penetrates(AllSpheres)) {
+    b.x.y = was.x.y-0.015f;
+    set(b);
+    if(penetrates(AllSpheres))
+      set(was);
+    }
+  stuckFor = std::min(stuckFor+1,StuckSteps);
+  }
+
+void Vehicle::move(float h) {
+  float rest = h;
+  for(int part=0; part<3 && rest>1e-4f; ++part) {
+    // 0x4f5770
+    if(const float p = st.P.length(); p>20.f*prm.mass)
+      st.P = st.P*(20.f*prm.mass/p);
+    if(const float l = st.L.length(); l>1.f)
+      st.L = st.L*(1.f/l);
+    set(st);
+
+    const Body from = st;
+    // ours: a sphere already in the track (a wheel the spring has put by a wall) does not stop the move, it is
+    // only pushed out of it
+    findInside();
+    float t = std::clamp(sweep(from,rest),0.f,rest);
+    bool  hit = penetrates(BodySpheres);
+    if(!hit)
+      for(auto& wh:wheels)
+        if(wh.blocked) {
+          hit = penetrates(WheelSpheres);
+          break;
+          }
+    if(hit) {
+      // what the sounds hear of it (0x4f6730): where it went in, at the speed it went in
+      touches(0,touchBuf);
+      for(auto& c:touchBuf)
+        note(stepTouch,pointVelocity(c.point),c.normal,c.sound);
+      t = impact(from,t,touchBuf);
+      if(!touchBuf.empty()) {
+        slide(touchBuf,t);
+        resolve(touchBuf);
+        }
+      }
+    rest -= t;
+    }
+  inside.clear();
+  if(rest>0.95f*h)
+    unstick();
+  else
+    stuckFor = 0;
   }
 
 // RCCars.exe (0x4fb340): a wheel pushed into the ground goes up at once, to springMin at most; otherwise it goes
@@ -441,20 +791,21 @@ void Vehicle::suspension(float h) {
   const float speed = v.length();
   movingTime = speed>=Moving ? movingTime+h : 0.f;
 
+  // the track only: RCCars.exe's wheels do not stand on the props (0x4fbd70 asks the static world), they bump into
+  // them (Vehicle::hits)
   struct Sweep : btCollisionWorld::ClosestConvexResultCallback {
     const btCollisionObject* ground;
     Sweep(const btVector3& f, const btVector3& t, const btCollisionObject* g)
       : ClosestConvexResultCallback(f,t), ground(g) {}
     bool needsCollision(btBroadphaseProxy* proxy) const override {
-      auto obj = static_cast<const btCollisionObject*>(proxy->m_clientObject);
-      return (obj==ground || obj->getUserIndex()==PhysicsWorld::PropTag) && ClosestConvexResultCallback::needsCollision(proxy);
+      return proxy->m_clientObject==ground && ClosestConvexResultCallback::needsCollision(proxy);
       }
     };
 
-  const Mat4      m     = fromBt(body->getWorldTransform())*Mat4::translate(com*-1.f);
-  const btMatrix3x3& basis = body->getWorldTransform().getBasis();
-  const Vec3      up    = fromBt(basis.getColumn(1));
-  const Vec3      fwd   = fromBt(basis.getColumn(2));
+  Mat4 m = rot*Mat4::translate(com*-1.f);
+  m.m[0][3] += st.x.x; m.m[1][3] += st.x.y; m.m[2][3] += st.x.z;
+  const Vec3      up    = axis(1);
+  const Vec3      fwd   = axis(2);
   const float     rest  = speed>=Moving ? prm.springLength : prm.springLength-0.95f*prm.springSag;
   const float     reach = std::max(prm.springMax,prm.springLength);
   for(auto& wh:wheels) {
@@ -479,6 +830,7 @@ void Vehicle::suspension(float h) {
     else
       len = std::max(len-rate*h,rest);
     wh.contact = ground<=len+0.02f*wh.radius;
+    wh.blocked = ground<prm.springMin;
     if(ground<len)
       len = ground;
     wh.length = std::clamp(len,prm.springMin,reach);
@@ -486,13 +838,8 @@ void Vehicle::suspension(float h) {
     if(wh.contact) {
       wh.point  = fromBt(cb.m_hitPointWorld)*(1.f/S);
       wh.normal = fromBt(cb.m_hitNormalWorld).normalized();
-      wh.ground = cb.m_hitCollisionObject;
-      wheelProp |= wh.ground!=nullptr && wh.ground->getUserIndex()==PhysicsWorld::PropTag;
       }
-    else {
-      wh.ground = nullptr;
-      }
-    // the wheel's sphere in the body, for what the wheel runs into
+    // the wheel's sphere in the shape, for the bodies the wheel runs into
     btTransform local;
     local.setIdentity();
     local.setOrigin(toBt(wh.mount-Vec3{0,std::max(wh.length-WheelLift*wh.radius,prm.springMin),0}-com)*S);
@@ -534,12 +881,10 @@ void Vehicle::tires(float h, Vec3& force, Vec3& torque) {
   if(n==0)
     return;
 
-  const btMatrix3x3& basis = body->getWorldTransform().getBasis();
-  const Vec3  up   = fromBt(basis.getColumn(1));
-  const Vec3  fwd  = fromBt(basis.getColumn(2));
-  const Vec3  c    = fromBt(body->getCenterOfMassPosition())*(1.f/S);
-  const btMatrix3x3 iinv = body->getInvInertiaTensorWorld()*(S*S); // real 1/(kg m^2)
-  auto  inv  = [&](const Vec3& v) { return fromBt(iinv*toBt(v)); };
+  const Vec3  up   = axis(1);
+  const Vec3  fwd  = axis(2);
+  const Vec3  c    = st.x;
+  auto  inv  = [&](const Vec3& v) { return invInertia(v); };
   const float im   = 1.f/prm.mass;
   const bool  drift = drifting();
 
@@ -557,7 +902,7 @@ void Vehicle::tires(float h, Vec3& force, Vec3& torque) {
       heading = fwd*std::cos(s) + Vec3::cross(up,fwd)*std::sin(s);
       }
     r[k] = wh.point-c;
-    const Vec3 pv = fromBt(body->getVelocityInLocalPoint(toBt(r[k])*S))*(1.f/S);
+    const Vec3 pv = pointVelocity(wh.point);
     d[k] = Vec3::cross(heading,wh.normal).normalized();
     if(braking) {
       const Vec3 slide = pv-wh.normal*Vec3::dot(pv,wh.normal);
@@ -594,28 +939,86 @@ void Vehicle::tires(float h, Vec3& force, Vec3& torque) {
     const Vec3 f = d[k]*x[k];
     force  = force+f;
     torque = torque+Vec3::cross(r[k],f);
-    const Wheel& wh = wheels[size_t(picked[k])];
-    if(wh.ground!=nullptr && wh.ground!=&owner.ground()) {
-      auto* prop = const_cast<btRigidBody*>(btRigidBody::upcast(wh.ground));
-      if(prop!=nullptr && prop->getInvMass()>0) {
-        prop->activate();
-        prop->applyImpulse(toBt(f*(-h))*S,toBt(wh.point)*S-prop->getCenterOfMassPosition());
-        }
-      }
     }
   if(std::abs(steerDeg)<0.2f) {
-    const btMatrix3x3 iw = body->getInvInertiaTensorWorld().inverse()*(1.f/(S*S));
-    torque = torque-fromBt(iw*body->getAngularVelocity());
+    torque = torque-st.L;
     }
+  }
+
+namespace {
+// what RCCars.exe needs of a body to push it (0x4754a0, 0x4756c0)
+struct Pushed {
+  std::function<float()>            invMass;
+  std::function<Vec3(const Vec3&)>  invInertia;  // world
+  Vec3                              centre;
+  std::function<Vec3()>             velocity;    // of the centre of mass
+  std::function<void(const Vec3&,const Vec3&)> push; // impulse, at
+  };
+
+// RCCars.exe 0x4f0750 for one contact of two bodies at `at`, its normal `n` out of b towards a (0x534be0): over
+// up to 10 passes, the first always, while they part at most at 0.02 m/s (their centres' velocities, those
+// parting at less than 1 m/s counted as not parting), each pass pushes them apart by an impulse that would part
+// them at twice the speed they meet at, at least 0.2 m/s (0x5543ec, 0x5544f0), equal and opposite (0x4f0840)
+void exchange(Pushed& a, Pushed& b, const Vec3& at, const Vec3& n) {
+  const Vec3 ra = at-a.centre, rb = at-b.centre;
+  for(int pass=0; pass<10; ++pass) {
+    float vn = Vec3::dot(a.velocity()-b.velocity(),n);   // 0x4f04e0
+    if(vn>0 && vn<1.f)
+      vn = 0;
+    if(pass>0 && vn>StillSpeed)
+      break;
+    const float dv = std::max(-2.f*vn,0.2f);
+    const float k  = a.invMass()+Vec3::dot(Vec3::cross(a.invInertia(Vec3::cross(ra,n)),ra),n)
+                   + b.invMass()+Vec3::dot(Vec3::cross(b.invInertia(Vec3::cross(rb,n)),rb),n);
+    if(k<1e-6f)
+      return;
+    const Vec3 j = n*(dv/k);
+    a.push(j,at);
+    b.push(j*-1.f,at);
+    }
+  }
+
+// the line from `from` to `to` as 0x534be0 makes a contact of it: through the middle, the normal towards `to`
+bool contactOf(const Vec3& from, const Vec3& to, Vec3& at, Vec3& n) {
+  const Vec3  d = to-from;
+  const float l = d.length();
+  at = (from+to)*0.5f;
+  if(l<1e-6f)
+    return false;
+  n = d*(1.f/l);
+  return true;
+  }
+}
+
+void Vehicle::bounce(Vehicle& a, Vehicle& b, const Vec3& aCentre, const Vec3& bCentre) {
+  Vec3 at, n;
+  if(!contactOf(bCentre,aCentre,at,n))
+    return;
+  auto of = [](Vehicle& v) {
+    Pushed p;
+    p.invMass    = [&v]() { return 1.f/v.prm.mass; };
+    p.invInertia = [&v](const Vec3& x) { return v.invInertia(x); };
+    p.centre     = v.st.x;
+    p.velocity   = [&v]() { return v.vel; };
+    p.push       = [&v](const Vec3& j, const Vec3& at) { v.applyImpulse(j,at); };
+    return p;
+    };
+  Pushed pa = of(a), pb = of(b);
+  exchange(pa,pb,at,n);
   }
 
 // RCCars.exe gives the player's car a hit, shown as "Łup!" or "Wielkie Łup!" (msg_hits.csi) for a second and worth
 // HitBoost turbo units, when it
 //  - touches a prop of stone.sb faster than PropHitSpeed, at most every PropHitPause s (0x533ee0);
 //  - knocks another car about (Opponents::collide);
-//  - (not here yet: no characters on the tracks) hits people, a guard faster than 10 km/h or a dog faster than
-//    15 km/h: a great hit, at most every 2 s.
+//  - hits people, a guard faster than 10 km/h or a dog faster than 15 km/h: a great hit (Characters).
 // Road traffic, crabs, spiders and gulls give nothing.
+//
+// What the car touches pushes it as in the original's handlers (0x534d00), once a frame:
+//  - a prop (0x533ee0): the two bounce apart along the line between their centres of mass (exchange);
+//  - a person, a guard or a dog (0x534340, 0x5344f0, 0x5349d0): the car alone, along the line from the point
+//    touched to its centre of mass, through the middle, until it leaves at 0.05 m/s (0x4f0750);
+//  - the road traffic (0x534880) and the other cars (Opponents::collide) have their own.
 namespace {
 constexpr float PropHitSpeed  = 1.944445f; // m/s, 7 km/h
 constexpr float PropHitPause  = 0.3f;
@@ -625,11 +1028,13 @@ void Vehicle::hits(float dt) {
   lastHit    = Hit::None;
   sinceProp += dt;
 
-  // what the body touches after the last steps (the wheels touch props through Vehicle::suspension)
-  bool prop = wheelProp, car = false;
-  wheelProp = false;
-  touch     = Contact{};
-  touch.impact = -1;   // none yet
+  // the track, from the steps since the last update
+  touch          = stepTouch;
+  stepTouch      = Contact{};
+  if(touch.surface==0)
+    touch.impact = -1;   // none yet
+
+  bool prop = false, car = false;
   auto& disp = *owner.bullet().getDispatcher();
   for(int i=0; i<disp.getNumManifolds(); ++i) {
     const btPersistentManifold* m = disp.getManifoldByIndexInternal(i);
@@ -638,28 +1043,71 @@ void Vehicle::hits(float dt) {
       other = m->getBody1();
     else if(m->getBody1()==body.get())
       other = m->getBody0();
-    if(other==nullptr)
+    if(other==nullptr || other==&owner.ground())
       continue;
-    bool touching = false;
-    for(int c=0; c<m->getNumContacts() && !touching; ++c)
-      touching = m->getContactPoint(c).getDistance()<=0;
-    if(!touching)
+    const btManifoldPoint* deepest = nullptr;
+    for(int c=0; c<m->getNumContacts(); ++c)
+      if(m->getContactPoint(c).getDistance()<=0 && (deepest==nullptr || m->getContactPoint(c).getDistance()<deepest->getDistance()))
+        deepest = &m->getContactPoint(c);
+    if(deepest==nullptr)
       continue;
-    prop |= other->getUserIndex()==PhysicsWorld::PropTag;
-    car  |= other->getUserIndex()==PhysicsWorld::CarTag;
-    if(other==&owner.ground() || other->getUserIndex()==PhysicsWorld::PropTag)
+    const int tag = other->getUserIndex();
+    car |= tag==PhysicsWorld::CarTag;
+    if(tag==PhysicsWorld::PropTag) {
+      prop = true;
       contacts(*m,other);
+      auto* pr = const_cast<btRigidBody*>(btRigidBody::upcast(other));
+      if(pr==nullptr || pr->getInvMass()<=0)
+        continue;
+      pr->activate(true);
+      const Vec3 pc = fromBt(pr->getCenterOfMassPosition())*(1.f/S);
+      Vec3 at, n;
+      if(!contactOf(pc,st.x,at,n))
+        continue;
+      Pushed me, it;
+      me.invMass    = [this]() { return 1.f/prm.mass; };
+      me.invInertia = [this](const Vec3& x) { return invInertia(x); };
+      me.centre     = st.x;
+      me.velocity   = [this]() { return vel; };
+      me.push       = [this](const Vec3& j, const Vec3& p) { applyImpulse(j,p); };
+      it.invMass    = [pr]() { return float(pr->getInvMass()); };
+      it.invInertia = [pr](const Vec3& x) { return fromBt(pr->getInvInertiaTensorWorld()*toBt(x))*(S*S); };
+      it.centre     = pc;
+      it.velocity   = [pr]() { return fromBt(pr->getLinearVelocity())*(1.f/S); };
+      it.push       = [pr](const Vec3& j, const Vec3& p) {
+        pr->applyImpulse(toBt(j)*S,toBt(p)*S-pr->getCenterOfMassPosition());
+        };
+      exchange(me,it,at,n);
+      }
+    else if(tag==PhysicsWorld::CharacterTag) {
+      const bool first = m->getBody0()==body.get();
+      const Vec3 p = fromBt(first ? deepest->getPositionWorldOnB() : deepest->getPositionWorldOnA())*(1.f/S);
+      Vec3 at, n;
+      if(contactOf(p,st.x,at,n))
+        resolve({Touch{at,n,false,0}});
+      }
     }
   if(touch.impact<0)
     touch = Contact{};
   bump      = car && !carBefore;
   carBefore = car;
 
-  if(prop && sinceProp>PropHitPause && float(body->getLinearVelocity().length())/S>PropHitSpeed) {
+  if(prop && sinceProp>PropHitPause && vel.length()>PropHitSpeed) {
     lastHit   = Hit::Hit;
     sinceProp = 0;
     addBoost(HitBoost);
     }
+  }
+
+void Vehicle::note(Contact& into, const Vec3& v, const Vec3& n, uint8_t surface) {
+  const float speed = v.length();
+  Contact     ct;
+  ct.surface = surface;
+  ct.impact  = std::abs(Vec3::dot(v,n))*3.6f;
+  ct.hit     = speed>1e-6f && Vec3::dot(v,n)/speed < std::cos(145.f*3.14159265f/180.f);
+  // the strongest one: a hit before a touch, then the harder one
+  if(into.surface==0 || (ct.hit && !into.hit) || (ct.hit==into.hit && ct.impact>into.impact))
+    into = ct;
   }
 
 void Vehicle::contacts(const btPersistentManifold& m, const btCollisionObject* other) {
@@ -670,23 +1118,14 @@ void Vehicle::contacts(const btPersistentManifold& m, const btCollisionObject* o
     if(pt.getDistance()>0)
       continue;
     // the normal out of the other body, towards the car
-    const btVector3 n   = first ? pt.m_normalWorldOnB : -pt.m_normalWorldOnB;
-    const btVector3 at  = first ? pt.getPositionWorldOnA() : pt.getPositionWorldOnB();
-    btVector3       v   = body->getVelocityInLocalPoint(at-body->getCenterOfMassPosition());
+    const Vec3 n  = fromBt(first ? pt.m_normalWorldOnB : -pt.m_normalWorldOnB);
+    const Vec3 at = fromBt(first ? pt.getPositionWorldOnA() : pt.getPositionWorldOnB())*(1.f/S);
+    Vec3       v  = pointVelocity(at);
     if(otherBody!=nullptr && otherBody->getInvMass()>0)
-      v -= otherBody->getVelocityInLocalPoint(at-otherBody->getCenterOfMassPosition());
-    v *= 1.f/S;
-    const float speed = float(v.length());
-    Contact     ct;
-    ct.impact = std::abs(float(v.dot(n)))*3.6f;
-    ct.hit    = speed>1e-6f && float(v.dot(n))/speed < std::cos(145.f*3.14159265f/180.f);
-    if(other==&owner.ground())
-      ct.surface = owner.groundSound(first ? pt.m_index1 : pt.m_index0);
-    else
-      ct.surface = SoundSurface::Wood;
-    // the strongest one: a hit before a touch, then the harder one
-    if(touch.impact<0 || (ct.hit && !touch.hit) || (ct.hit==touch.hit && ct.impact>touch.impact))
-      touch = ct;
+      v = v-fromBt(otherBody->getVelocityInLocalPoint(toBt(at)*S-otherBody->getCenterOfMassPosition()))*(1.f/S);
+    Contact ct = touch.impact<0 ? Contact{} : touch;
+    note(ct,v,n,SoundSurface::Wood);
+    touch = ct;
     }
   }
 
@@ -721,9 +1160,7 @@ void Vehicle::surfaces(float dt) {
       groundedNow = true;
       }
     else if(wh.contact) {
-      const uint8_t g = wh.ground==&owner.ground()
-          ? track.soundBelow(wh.point+Vec3{0,0.02f,0},0.05f)
-          : uint8_t(SoundSurface::Wood);
+      const uint8_t g = track.soundBelow(wh.point+Vec3{0,0.02f,0},0.05f);
       groundSnd   = std::max(groundSnd,g);
       groundedNow = true;
       }
@@ -758,34 +1195,34 @@ void Vehicle::surfaces(float dt) {
     subNow = std::clamp((*level-(centre.y-height*0.5f))/height,0.f,1.f);
 
   // splashing in: the first wheel, then the body, each takes away a share of the horizontal speed
-  btVector3 v = body->getLinearVelocity();
-  btVector3 h(v.x(),0,v.z());
   float keep = 1;
   if(wet<=0 && wetNow>0)
     keep *= 1.f-prm.waterDropWheels;
   if(sub<=0 && subNow>0)
     keep *= 1.f-prm.waterDropBody;
   if(keep<1) {
-    v -= h*(1.f-keep);
-    h *= keep;
-    body->setLinearVelocity(v);
+    st.P.x *= keep;
+    st.P.z *= keep;
+    set(st);
     }
 
   // deep sand and water hold every wheel in them back: k * v^2 against the motion of that point of the car
-  const float v2 = float(body->getLinearVelocity().length2())/(S*S);
+  const float v2 = vel.length()*vel.length();
   for(int i=0; i<dragCount; ++i) {
-    const btVector3 rel = toBt(drags[i].at)*S - body->getCenterOfMassPosition();
-    btVector3       pv  = body->getVelocityInLocalPoint(rel);
-    if(pv.length2()<1e-8f)
+    const Vec3 pv = pointVelocity(drags[i].at);
+    if(pv.length()<1e-4f)
       continue;
-    body->applyForce(-pv.normalized()*(prm.mass*S*drags[i].k*v2),rel);
+    const Vec3 f = pv.normalized()*(-prm.mass*drags[i].k*v2);
+    frameForce  = frameForce+f;
+    frameTorque = frameTorque+Vec3::cross(drags[i].at-st.x,f);
     }
 
   // under water: everything slows down, falling and tumbling included
   if(subNow>0) {
     const float k = std::pow(prm.waterDamping,dt*30.f*subNow);
-    body->setLinearVelocity (body->getLinearVelocity()*k);
-    body->setAngularVelocity(body->getAngularVelocity()*k);
+    st.P = st.P*k;
+    st.L = st.L*k;
+    set(st);
     }
 
   wet        = wetNow;
@@ -815,37 +1252,42 @@ float Vehicle::drownRate(const CollisionMesh& track, const Vec3& origin, const C
   return probe.y<*surface-prm.drownDeep ? 4.f : 1.f;
   }
 
+// drawn ahead of the last step by what is left of the frame, at the velocities (as Bullet draws its bodies)
 Mat4 Vehicle::pose() const {
-  btTransform t;
-  motion->getWorldTransform(t);
-  return fromBt(t)*Mat4::translate(com*-1.f);
+  const float t = owner.pending();
+  float q[4];
+  turned(st.q,omega,t,q);
+  const Vec3 c = st.x+vel*t;
+  Mat4 m = fromQuat(q)*Mat4::translate(com*-1.f);
+  m.m[0][3] += c.x; m.m[1][3] += c.y; m.m[2][3] += c.z;
+  return m;
   }
 
 Vec3 Vehicle::centre() const {
-  return fromBt(body->getCenterOfMassPosition())*(1.f/S);
+  return st.x;
   }
 
 Vec3 Vehicle::drawnCentre() const {
-  btTransform t;
-  motion->getWorldTransform(t);
-  return fromBt(t.getOrigin())*(1.f/S);
+  return st.x+vel*owner.pending();
   }
 
 Vec3 Vehicle::velocity() const {
-  return fromBt(body->getLinearVelocity())*(1.f/S);
+  return vel;
   }
 
 Vec3 Vehicle::localSpin() const {
-  return fromBt(body->getWorldTransform().getBasis().transpose()*body->getAngularVelocity());
+  return {Vec3::dot(axis(0),omega),Vec3::dot(axis(1),omega),Vec3::dot(axis(2),omega)};
   }
 
 void Vehicle::applyImpulse(const Vec3& impulse, const Vec3& at) {
-  body->applyImpulse(toBt(impulse)*S,toBt(at)*S-body->getCenterOfMassPosition());
+  st.P = st.P+impulse;
+  st.L = st.L+Vec3::cross(at-st.x,impulse);
+  set(st);
   }
 
 void Vehicle::addVelocity(const Vec3& dv) {
-  body->activate(true);
-  body->setLinearVelocity(body->getLinearVelocity()+toBt(dv)*S);
+  st.P = st.P+dv*prm.mass;
+  set(st);
   }
 
 void Vehicle::shotFrom(const Vec3& gun) {
@@ -857,20 +1299,15 @@ void Vehicle::shotFrom(const Vec3& gun) {
   }
 
 void Vehicle::hold(const Mat4& at) {
-  const btTransform t = toBt(at*Mat4::translate(com));
-  body->setWorldTransform(t);
-  motion->setWorldTransform(t);
-  body->setInterpolationWorldTransform(t);
-  body->setInterpolationLinearVelocity(btVector3(0,0,0));
-  body->setInterpolationAngularVelocity(btVector3(0,0,0));
-  body->setLinearVelocity(btVector3(0,0,0));
-  body->setAngularVelocity(btVector3(0,0,0));
-  body->clearForces();
-  body->activate(true);
+  Body b;
+  b.x = at.point(com);
+  toQuat(at,b.q);
+  set(b);
+  syncChassis();
   }
 
 float Vehicle::speed() const {
-  return Vec3::dot(velocity(),fromBt(body->getWorldTransform().getBasis().getColumn(2)));
+  return Vec3::dot(vel,axis(2));
   }
 
 size_t Vehicle::wheelsOnGround() const {

@@ -583,13 +583,14 @@ void MainWindow::tick(float dt) {
       upsideDown = 0;
       }
     // back to the last checkpoint (RCCars.exe 0x508160): out of the track's collision box (sideways, or more
-    // than 0.1 m under it), drowned, or a while in a reset volume; never while F9 flies the car (0x5082c0)
+    // than 0.1 m under it), drowned, a while in a reset volume or stuck in the track (0x4f5e50); never while F9
+    // flies the car (0x5082c0)
     const auto&    grid = level->scene().collision;
     const rc::Vec3 pos  = carPose.translation();
     const bool     out  = !grid.empty() && (pos.x<grid.min.x || pos.x>grid.max.x || pos.z<grid.min.z ||
                                             pos.z>grid.max.z || pos.y<grid.min.y-0.1f);
     const bool inVolume = resetVolumes.tick(pos,dt);
-    if(!flying && (out || vehicle->drowned() || inVolume || shotTime>rc::Vehicle::ShotHold)) {
+    if(!flying && (out || vehicle->drowned() || vehicle->stuck() || inVolume || shotTime>rc::Vehicle::ShotHold)) {
       respawnCar();
       }
     tickSounds(dt);

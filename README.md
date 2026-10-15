@@ -271,8 +271,10 @@ puszcza. `constr` (0x4a4710) rysuje obrysy ścian trasy (0x4a40c4; przyjmujemy, 
 (0x482cd0, 0x482eb0) używa tego samego sterowania co lot F9 (0x482900): `E1` daje je kamerze widoku 0, `E2` kamerze
 widoku 1, a widok 0 zostaje bez sterownika (u nas jeden widok, więc kamera stoi), `C1` (0x501a60) przywraca kamerę
 wyścigu `RAC$`, `I` tworzy osobną kamerę i zatrzymuje czas gry (licznik pauzy 0x710b74), `F` przy zatrzymanym czasie
-woła jedną klatkę (0x48bce0, `FixedTime` z trybem dev). W oryginale kody kamery działają tylko po włączeniu trybu
-ZERO (0x1481fc4) poleceniem skryptu, którego nie ustaliliśmy; u nas działają zawsze w trybie dev. `debug.gm` czytamy
+woła jedną klatkę (0x48bce0, `FixedTime` z trybem dev). W oryginale kody kamery sprawdzają flagę ZERO (0x1481fc4),
+którą system `ZERO` (0x482230) włącza na `GMP_INIT_MAP` i wyłącza na `GMP_TERM_MAP`, czyli przez cały czas wczytanej
+trasy; wiadomość 0x83 z interfejsu (0x4c73c9, 0x4ca9a1) wyłącza ją na czas ekranów menu (przypuszczenie z kontekstu).
+U nas nie ma menu w czasie wyścigu, więc kody działają zawsze w trybie dev. `debug.gm` czytamy
 tylko po `Set ZeroSpeed/ZeroAngle/FixedTime`. Nie przeniesione: polecenia skryptów kariery (`GetInfo`, `GetStat`,
 `Give`, `Buy`, `EmRace`) i kody `stat`, `burst`, `road` (oraz drugi `constr`), które przełączają flagi, których
 nikt nie czyta.

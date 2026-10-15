@@ -102,7 +102,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   wieżę do aut przed sobą i strzela do nich seriami. Auta ruszają od startu wyścigu co kilka sekund po nagranych
   ścieżkach (`Profiles/rdc_<trasa>_forw.gpf`, `_back.gpf`), skręcają przednimi kołami, pochylają się na
   wzniesieniach, w tunelach zapalają światła, trąbią albo włączają syrenę, gdy kamera jest blisko. Auto gracza
-  potrącone przez samochód odlatuje w bok i w górę, a przeciwnik wypada z nagrania
+  potrącone przez samochód odlatuje w bok i w górę, a przeciwnik wypada z nagrania. Kampery i ciężarówki rzucają
+  przed siebie plamy światła reflektorów, a wolne auta (hummer z urban_1, BTR) mają pod kołami cienie
 - **ludzie i zwierzęta** (`people.sb`, `AIChars.sb`) zachowują się jak w `RCCars.exe`: plażowicze chodzą po
   nagranych ścieżkach (`Profiles/<nazwa>.dat`), kopią auto albo podnoszą je i rzucają; strażnicy obracają się do
   gracza, celują i kopią; mewy chodzą i odlatują z krzykiem, gdy ktoś podejdzie; kraby wychodzą z dziur i uciekają
@@ -267,7 +268,7 @@ rcinfo <folder_gry> fx                            # ustawienia efektów, ile cz�
 rcinfo <folder_gry> ram RCCarsDB/beach_1.sb [przeciwnik] [s] [side]  # gracz wjeżdża w przeciwnika: wypadnięcie z nagrania, powrót, „Łup!”
 rcinfo <folder_gry> drown RCCarsDB/beach_1.sb [auto 1-3]  # strefy powrotu, pudło kolizji, czas tonięcia na kilku głębokościach (też przeciwnika)
 rcinfo <folder_gry> fog beach_1                   # mgła trasy: gęstość, kolor, ile koloru zostaje w danej odległości
-rcinfo <folder_gry> traffic beach_2 [s]           # ruch uliczny: odjazdy, wysokość kół nad drogą, światła, potrącenie gracza
+rcinfo <folder_gry> traffic beach_2 [s]           # ruch uliczny: odjazdy, wysokość kół nad drogą, światła, cienie, potrącenie gracza
 rcinfo <folder_gry> nodes RCCarsDB/Roadcar.sb Btr # drzewo węzłów modelu: położenie, osie, wierzchołki, tekstury
 rcinfo <folder_gry> extract "Scripts\upgrades.ini" upgrades.ini
 rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
@@ -316,6 +317,7 @@ fx/             efekty cząsteczkowe, bez GPU
   tracks.*      ślady opon: pierścień punktów na koło, łączenie w pasy, zanikanie
   wake.*        kilwater i piana na wodzie wokół kół i karoserii
   marks.h       czworokąty leżące w świecie (ślady, kilwater, piana, fale, dziury po kulach)
+  groundspots.* plamy cienia i światła położone na ścianach kolizji (cienie kół, reflektory ruchu ulicznego)
   worldfx.*     efekty trasy: rozbryzgi przy water_splash_N, fale przy water_wave_N, strzały strażników
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
@@ -554,6 +556,15 @@ lib/Tempest     silnik (submoduł git)
   zmieści się pod nim między kołami. BTR (`roadcar.ini`: `TowerVel`, `TowerShootT`) celuje w auto w klinie 20 m
   ±15° przed lufą, po 0,33 s strzela serią (komunikat 0x261, kanał `burst`), potem co 1,25 s, cztery razy, dopóki
   cel jest bliżej niż 25 m; zgubiwszy cel, wodzi wieżą ±50°.
+  Cienie i poświaty (0x516f50, przy `VIDEO_RoadCarShadow`) idą do kolejki świateł gry (0x44c640, do 100 na
+  klatkę), która kładzie je na pobliskie ściany trasy (0x44c750, 0x45a220): od ściany odległej o h < R plama ma
+  promień √(R²−h²), uv = 0,5 + d·0,453125/ten promień, a siłę (1/255)^((h/R)²). Poświata: kampery i ciężarówki
+  (ta sama flaga co światła), przy każdym reflektorze punkt 2 m przed nim, R = 2 m, biała tekstura `shex_wht`
+  dodana do obrazu, niezależnie od tego, czy światła się palą. Cienie: tylko auta `Slow`, przy każdym kole punkt
+  `ShadowY`/100 m (0,48) pod osią, R = `ShadowR`/100 m (0,46) z `roadcar.ini`, tekstura `wheel_shd` obrócona
+  wzdłuż koła, odejmowana od obrazu (tryby mieszania 4 i 5 z 0x45c410 to nasze odczytanie). U nas plamy nie leżą
+  na morzu (fale je poruszają), więc pływający BTR ma cienie tylko na brzegu. `rcinfo traffic` podaje, na ilu
+  ścianach leżą (hummer na urban_1: 4 cienie na około 10 ścianach).
 - `SCRI` modelu w `stone.sb` (tekst `u32 długość` + treść w formacie `Section Keys`): `Geom` `type` (1 kula,
   2 walec, 3 stożek, 4 butelka, 5 wiadro, 6 łuska, 7 czajnik, 8 balonik), `shiftCenterMassOY` (środek masy nad
   węzłem głównym, m); `Params` `mass` (kg), `coeffHookNorm` (odbicie: 0,7 piłki, 0,3 reszta), `coeffFrict`;
@@ -713,8 +724,8 @@ lib/Tempest     silnik (submoduł git)
      spaliny, brudzenie auta~~ (zrobione)
 4. Węzły `INST` (instancje obiektów): ~~rekwizyty~~ (zrobione: bryły sztywne z parametrami ze skryptów; brakuje
    wiatru dla kłębków i dźwięków uderzeń `SNCH`); ~~postacie i zwierzęta~~ (zrobione; brakuje śladów stóp
-   i rozgniecenia kraba; ~~efekt strzału strażnika~~ zrobiony); ~~ruch uliczny~~ (zrobione; brakuje cieni kół,
-   poświaty reflektorów i tekstów z `RCCars.tbl` przy potrąceniu). Do tego `HHID` (widoczność/sektory)
+   i rozgniecenia kraba; ~~efekt strzału strażnika~~ zrobiony); ~~ruch uliczny~~ (zrobione; brakuje tekstów
+   z `RCCars.tbl` przy potrąceniu). Do tego `HHID` (widoczność/sektory)
 5. ~~Dźwięk~~ (zrobione według `RCCars.exe`: kanały `SNCH` z `RCCars.sb` i `Sound\*.wav` z archiwum we własnym
    mikserze, silnik gracza i rywali, punkty kontrolne, turbo, hamulec, lot i lądowanie, toczenie się po
    nawierzchniach, uderzenia i otarcia, buksowanie, fale przy brzegu `water_splash_N`, wodospady `WATER_FALL_N`,

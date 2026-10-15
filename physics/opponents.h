@@ -10,6 +10,7 @@
 #include "formats/settings.h"
 #include "cargeometry.h"
 #include "carparams.h"
+#include "carrig.h"
 #include "checkpoints.h"
 #include "resetvolumes.h"
 #include "vehicle.h"
@@ -110,7 +111,10 @@ class Opponent {
     void                 shotFrom(const Vec3& gun);
 
     Mat4                 pose() const;
-    // model space pose of geometry().wheels[i]: spinning with the speed, the front ones turned into the curve
+    // how the wheels and the suspension are drawn now (CarRig): driven, as the Vehicle has them; following the
+    // recording, at their modelled heights, spinning with the speed, the front ones turned into the curve
+    CarRig::Pose         rigPose() const;
+    // model space pose of geometry().wheels[i] as drawn
     Mat4                 wheelPose(size_t i) const;
     const CarGeometry&   geometry() const { return geom; }
     // laps done, and metres along the route since the start
@@ -150,6 +154,7 @@ class Opponent {
     const Checkpoints&                    checkpoints;
     CarGeometry                           geom;
     CarParams                             prm;
+    CarRig                                rig;
     std::vector<CarProfile>               profiles;
     std::vector<float>                    lines;
     RouteTracker                          tracker;

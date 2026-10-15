@@ -7,17 +7,17 @@
 #include "formats/math3d.h"
 #include "cargeometry.h"
 #include "carparams.h"
+#include "carrig.h"
 
 class btBroadphaseInterface;
 class btCollisionDispatcher;
-class btBoxShape;
+class btSphereShape;
 class btCompoundShape;
 class btDefaultCollisionConfiguration;
 class btDiscreteDynamicsWorld;
 class btRigidBody;
 class btPersistentManifold;
 class btCollisionObject;
-class btRaycastVehicle;
 class btSequentialImpulseConstraintSolver;
 class btTriangleIndexVertexArray;
 class btBvhTriangleMeshShape;
@@ -25,9 +25,8 @@ struct btDefaultMotionState;
 
 namespace rc {
 
-// Bullet world of one track. The track is a static triangle mesh made of the COLL triangles (what the car
-// body hits); wheels do not use it: they are rays cast through the COLL grid (CollisionMesh::raycast) and
-// against the props (Prop) standing on the track.
+// Bullet world of one track. The track is a static triangle mesh made of the COLL triangles but the water: what
+// the cars' bodies and wheels (Vehicle) and the props (Prop) standing on the track hit.
 //
 // Bullet is tuned for objects of about a metre and the cars are ~0.4 m long, so the simulation runs
 // Scale times larger than the data, with gravity scaled the same way: motion looks identical, only the
@@ -44,7 +43,7 @@ class PhysicsWorld {
     // advances the simulation in fixed steps of FixedDt (at most 8 per call)
     void                     step(float dt);
 
-    // btCollisionObject::getUserIndex() of props (Prop), the only bodies suspension rays hit besides the track
+    // btCollisionObject::getUserIndex() of props (Prop)
     static constexpr int     PropTag = 1;
     // the same of the cars (Vehicle, Opponent)
     static constexpr int     CarTag  = 2;
@@ -52,13 +51,6 @@ class PhysicsWorld {
     static constexpr int     CharacterTag = 3;
     // the same of the road traffic (Traffic)
     static constexpr int     TrafficTag = 4;
-    struct PropHit {
-      btRigidBody* body = nullptr;
-      Vec3         point, normal;
-      float        fraction = 1;   // along the segment, 0..1
-      };
-    // nearest prop on the segment from `from` to `to`
-    PropHit                  rayProps(const Vec3& from, const Vec3& to);
 
     const CollisionMesh&     track() const { return coll; }
     btDiscreteDynamicsWorld& bullet()      { return *world; }
@@ -82,16 +74,19 @@ class PhysicsWorld {
     std::vector<uint32_t>                                 solidTris;   // ground mesh triangle -> CollisionMesh one
   };
 
-// A car on btRaycastVehicle: chassis box + four suspension rays. The wheels stand on solid ground only: water
-// (Surface::Water) is not solid, so the car wades through shallow water and sinks into deep water, slowed down
-// by it, and counts as drowned once a point just above its origin has been under water for CarParams::drownTime
-// (see CarParams::drownHeight).
+// A car as RCCars.exe drives it (0x4f0910, 0x4f5e50): a rigid body of 1 kg whose body is a handful of spheres
+// (CarParams::body), on wheels that are spheres hanging from springs (Vehicle::suspension). Each step the springs,
+// the engine on the rear wheels and the tires (Vehicle::tires) push the body; Bullet moves it and stops the body
+// spheres at the track and the props. The wheels stand on solid ground only: water (Surface::Water) is not
+// solid, so the car wades through shallow water and sinks into deep water, slowed down by it, and counts as
+// drowned once a point just above its origin has been under water for CarParams::drownTime (see
+// CarParams::drownHeight).
 class Vehicle {
   public:
     struct Input {
       float throttle  = 0;     // -1 (brake / reverse) .. 1
       float steer     = 0;     // -1 (right) .. 1 (left)
-      bool  handbrake = false;
+      bool  handbrake = false; // the wheels locked, as the original holds the car before the start
       bool  jump      = false; // pressed this frame: jumps with a wheel on the ground, or puts a tipped-over car back
       bool  boost     = false; // held: uses the turbo tank
       };
@@ -177,24 +172,61 @@ class Vehicle {
 
     const CarGeometry&         geometry() const { return geom; }
     const CarParams&           params()   const { return prm; }
-    // pose of geometry().wheels[i] in model space: hub position after suspension, steering and spin
+    // how the wheels and the suspension are drawn now, model space (CarRig)
+    CarRig::Pose               rigPose() const;
+    // pose of geometry().wheels[i] in model space as drawn: hub position, steering and spin
     Mat4                       wheelPose(size_t i) const;
 
   private:
-    class Raycaster;
+    class Action;
+    struct Wheel {
+      Vec3        mount;              // model space: the top of the spring, CarParams::springMount above the hub
+      float       radius   = 0;
+      bool        front    = false;   // steered
+      bool        driven   = false;   // the rear pair: the engine pulls on these
+      float       steerBy  = 0;       // share of the steering angle (the Hummer's middle wheels 1/3)
+      float       length   = 0;       // m: the sphere's centre is this far below the mount, along the car's up axis
+      float       rate     = 0;       // m/s: how fast `length` changed in the last step
+      bool        contact  = false;
+      Vec3        point, normal;      // world: where the sphere touches the ground, the ground's normal there
+      const btCollisionObject* ground = nullptr;
+      float       spin     = 0;       // rad, for drawing
+      };
 
+    // one step of RCCars.exe's car physics, called by Bullet on every fixed step of PhysicsWorld
+    void                                  step(float h);
+    // the spring lengths after the ground under the wheels (0x4fb340)
+    void                                  suspension(float h);
+    // the grip of the tires (0x4edac0): the forces at up to one front and one rear wheel that stop the car sliding
+    // sideways (or, braking, sliding at all), added to `force` / `torque`
+    void                                  tires(float h, Vec3& force, Vec3& torque);
     // surface under the wheels, water: slows the car down, tracks drowning
     void                                  surfaces(float dt);
     // the contacts of the last physics steps -> lastHit
     void                                  hits(float dt);
     // one manifold of the body with the track or a prop -> touch
     void                                  contacts(const btPersistentManifold& m, const btCollisionObject* other);
+    // the steering angle of wheel `w`, degrees, + = left
+    float                                 steerAngle(const Wheel& w) const;
+    // the rear tires slide: braking with the wheels turned further than CarParams::driftAngle
+    bool                                  drifting() const;
 
     PhysicsWorld&                         owner;
     CarGeometry                           geom;
     CarParams                             prm;
+    CarRig                                rig;
     Vec3                                  com;       // centre of mass, model space
+    std::vector<Wheel>                    wheels;    // in the order of geometry().wheels
+    int                                   frontPair[2] = {-1,-1};  // the original's wheels 0, 1 (front) ...
+    int                                   rearPair[2]  = {-1,-1};  // ... and 2, 3 (rear)
+    float                                 springK = 0; // N/m of every spring
     float                                 steer = 0; // steering position, see CarParams::steerCurve; + = left
+    float                                 steerDeg = 0;   // the front wheels' angle, degrees
+    int                                   gear = 1;       // 1 forward, -1 reverse
+    bool                                  braking = false; // the wheels hold the car instead of the engine pulling
+    bool                                  brakeKey = false;
+    float                                 drive = 0;      // m/s^2 the engine pulls with (backwards < 0)
+    float                                 movingTime = 0; // s since the car last went slower than 5 km/h
     float                                 jumpTimer = 0;
     float                                 tank = 0;
     float                                 boostTimer = 0;     // s since the start or since the tank ran dry
@@ -211,15 +243,15 @@ class Vehicle {
     bool                                  carBefore = false;  // touched a car in the update before
     uint8_t                               groundSnd = 0;
     bool                                  groundedNow = false;
-    bool                                  wheelProp = false;  // a suspension ray stood on a prop
+    bool                                  wheelProp = false;  // a wheel stood on a prop
     float                                 sinceProp = 1e3f;   // s since the last hit on a prop
 
-    std::unique_ptr<btBoxShape>           box;
+    std::vector<std::unique_ptr<btSphereShape>> spheres;
+    std::unique_ptr<btSphereShape>        wheelShape[2];      // front, rear: what the wheels are swept with
     std::unique_ptr<btCompoundShape>      shape;
     std::unique_ptr<btDefaultMotionState> motion;
     std::unique_ptr<btRigidBody>          body;
-    std::unique_ptr<Raycaster>            raycaster;
-    std::unique_ptr<btRaycastVehicle>     vehicle;
+    std::unique_ptr<Action>               action;
   };
 
 }

@@ -29,6 +29,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <string>
 
@@ -130,11 +131,12 @@ int main(int argc, const char** argv) {
             chase.apply(chaseCar,&level.collision(),1.f/60.f,cam);
           }
         carPose = veh.pose();
+        const rc::CarRig::Pose rig = veh.rigPose();
         for(auto& p:car->parts()) {
-          rc::Mat4 m = rc::Mat4::translate(p.pivot);
-          for(size_t i=0; i<veh.geometry().wheels.size(); ++i)
+          rc::Mat4 m = rig.part(p.name,p.pivot);
+          for(size_t i=0; i<veh.geometry().wheels.size() && !p.name.empty(); ++i)
             if(veh.geometry().wheels[i].name==p.name)
-              m = veh.wheelPose(i);
+              m = rig.wheel(i);
           parts.push_back(m);
           }
         const rc::Vec3 at = carPose.translation();
@@ -150,6 +152,16 @@ int main(int argc, const char** argv) {
         }
       chase.apply(chaseCar,&level.collision(),1.f/60.f,cam);
       level.keepAboveWater(cam,waterTime());
+      // RCSHOT_VIEW=<degrees>,<metres>: close to the car instead, from that side (0 behind, 90 its left)
+      if(const char* v = std::getenv("RCSHOT_VIEW")) {
+        const rc::Vec3 f = carPose.point({0,0,1})-carPose.translation();
+        const float yaw  = float(std::atof(v))/57.29578f+std::atan2(f.x,f.z);
+        const char* d    = std::strchr(v,',');
+        const float dist = d ? float(std::atof(d+1)) : 0.8f;
+        const rc::Vec3 at = carPose.point({0,0.1f,0});
+        cam.position = at+rc::Vec3{-std::sin(yaw),0,-std::cos(yaw)}*dist+rc::Vec3{0,dist*0.25f,0};
+        cam.lookAt(at);
+        }
       }
     // people and animals
     std::unique_ptr<rc::Characters> chars;

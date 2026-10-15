@@ -172,7 +172,7 @@ float RouteTracker::update(const Vec3& car, size_t laps) {
 
 Opponent::Opponent(PhysicsWorld& world, const CarGeometry& g, std::vector<CarProfile> p, const Checkpoints& route,
                    const Spline& band, const CarParams& params)
-  : owner(world), checkpoints(route), geom(g), prm(params), profiles(std::move(p)), tracker(route), bandSpline(band) {
+  : owner(world), checkpoints(route), geom(g), prm(params), rig(g,params), profiles(std::move(p)), tracker(route), bandSpline(band) {
   // the lap's end: where each recording comes back to cp_1 in the second half of its loop, within the computer's
   // radius of it as in RCCars.exe (Checkpoints::passes)
   for(auto& r:profiles) {
@@ -316,14 +316,20 @@ void Opponent::place() {
   body->setWorldTransform(t);
   }
 
-Mat4 Opponent::wheelPose(size_t i) const {
+CarRig::Pose Opponent::rigPose() const {
   if(driven!=nullptr)
-    return driven->wheelPose(i);
-  auto&       wh  = geom.wheels[i];
+    return driven->rigPose();
   const float deg = 180.f/3.14159265f;
-  return Mat4::translate(wh.center) *
-         Mat4::rotate(1,wh.front ? steerAngle*deg : 0.f) *
-         Mat4::rotate(0,wheelTurn*deg);
+  std::vector<CarRig::Wheel> in(geom.wheels.size());
+  for(size_t i=0; i<in.size(); ++i) {
+    in[i].steer = geom.wheels[i].front ? steerAngle*deg : 0.f;
+    in[i].spin  = wheelTurn*deg;
+    }
+  return rig.pose(in);
+  }
+
+Mat4 Opponent::wheelPose(size_t i) const {
+  return rigPose().wheel(i);
   }
 
 Mat4 Opponent::pose() const {

@@ -199,3 +199,14 @@ void ChaseCamera::apply(const Car& car, const rc::CollisionMesh* coll, float dt,
   // 0x501180: the view looks up by VisTurn and the extra of the swing (no clamp: pitch stays well inside +-90)
   camera.pitch += cfg.visTurn + lookUp;
   }
+
+void ChaseCamera::applyRigid(const Car& car, Camera& camera) {
+  const Vec3 f = heading(car);
+  eye    = car.centre - f*DevDistXZ + Vec3{0,DevDistY,0};
+  valid  = true;
+  swing  = 0;
+  lookUp = 0;
+  camera.position = eye;
+  camera.lookAt(car.centre);
+  camera.pitch += cfg.visTurn;
+  }

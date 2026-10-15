@@ -35,7 +35,8 @@
 
 class MainWindow : public Tempest::Window {
   public:
-    MainWindow(Tempest::Device& device, Resources& res, const std::string& level);
+    // `dev`: the -dev switch, RCCars.exe's developer mode (0x147d204); our debug keys work only with it
+    MainWindow(Tempest::Device& device, Resources& res, const std::string& level, bool dev = false);
     ~MainWindow() override;
 
   private:
@@ -66,6 +67,9 @@ class MainWindow : public Tempest::Window {
     // the way on for the arrow: the point it shows, relative to the car's heading, radians, positive = left
     float                 wayDirection() const;
     DirectionArrow::Input arrowInput() const;
+    // F9 in the developer mode: the car flown by hand, see `flying`
+    void                  setFlying(bool on);
+    void                  fly(float dt);
 
     Tempest::Device&        device;
     Resources&              resources;
@@ -112,11 +116,19 @@ class MainWindow : public Tempest::Window {
     bool                    besideDone   = false;
     bool                    jumpPressed = false;
     float                   upsideDown = 0; // seconds on the roof or side, then the car is put back
+    // RCCars.exe's developer mode (-dev, 0x147d204) and its F9 (0x147d254, the "ZERO" mode of 0x482900): the
+    // player's car leaves the physics and is flown by hand, the camera rigid behind it, and nothing puts the car
+    // back on the track
+    const bool              devMode;
+    bool                    flying     = false;
+    rc::Mat4                flightPose;     // the flown car, model -> world
+    float                   zeroSpeed  = 15.f; // m/s: "Set ZeroSpeed 15" in Autoexec.gm, 100 without it
+    float                   zeroAngle  = 90.f; // degrees/s: ZeroAngle, Autoexec.gm does not set it
     Camera                  camera;
     ChaseCamera             chase;          // the camera behind the car (Settings\Camera.ini)
-    bool                    freeCamera = false;
-    bool                    showCollision = false; // K: collision debug overlay
-    bool                    showGates     = false; // G: checkpoint gates outlined (debug)
+    bool                    freeCamera = false; // V (developer mode)
+    bool                    showCollision = false; // K: collision debug overlay (developer mode)
+    bool                    showGates     = false; // G: checkpoint gates outlined (developer mode)
 
     Tempest::CommandBuffer  commands[MaxFramesInFlight];
     Tempest::Fence          fence[MaxFramesInFlight];

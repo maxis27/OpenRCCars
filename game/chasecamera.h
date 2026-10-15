@@ -79,6 +79,11 @@ class ChaseCamera {
     void update(const Car& car, float dt);
     // the view: `camera` gets the eye and where it looks; `coll` hides the car (nullptr: never)
     void apply(const Car& car, const rc::CollisionMesh* coll, float dt, Camera& camera);
+    // the developer mode's F9 camera (0x500ce9, 0x501183): the springs set to DevDistXZ behind and DevDistY over
+    // the car with no give at all, no swing up round the ground, only VisTurn; the next update() goes on from it
+    static constexpr float DevDistXZ = 1.0443f;
+    static constexpr float DevDistY  = 0.4091f;
+    void applyRigid(const Car& car, Camera& camera);
 
   private:
     rc::Vec3     heading(const Car& car);

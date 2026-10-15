@@ -187,12 +187,16 @@ void MainWindow::respawnCar() {
 ChaseCamera::Car MainWindow::chaseCar() const {
   ChaseCamera::Car c;
   c.pose     = carPose;
-  c.centre   = vehicle ? vehicle->centre()   : carPose.translation();
+  // where the car is drawn: the physics' own position runs in fixed steps and would shake the view against the car
+  c.centre   = vehicle ? vehicle->drawnCentre() : carPose.translation();
   c.velocity = vehicle ? vehicle->velocity() : rc::Vec3{};
   c.spin     = vehicle ? vehicle->localSpin().length() : 0.f;
   // RCCars.exe 0x500c1d: the boost and the gas keys, held
   const bool control = race && !race->holdCar() && !freeCamera;
   c.boost    = control && (keys[Event::K_LShift] || keys[Event::K_RShift]) && (keys[Event::K_W] || keys[Event::K_Up]);
+  // a person picking the car up holds the camera still (RCCars.exe 0x4f3640)
+  c.grabbed  = characters && characters->grabbedPlayer();
+  c.held     = characters && characters->holdingPlayer();
   return c;
   }
 

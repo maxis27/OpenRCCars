@@ -43,9 +43,12 @@ class Effects {
     void tick(float dt, const rc::Vehicle& player, const rc::Opponents* opponents, const rc::CollisionMesh& track,
               const rc::Vec3& camera, bool gas, bool brake);
     // the track's effects, seen through `view`; `time`: the water's animation, `water` its surface; `guns`: the guards
-    // shooting (Characters::shooting) at `car`
+    // shooting (Characters::shooting) at `car`; `walkers`: the characters, for their footprints
     void tickWorld(float dt, const rc::fx::View& view, float time, const rc::fx::ShoreWaves::Water& water,
-                   const std::vector<rc::Vec3>& guns, const rc::Vehicle* car, const rc::CollisionMesh& track);
+                   const std::vector<rc::Vec3>& guns, const rc::Vehicle* car, const rc::CollisionMesh& track,
+                   const std::vector<rc::fx::Footprints::Walker>& walkers);
+    // people's footprints on the ground now
+    size_t footprintCount() const { return footprints.size(); }
     // the gunfire's sounds since the last call
     std::vector<rc::fx::Gunfire::Sound> gunSounds() { return gunfire.sounds(); }
     // the track's fog (formats/fog.h) for what is drawn next: density and 0x00RRGGBB
@@ -90,6 +93,7 @@ class Effects {
     rc::fx::WaterSplashes               splashes;
     rc::fx::ShoreWaves                  shore;
     rc::fx::Gunfire                     gunfire;
+    rc::fx::Footprints                  footprints;
 
     // `tracks`: the tyre tracks, otherwise the wake and the foam
     void drawMarks(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frame, const rc::Mat4& viewProj,
@@ -102,6 +106,7 @@ class Effects {
     const Tempest::Texture2d*           foam[2] = {};    // whr_horse, whr_horse_alpha
     const Tempest::Texture2d*           wave[2] = {};    // water_wave, water_wave_alpha
     const Tempest::Texture2d*           hole    = nullptr; // bullet_footprint
+    const Tempest::Texture2d*           sole    = nullptr; // sole_footprint
     const Tempest::Texture2d*           white   = nullptr;
     Tempest::RenderPipeline             pso;
     Tempest::RenderPipeline             psoTrack, psoWake;

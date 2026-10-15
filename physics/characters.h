@@ -66,6 +66,9 @@ class Characters {
       std::vector<std::pair<std::string,std::string>> textures;
       // a sound of the model's sound channel (SNCH named like the model) to start now, empty if none
       std::string               sound;
+      // a person walking where the path leaves footprints (RCCars.exe 0x50f930: moving, path state 1..3 or 5, not
+      // RepairMan); fx::Footprints puts them down
+      bool                      soles = false;
       };
 
     // another car on the track (the opponents)

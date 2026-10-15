@@ -273,14 +273,25 @@ int main(int argc, const char** argv) {
           }
         if(chars && veh)
           chars->update(1.f/60.f,veh.get());
+        std::vector<rc::fx::Footprints::Walker> walkers;
+        if(chars)
+          for(auto* a:chars->actors())
+            walkers.push_back({a->world,a->soles});
         fx->tickWorld(1.f/60.f,view,water,[&level,water](const rc::Vec3& p){ return level.waterHeight(p,10.f,water); },
-                      chars ? chars->shooting() : noGuns,veh.get(),level.collision());
+                      chars ? chars->shooting() : noGuns,veh.get(),level.collision(),walkers);
         for(auto& s:fx->gunSounds())
           shots += s.kind==rc::fx::Gunfire::Sound::Bullet;
         }
       fxTime = time;
       const rc::Vec3 at = carPose.translation();
-      Log::i("effects: ",time," s, ",shots," bullets at the car (",at.x," ",at.y," ",at.z,")");
+      Log::i("effects: ",time," s, ",shots," bullets at the car (",at.x," ",at.y," ",at.z,"), ",fx->footprintCount(),
+             " footprints");
+      if(chars)
+        for(auto* a:chars->actors())
+          if(a->kind==rc::Characters::Kind::Person) {
+            const rc::Vec3 p = a->world.translation();
+            Log::i("  ",a->name," now at ",p.x," ",p.y," ",p.z,a->soles ? ", leaving footprints" : "");
+            }
       }
 
     auto color = device.attachment(TextureFormat::RGBA8,w,h);

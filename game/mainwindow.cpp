@@ -187,7 +187,8 @@ void MainWindow::respawnCar() {
 ChaseCamera::Car MainWindow::chaseCar() const {
   ChaseCamera::Car c;
   c.pose     = carPose;
-  c.centre   = vehicle ? vehicle->centre()   : carPose.translation();
+  // where the car is drawn: the physics' own position runs in fixed steps and would shake the view against the car
+  c.centre   = vehicle ? vehicle->drawnCentre() : carPose.translation();
   c.velocity = vehicle ? vehicle->velocity() : rc::Vec3{};
   c.spin     = vehicle ? vehicle->localSpin().length() : 0.f;
   // RCCars.exe 0x500c1d: the boost and the gas keys, held

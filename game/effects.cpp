@@ -66,9 +66,10 @@ Effects::Effects(Device& device, Resources& res)
     world       = rc::fx::WorldSettings::load([&res](const std::string& f){ return res.pack().read(f); });
     worldLoaded = true;
     gunfire     = rc::fx::Gunfire(world);
+    footprints  = rc::fx::Footprints(world);
     }
   catch(const std::exception& e) {
-    Log::e("effects: ",e.what(),": no splashes, waves or gunfire");
+    Log::e("effects: ",e.what(),": no splashes, waves, gunfire or footprints");
     }
   if(auto t = res.texture("dust"))
     dust = &t->tex;
@@ -102,6 +103,7 @@ Effects::Effects(Device& device, Resources& res)
   wave[0] = find(res,"water_wave");
   wave[1] = find(res,"water_wave_alpha");
   hole    = find(res,"bullet_footprint");
+  sole    = find(res,"sole_footprint");
   white   = &res.white();
   sh   = AppShader::get("marks.vert.sprv");
   vert = device.shader(sh.data,sh.len);
@@ -122,6 +124,7 @@ void Effects::clear(bool keep) {
     gunfire.clear();
     splashes.clear();
     shore.clear();
+    footprints.clear();
     }
   if(keep) {
     for(auto& o:opponents)
@@ -202,12 +205,14 @@ void Effects::setTrack(const rc::SbScene& scene, const rc::WaterWaves* sea) {
 
 void Effects::tickWorld(float dt, const rc::fx::View& view, float time, const rc::fx::ShoreWaves::Water& water,
                         const std::vector<rc::fx::Gunfire::Order>& bursts,
-                        const std::vector<rc::fx::Gunfire::Target>& cars, const rc::CollisionMesh& track) {
+                        const std::vector<rc::fx::Gunfire::Target>& cars, const rc::CollisionMesh& track,
+                        const std::vector<rc::fx::Footprints::Walker>& walkers) {
   if(!worldLoaded || dt<=0)
     return;
   splashes.update(view,dt,rnd);
   shore.update(view,time,dt,water,rnd);
   gunfire.update(bursts,cars,track,dt,rnd);
+  footprints.update(walkers,dt);
   }
 
 void Effects::drawTracks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Mat4& vp, const rc::Vec3& eye) {
@@ -223,8 +228,11 @@ void Effects::drawMarks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Ma
       o.fx->collect(marks,eye);
   shore.collect(marks,eye);
   gunfire.collect(marks);
-  marks.erase(std::remove_if(marks.begin(),marks.end(),[tracks](const rc::fx::Mark& m){
-    return (m.kind==rc::fx::Mark::Track)!=tracks;
+  footprints.collect(marks);
+  // the tyre tracks and the footprints share a blend (0x80000021, 0x530018 and 0x50fc96)
+  auto doubled = [](rc::fx::Mark::Kind k) { return k==rc::fx::Mark::Track || k==rc::fx::Mark::Sole; };
+  marks.erase(std::remove_if(marks.begin(),marks.end(),[tracks,&doubled](const rc::fx::Mark& m){
+    return doubled(m.kind)!=tracks;
     }),marks.end());
   markVerts.clear();
   if(marks.empty())
@@ -270,9 +278,10 @@ void Effects::drawMarks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Ma
       case rc::fx::Mark::Foam:  t[0] = foam[0]; t[1] = foam[1]; break;
       case rc::fx::Mark::Wave:  t[0] = wave[0]; t[1] = wave[1]; break;
       case rc::fx::Mark::Decal: t[0] = hole;    t[1] = white;   break;
+      case rc::fx::Mark::Sole:  t[0] = sole;    t[1] = white;   break;
       }
-    push.mode = r.kind==rc::fx::Mark::Track ? 0u : 1u;
-    enc.setPipeline(r.kind==rc::fx::Mark::Track ? psoTrack : psoWake);
+    push.mode = doubled(r.kind) ? 0u : 1u;
+    enc.setPipeline(doubled(r.kind) ? psoTrack : psoWake);
     enc.setPushData(push);
     enc.setBinding(0,*t[0],repeat);
     enc.setBinding(1,*t[1],Sampler::bilinear(ClampMode::ClampToEdge));

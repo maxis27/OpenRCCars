@@ -43,10 +43,14 @@ class Effects {
     void tick(float dt, const rc::Vehicle& player, const rc::Opponents* opponents, const rc::CollisionMesh& track,
               const rc::Vec3& camera, bool gas, bool brake);
     // the track's effects, seen through `view`; `time`: the water's animation, `water` its surface; `bursts`: the
-    // guards and the BTR shooting (Characters::shooting, Traffic::shots) at `cars`
+    // guards and the BTR shooting (Characters::shooting, Traffic::shots) at `cars`; `walkers`: the characters,
+    // for their footprints
     void tickWorld(float dt, const rc::fx::View& view, float time, const rc::fx::ShoreWaves::Water& water,
                    const std::vector<rc::fx::Gunfire::Order>& bursts,
-                   const std::vector<rc::fx::Gunfire::Target>& cars, const rc::CollisionMesh& track);
+                   const std::vector<rc::fx::Gunfire::Target>& cars, const rc::CollisionMesh& track,
+                   const std::vector<rc::fx::Footprints::Walker>& walkers);
+    // people's footprints on the ground now
+    size_t footprintCount() const { return footprints.size(); }
     // the gunfire's sounds and the cars it hit since the last call
     std::vector<rc::fx::Gunfire::Sound> gunSounds() { return gunfire.sounds(); }
     std::vector<rc::fx::Gunfire::Hit>   gunHits()   { return gunfire.hits(); }
@@ -92,6 +96,7 @@ class Effects {
     rc::fx::WaterSplashes               splashes;
     rc::fx::ShoreWaves                  shore;
     rc::fx::Gunfire                     gunfire;
+    rc::fx::Footprints                  footprints;
 
     // `tracks`: the tyre tracks, otherwise the wake and the foam
     void drawMarks(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frame, const rc::Mat4& viewProj,
@@ -104,6 +109,7 @@ class Effects {
     const Tempest::Texture2d*           foam[2] = {};    // whr_horse, whr_horse_alpha
     const Tempest::Texture2d*           wave[2] = {};    // water_wave, water_wave_alpha
     const Tempest::Texture2d*           hole    = nullptr; // bullet_footprint
+    const Tempest::Texture2d*           sole    = nullptr; // sole_footprint
     const Tempest::Texture2d*           white   = nullptr;
     Tempest::RenderPipeline             pso;
     Tempest::RenderPipeline             psoTrack, psoWake;

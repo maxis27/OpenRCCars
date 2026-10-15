@@ -66,6 +66,9 @@ class Characters {
       std::vector<std::pair<std::string,std::string>> textures;
       // a sound of the model's sound channel (SNCH named like the model) to start now, empty if none
       std::string               sound;
+      // a person walking where the path leaves footprints (RCCars.exe 0x50f930: moving, path state 1..3 or 5, not
+      // RepairMan); fx::Footprints puts them down
+      bool                      soles = false;
       };
 
     // another car on the track (the opponents)
@@ -96,6 +99,10 @@ class Characters {
       int  car = PlayerCar;
       };
     const std::vector<Shot>&    shooting() const { return guns; }
+    // someone took the player's car in their hand in this update (0x5111f0 -> 0x4f3640: the chase camera holds still)
+    bool                        grabbedPlayer() const { return grabbed; }
+    // someone holds the player's car after this update (0x4f3690 lets go of it when thrown)
+    bool                        holdingPlayer() const { return carried; }
     size_t                      size()   const { return view.size(); }
 
   private:
@@ -151,6 +158,8 @@ class Characters {
     float                                         sinceDog    = 1e3f;
     float                                         sinceGuard  = 1e3f;
     bool                                          greatHit    = false;
+    bool                                          grabbed     = false;
+    bool                                          carried     = false;
     float                                         carKmh      = 0;    // the player's speed before this step
     float                                         lastKmh     = 0;
     int                                           vultures    = 0;

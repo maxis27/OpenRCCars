@@ -40,6 +40,7 @@ struct ScenePipelines {
   Tempest::RenderPipeline opaque;
   Tempest::RenderPipeline cutout;
   Tempest::RenderPipeline blend;
+  Tempest::RenderPipeline modulate; // twice the source times the destination
   // the sea, split up by tessellation to move it with the waves; empty when the GPU can't tessellate
   Tempest::RenderPipeline water;
   // binding 4 of everything but the sea
@@ -71,6 +72,7 @@ class LevelMesh {
       F_Waves    = 32, // water with WLOD waves (formats/water.h), uvMask.x = distance to the edge of the sea
       F_Tess     = 64, // drawn with ScenePipelines::water: the tessellation moves the vertices
       F_Dirt     = 128, // ModelMesh: the car's dirt over its paint, `time` = how dirty
+      F_Modulate = 256, // multiplied onto what is under it (SbMesh::renderFlags 0x40000000)
       };
 
     struct Push {

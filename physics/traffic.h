@@ -42,6 +42,7 @@ class Vehicle;
 //   texture coordinates of the fara*_body nodes by half the texture.
 //  Sound (0x517530): Slow cars play roadcar_slow all the time; the others roadcar or roadcar_siren (even chance)
 //   once a camera is within 20 m of them, not lower than 0.25 m below them, when nothing plays.
+//  Spots (Spot): the wheels' shadows of the Slow cars and the head lights' glow of the trucks and campers.
 //  BTR (beach_4): its turret (Cylinder02_1) turns towards a car in front of it and fires bursts (message 0x261 to
 //   BURST_MNG) at it, see Turret in traffic.cpp; roadcar.ini: TowerVel/100 degrees/s, TowerShootT.
 class Traffic {
@@ -49,6 +50,17 @@ class Traffic {
     using Reader = std::function<std::vector<uint8_t>(const std::string&)>;
 
     enum class Kind : uint8_t { Trailer, Truck, Hammer, Btr };
+
+    // a spot RCCars.exe lays onto the track around a car (0x516f50 -> 0x44c640, drawn by 0x466560 onto the faces
+    // near it): with the option VIDEO_RoadCarShadow, the shadow under each wheel of a Slow car (texture wheel_shd,
+    // darkening) and the glow 2 m ahead of each head light of the trucks and campers (shex_wht, adding light)
+    struct Spot {
+      enum Kind : uint8_t { Shadow, Glow };
+      Kind  kind   = Shadow;
+      Vec3  pos;
+      float radius = 0;      // m: faces this far from `pos` get it
+      Vec3  along{1,0,0};    // where the texture's u runs (level)
+      };
 
     // what the renderer and the sounds need of one car
     struct Car {
@@ -70,7 +82,8 @@ class Traffic {
       bool                        lightsOn    = false;
       // textures the model wears instead of its own ("body" and "box" in the INST script, 0x517cd0)
       std::vector<std::pair<std::string,std::string>> textures;
-      // a sound of the Roadcar channel to start now (0 roadcar, 1 roadcar_siren), -1 none
+      std::vector<Spot>           spots;           // while visible
+    // a sound of the Roadcar channel to start now (0 roadcar, 1 roadcar_siren), -1 none
       int32_t                     sound = -1;
       };
 
@@ -111,6 +124,8 @@ class Traffic {
       bool  slow   = false;
       float towerVel   = 13.62f; // degrees/s
       float towerShoot = 1.f;    // s, TowerShootT/10 (read, not used by 0x518050)
+      float shadowY    = 0.48f;  // m, ShadowY/100: a wheel's shadow this far below the wheel's centre ..
+      float shadowR    = 0.46f;  // m, ShadowR/100: .. on the faces within this of it
       };
 
     void   setup(State& s, const SbInstance& in);
@@ -118,6 +133,7 @@ class Traffic {
     void   drive(State& s, float dt, const Vec3& camera, Vehicle* player, std::vector<Characters::Car>& cars);
     void   turret(State& s, float dt, Vehicle* player, const std::vector<Characters::Car>& cars);
     void   placeBody(State& s);
+    void   spots(State& s);
     bool   touches(const State& s, const Vec3& p, float margin) const;
     bool   playerTouches(const State& s, const Vehicle& player) const;
     float  random();

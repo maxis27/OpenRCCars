@@ -36,6 +36,7 @@
 #include "audio/soundlib.h"
 #include "fx/careffects.h"
 #include "fx/worldfx.h"
+#include "fx/groundspots.h"
 
 #include <algorithm>
 #include <cmath>
@@ -298,6 +299,21 @@ static int cmdTraffic(const fs::path& game, const std::string& track, rc::PackFi
     }
   for(auto& [name,g]:gap)
     std::printf("  %-9s lowest point %.2f .. %.2f m above the road\n",name.c_str(),g.first,g.second);
+  // the shadows and glow of the car seen last, laid onto the track
+  for(auto* c:traffic.cars()) {
+    if(!c->visible)
+      continue;
+    size_t shadows = 0, glows = 0, tris[2] = {};
+    for(auto& sp:c->spots) {
+      std::vector<rc::fx::MarkVertex> v;
+      rc::fx::layOnto(coll,{sp.pos,sp.radius,sp.along},v);
+      const bool glow = sp.kind==rc::Traffic::Spot::Glow;
+      (glow ? glows : shadows)++;
+      tris[glow ? 1 : 0] += v.size()/3;
+      }
+    std::printf("  %-9s %zu wheel shadows on %zu faces, %zu head light glows on %zu faces\n",c->name.c_str(),
+                shadows,tris[0],glows,tris[1]);
+    }
 
   // the player's car parked 6 m ahead of a car on the road, in the way of its left wheels (a Hummer's body is
   // 0.6 m above the road: a toy car fits under it)

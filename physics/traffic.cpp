@@ -31,6 +31,8 @@ constexpr float OtherCarSize = 0.25f;  // m: an opponent's car around its centre
 constexpr float SoundNear    = 20.f;   // m (horizontal): a camera this close starts roadcar / roadcar_siren ..
 constexpr float SoundBelow   = -0.25f; // .. unless it is lower than this under the car
 constexpr float LightProbe   = 0.2f;   // m above the car: the point tested against the roadcar_* volumes
+constexpr float GlowAhead    = 2.f;    // m: a head light's glow lies this far in front of it (0x517240) ..
+constexpr float GlowRadius   = 2.f;    // m: .. on the faces within this of that point (0x517258)
 constexpr float WheelRadius[2] = {0.35f, 0.45f}; // of the wheel's height: collision sphere, steering / BTR (0x517940)
 
 // the BTR's turret (0x517f10, 0x518050, 0x5184b0 and the sector watcher 0x535720 .. 0x5359f0); the zones and the
@@ -124,6 +126,8 @@ struct Traffic::State {
     int   spinAxis = 2;
     };
   std::vector<Part> parts;
+  bool         glows = false;     // the head lights cast a glow (Trailer, Truck)
+  std::vector<Vec3> lightPos;     // model space: the head light nodes
   int          turretPart = -1;
   Vec3         barrel {0,0,1};    // model space, level: where the gun points when the turret is not turned
 
@@ -185,6 +189,8 @@ Traffic::Traffic(PhysicsWorld& world, ObjectLibrary& library, const SbScene& tra
   // 0x517660
   if(road.find("TowerVel"))    prm.towerVel   = float(road.raw("TowerVel"))*0.01f;
   if(road.find("TowerShootT")) prm.towerShoot = float(road.raw("TowerShootT"))*0.1f;
+  if(road.find("ShadowY"))     prm.shadowY    = float(road.raw("ShadowY"))*0.01f;
+  if(road.find("ShadowR"))     prm.shadowR    = float(road.raw("ShadowR"))*0.01f;
 
   const char* dirs[2] = {"forw","back"};
   for(int i=0; i<2; ++i)
@@ -312,8 +318,13 @@ void Traffic::setup(State& s, const SbInstance& in) {
     s.car.partPoses[i+1] = Mat4::translate(s.parts[i].pivot);
 
   for(auto* l:info.lights)
-    if(l!=nullptr && l[0]!=0)
+    if(l!=nullptr && l[0]!=0) {
       s.car.lights.push_back(l);
+      if(const SbMesh* n = node(l))
+        s.lightPos.push_back(n->world.translation()-model.origin);
+      }
+  // the same flag (+0x328) picks the glow (0x5171fd) and how the head lights' texture is laid out (0x517460)
+  s.glows = info.lit;
   s.car.lightAxis   = info.lightAxis;
   s.car.modelledLit = info.lit;
   s.car.lightsOn    = false;   // 0x516ceb -> 0x517460(car, 0): switched off when set up
@@ -382,6 +393,7 @@ void Traffic::restart() {
     s.path   = nullptr;
     s.car.onRoad  = false;
     s.car.visible = false;
+    s.car.spots.clear();
     s.car.sound   = -1;
     s.car.lightsOn = false;
     s.car.world   = Mat4::translate(s.home)*s.rootInv;
@@ -490,6 +502,7 @@ void Traffic::drive(State& s, float dt, const Vec3& camera, Vehicle* player, std
     }
   s.car.pose  = m;
   s.car.world = m*s.rootInv;
+  spots(s);
 
   // head lights in the tunnels (0x5187d0)
   bool lights = false;
@@ -527,6 +540,37 @@ void Traffic::drive(State& s, float dt, const Vec3& camera, Vehicle* player, std
 
   if(s.turretPart>=0)
     turret(s,dt,player,cars);
+  }
+
+// 0x516f50 with VIDEO_RoadCarShadow on, for a car seen from a camera: the glow of each head light of the models
+// that have one, 2 m in front of it (0x5171fd: 0x44c640 type 1, size 2, white), and for the Slow tracks a shadow
+// under each wheel (0x5172ba: type 3 with wheel_shd), ShadowY below the wheel's centre along the car's up, ShadowR
+// big and turned with the wheel: the texture's u along the way the wheel rolls (0x517329 .. 0x5173b3: 90 degrees
+// less the angle between the world's x and the wheel's axle).
+void Traffic::spots(State& s) {
+  auto& out = s.car.spots;
+  out.clear();
+  if(!s.car.visible)
+    return;
+  const Vec3 up  = s.car.pose.vector({0,1,0});
+  const Vec3 fwd = s.car.pose.vector({0,0,1});
+  if(s.glows)
+    for(auto& l:s.lightPos)
+      out.push_back({Spot::Glow,s.car.world.point(l)+fwd*GlowAhead,GlowRadius,{1,0,0}});
+  if(!prm.slow)
+    return;
+  for(size_t i=0; i<s.parts.size(); ++i) {
+    if(int(i)==s.turretPart)
+      continue;
+    const State::Part& p = s.parts[i];
+    const Mat4&  pose = s.car.partPoses[i+1];
+    // the axle: the wheel node's z (steering models) or x (BTR), 0x44e6e0 / 0x44e680
+    const Vec3 axle = s.car.world.vector(pose.vector(p.axis[p.spinAxis]));
+    Vec3 along = Vec3::cross(Vec3{0,1,0},axle);
+    along.y = 0;
+    along = along.length()>1e-4f ? along.normalized() : fwd;
+    out.push_back({Spot::Shadow,s.car.world.point(p.pivot)-up*prm.shadowY,prm.shadowR,along});
+    }
   }
 
 // The BTR's turret. RCCars.exe watches two zones around the gun (0x5184b0: a wedge 20 m long and 15 degrees

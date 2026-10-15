@@ -23,6 +23,7 @@ struct Mark {
     Foam,    // whr_horse, its opacity times whr_horse_alpha's
     Wave,    // water_wave, its opacity times water_wave_alpha's (the waves breaking on the shore)
     Decal,   // bullet_footprint: a bullet hole, blended over what is under it
+    Sole,    // sole_footprint: a person's footprint, blended like a tyre track
     };
   Kind       kind    = Track;
   uint8_t    texture = 0;      // Track: the tyre (0..3)

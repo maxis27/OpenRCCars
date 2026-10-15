@@ -136,6 +136,8 @@ class Vehicle {
     Mat4                       pose()  const;
     // centre of mass, world; its velocity (m/s); the angular velocity in the car's own axes (rad/s, x pitch, z roll)
     Vec3                       centre()    const;
+    // the centre of mass where pose() draws it: between the last two fixed steps, like the model on screen
+    Vec3                       drawnCentre() const;
     Vec3                       velocity()  const;
     Vec3                       localSpin() const;
     // an impulse (kg m/s) at the world point `at`

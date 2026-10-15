@@ -95,6 +95,9 @@ class CollisionMesh {
     // named *stream* or *pool* (0x51c240, list at 0x575710), not in the waterfalls (*wtr_fall*), which are only seen
     bool                         isWater(const Triangle& t) const;
 
+    // indices into triangles() of those listed in the cells the box lo..hi touches, each once
+    std::vector<uint32_t>        trianglesIn(const Vec3& lo, const Vec3& hi) const;
+
     // triangles listed in a cell; the same triangle shows up in every cell it touches
     template<class F>
     void forEachInCell(uint32_t x, uint32_t y, uint32_t z, F&& fn) const {

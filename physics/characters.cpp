@@ -139,6 +139,7 @@ struct Characters::State {
   // people
   PeoplePath        path;
   float             pathTime = 0;
+  float             pathState = 0;     // PeoplePath::Point::state where the person is
   Vec3              lastPos;
   Act               act      = Act::None;
   float             actTime  = 0;
@@ -501,6 +502,8 @@ bool Characters::touches(Car& c, const Vec3& at, float radius, float height) {
 
 bool Characters::update(float dt, Vehicle* player, std::vector<Car>& cars) {
   greatHit = false;
+  grabbed  = false;
+  carried  = false;
   guns.clear();
   // the speed the car hit with: the step that brought it into contact has already stopped it
   const float nowKmh = player ? player->velocity().length()*3.6f : 0.f;
@@ -535,7 +538,8 @@ void Characters::person(State& s, float dt, Vehicle* player, std::vector<Car>& c
   if(!s.path.empty() && free) {
     s.pathTime += dt;
     const auto pt = s.path.at(s.pathTime);
-    s.pos = pt.pos;
+    s.pos       = pt.pos;
+    s.pathState = pt.state;
     turnTo(s,pt.dir,PathTurn*dt);
     }
   const float moved = horiz(s.pos-s.lastPos)/std::max(dt,1e-4f);
@@ -578,6 +582,12 @@ void Characters::person(State& s, float dt, Vehicle* player, std::vector<Car>& c
   if(s.seq<0 || s.seq==s.sStand || s.seq==s.sWalk)
     play(s,moved>0.01f && s.sWalk>=0 ? s.sWalk : s.sStand,true);
   animate(s,dt);
+
+  // footprints (0x50f930): while the person moves faster than 0.01 m/s on a stretch of the path whose state is 1, 2,
+  // 3 or 5 (the paths have 1, 2, 5 and 7); RepairMan leaves none (0x50f7f0)
+  const int ground = int(s.pathState);
+  s.actor.soles = s.active && moved>0.01f && s.actor.model->name!="RepairMan" &&
+                  ((ground>=1 && ground<=3) || ground==5);
   }
 
 bool Characters::attack(State& s, float dt, Vehicle* player) {
@@ -639,7 +649,7 @@ bool Characters::attack(State& s, float dt, Vehicle* player) {
   if(!s.holding) {
     turnTo(s,to,TurnToCar*dt);
     if(s.seq==s.sThrow && s.t>GrabFrom && s.t<GrabTo && dist<GrabDistance && s.hand>=0)
-      s.holding = true;
+      s.holding = grabbed = true;
     }
   if(s.holding) {
     std::vector<Mat4> pose;
@@ -653,6 +663,7 @@ bool Characters::attack(State& s, float dt, Vehicle* player) {
       player->addVelocity(facing(s.yaw)*ThrowForward+Vec3{0,ThrowUp,0}-player->velocity());
       }
     }
+  carried = carried || s.holding;
   if(s.done) {
     s.act     = State::Act::None;
     s.holding = false;

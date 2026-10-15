@@ -581,6 +581,12 @@ Vec3 Vehicle::centre() const {
   return fromBt(body->getCenterOfMassPosition())*(1.f/S);
   }
 
+Vec3 Vehicle::drawnCentre() const {
+  btTransform t;
+  motion->getWorldTransform(t);
+  return fromBt(t.getOrigin())*(1.f/S);
+  }
+
 Vec3 Vehicle::velocity() const {
   return fromBt(body->getLinearVelocity())*(1.f/S);
   }

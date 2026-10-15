@@ -656,8 +656,12 @@ lib/Tempest     silnik (submoduł git)
   (70 → 11,8°) plus do `CDT_AngleUp_DIR_ADD` (13°) proporcjonalnie do tego obrotu, z
   `CDT_AngleUp_SPEED_DIR_ADD` (suwak 151 poza 1..100, 1,51°/s). `CDT_DistSpeed*` i `CDT_radius` gra pomija.
   Domyślna kamera gry ma poziome pole widzenia 80° przy 4:3 (pionowe 64,4°, 0x405d40). Założone: punkt, na który
-  kamera patrzy (macierz obiektu +0xf8), to też środek bryły; tryb z flagą 0x147d254 i zamrożenie kamery przez 3 s
-  po wyłączeniu auta (+0xe828/0xe830) nie są przeniesione.
+  kamera patrzy (macierz obiektu +0xf8), to też środek bryły. Gdy człowiek łapie auto (Brosok, 0x5111f0 →
+  0x4f3640), oko w tej jednej klatce skacze na 2 m za autem i 1 m w górę (w paśmie wysokości, czyli ≥0,73 m), a
+  potem stoi w miejscu (tylko obraca się za autem), dopóki człowiek trzyma auto (+0xe828, co klatkę 0x4f3700) i
+  przez 3 s od złapania (+0xe830); po rzucie (0x4f3690) i tych 3 s sprężyny ciągną je z powrotem. Nie przeniesione:
+  flaga 0x147d254 to tryb deweloperski (F9, tylko z argumentem `-dev`, 0x4883dd): sztywna kamera 1,04 m za i
+  0,41 m nad autem, bez obrotu CDT i poprawki nad wodą, bez resetu na punkcie kontrolnym (0x508160).
 - **Kamera nad wodą** (0x501180, ostatni krok kamery za autem): jeśli punkt 7 cm pod okiem kamery jest pod wodą
   (promień tylko po wodzie, 0x5350d0), oko idzie na 14 cm nad jej powierzchnię; kierunek patrzenia zostaje.
   Powierzchnia to animowana siatka morza (0x5353b0 bierze bieżące wierzchołki), więc liczymy ją z falami

@@ -73,6 +73,18 @@ class MainWindow : public Tempest::Window {
     // F9 in the developer mode: the car flown by hand, see `flying`
     void                  setFlying(bool on);
     void                  fly(float dt);
+    // RCCars.exe 0x482900: what the "ZERO" keys ask for this frame, in the moved thing's own axes (+X left, +Y up,
+    // +Z forward), degrees (yaw positive = left, pitch positive = nose down); flies the car (F9) and the ZERO camera
+    struct ZeroInput {
+      rc::Vec3 step;
+      float    yaw = 0, pitch = 0;
+      bool     level = false;
+      };
+    ZeroInput             zeroInput(float dt) const;
+    // the developer mode's typed codes (RCCars.exe 0x47a660 / 0x47a6b0), see DevCode
+    bool                  devCodeKey(Tempest::Event::KeyType key);
+    void                  devCode(const std::string& code);
+    void                  tickZeroCamera(float dt);
 
     Tempest::Device&        device;
     Resources&              resources;
@@ -126,8 +138,30 @@ class MainWindow : public Tempest::Window {
     const bool              devMode;
     bool                    flying     = false;
     rc::Mat4                flightPose;     // the flown car, model -> world
-    float                   zeroSpeed  = 15.f; // m/s: "Set ZeroSpeed 15" in Autoexec.gm, 100 without it
-    float                   zeroAngle  = 90.f; // degrees/s: ZeroAngle, Autoexec.gm does not set it
+    // RCCars.exe 0x4822c0: section "Debug", ZeroSpeed 100 and ZeroAngle 90 unless the scripts set them
+    // (Autoexec.gm: "Set ZeroSpeed 15")
+    float                   zeroSpeed  = 100.f; // m/s
+    float                   zeroAngle  = 90.f;  // degrees/s
+    float                   fixedTime  = 0;    // ms, FixedTime: the step of F (0: the last frame's)
+    // Codes typed during the game in the developer mode (RCCars.exe 0x47a660 registers them, 0x47a6b0 checks each
+    // key): letters and digits in a row, any case, at most 2 s apart (0x47a7a0); a wrong key starts the code over
+    struct DevCode {
+      const char* text;
+      uint8_t     at   = 0;  // letters matched so far
+      uint64_t    last = 0;  // ms, the last one
+      };
+    std::vector<DevCode>    devCodes;
+    // the "ZERO" camera of the codes I, F, E1, E2 (0x482cd0, 0x482eb0), moved like the F9 car (0x482900)
+    enum class ZeroCam : uint8_t {
+      Off,
+      Fly,       // E1: the view's camera flown by hand, the game goes on; C1 gives the race camera back
+      Still,     // E2: the view without a camera driver (0x487320 with 0): it stays where it is
+      Detached,  // I: a camera of its own and the game stopped (0x4411e0); F runs one frame, I again goes back
+      };
+    ZeroCam                 zeroCam     = ZeroCam::Off;
+    bool                    frameStep   = false; // F: one frame of the stopped game
+    float                   lastDt      = 1.f/60.f;
+    int                     forcedDirt  = -1;    // dt0..dt5 (0x532490): the car's dirt held at that level, dtx: -1
     Camera                  camera;
     ChaseCamera             chase;          // the camera behind the car (Settings\Camera.ini)
     bool                    freeCamera = false; // V (developer mode)

@@ -191,8 +191,6 @@ Vehicle::Vehicle(PhysicsWorld& w, const CarGeometry& g, const CarParams& p, cons
     sphere(s.at,s.radius);
   for(auto& wh:wheels)
     sphere(wh.mount-Vec3{0,prm.springMin,0},wh.radius);
-  wheelShape[0] = std::make_unique<btSphereShape>(prm.wheelRadius*S);
-  wheelShape[1] = std::make_unique<btSphereShape>(prm.rearWheelRadius*S);
 
   // inertia (0x4f2270, 0x4752b0): a solid box over the whole model, the Buggy's about its forward axis doubled
   const Vec3 size = geom.max-geom.min;
@@ -342,10 +340,10 @@ void Vehicle::place(const Mat4& pose, const Vec3& velocity, const Vec3& spin) {
   sinceTouch = 2e6f;
   for(auto& wh:wheels) {
     wh.length  = prm.springLength-prm.springSag;
-    wh.rate    = 0;
+    wh.change  = 0;
     wh.contact = false;
-    wh.blocked = false;
     wh.spin    = 0;
+    wh.drag    = 0;
     }
   steer        = 0;
   steerDeg     = 0;
@@ -354,6 +352,7 @@ void Vehicle::place(const Mat4& pose, const Vec3& velocity, const Vec3& spin) {
   brakeKey     = false;
   drive        = 0;
   movingTime   = 0;
+  springsOn    = true;
   under        = Surface::Default;
   sub          = 0;
   wet          = 0;
@@ -390,6 +389,7 @@ void Vehicle::update(const Input& in, float dt) {
   frameForce = frameTorque = {};
   // the keys that keep the car awake (0x4f59a0)
   keysHeld = in.throttle!=0 || in.steer!=0 || in.boost;
+  movingTime += dt;
 
   // steering (RCCars.exe): the position runs towards the side held, slower the faster the car goes, until the
   // wheels reach AngleSteer; back to the middle (and across to the other side) it runs at SteerBack
@@ -584,10 +584,10 @@ void Vehicle::forces(float h) {
   Vec3 springs;
   for(auto& wh:wheels) {
     const float l = wh.length+0.02f*wh.radius;
-    if(!wh.contact || l>prm.springLength)
+    if(!springsOn || !wh.contact || l>prm.springLength)
       continue;
     const float k = springK*(prm.springLength-l);
-    const float f = k - prm.springDamping*wh.rate;
+    const float f = k - (h>0.001f ? prm.springDamping*wh.change/h : 0.f);
     const Vec3 at = m.point(wh.mount);
     const Vec3 fs = up*f;
     const Vec3 fn = wh.normal*Vec3::dot(fs,wh.normal);
@@ -620,6 +620,19 @@ void Vehicle::forces(float h) {
         force  = force+f;
         torque = torque+Vec3::cross(wh.point-c,f);
         }
+      }
+    // deep sand and water (0x4eeea0): each wheel on the ground in them is held back by k * v^2 (the car's speed)
+    // against the motion of the point it touches
+    const float v2 = vel.length()*vel.length();
+    for(auto& wh:wheels) {
+      if(!wh.contact || wh.drag<=0)
+        continue;
+      Vec3 pv = pointVelocity(wh.point);
+      if(const float l = pv.length(); l>=1e-6f)
+        pv = pv*(1.f/l);
+      const Vec3 f = pv*(-prm.mass*wh.drag*v2);
+      force  = force+f;
+      torque = torque+Vec3::cross(wh.point-c,f);
       }
     tires(h,force,torque);
     force  = force+frameForce;
@@ -836,8 +849,8 @@ void Vehicle::move(float h) {
       st.L = st.L*(1.f/l);
     set(st);
 
-    // a wheel on the track keeps the car's stillness timer going (0x4f0230, 0x4f5980)
-    if(near(WheelSpheres,TouchMargin))
+    // the wheels on the track; one keeps the car's stillness timer going (0x4f0230, 0x4f5980)
+    if(wheelTouches())
       sinceTouch = 0;
 
     const Body from = st;
@@ -847,9 +860,12 @@ void Vehicle::move(float h) {
     float t = std::clamp(sweep(from,rest),0.f,rest);
     // a body sphere in the track, or else, after the springs have followed the ground, a wheel's where a spring
     // cannot take it in
+    roofed = false;
     bool hit = penetrates(BodySpheres);
     if(!hit && suspension(t,false))
       hit = penetrates(WheelSpheres);
+    // the springs push in the next part only after one that met nothing, with room above the wheels (0x4f5e50)
+    springsOn = !hit && !roofed;
     if(hit) {
       sinceTouch = 0;
       // what the sounds hear of it (0x4f6730): where it went in, at the speed it went in
@@ -872,103 +888,177 @@ void Vehicle::move(float h) {
     stuckFor = 0;
   }
 
-// RCCars.exe (0x4fb340): a wheel pushed into the ground goes up at once, to springMin at most; otherwise it goes
-// down towards its rest, 10 times faster once the car has gone faster than 5 km/h for 0.5 s, and stops on the
-// ground. At rest is springLength, but 0.95 springSag shorter for a car slower than 5 km/h after a move that met
-// the track, or with a spring that cannot take the ground in. It goes down by r (the wheel's radius) per second,
-// r (1 + 18 t) after t s faster than 5 km/h, so 10 r from 0.5 s on (0x8 of the car's data counts t); 10 r while
-// the car is being placed. The wheel is swept down from the top of its spring, so it also climbs onto a step in
-// front of it.
+// RCCars.exe's wheels (0x4fb340): each is a sphere of radius r hanging `length` below the top of its spring, along
+// the car's up axis (0x4ef680). After the body has moved, wheel by wheel:
+//  - a sphere in the track is lifted out of it (0x4fb9e0): up to 5 times, by as much as takes the point of the track
+//    it touches out of it along the car's up axis, plus 0.01 r, but no higher than springMin and by no more than
+//    0.95 r in all. With the room above a wheel taken (0x4fbd70: the track within a sphere of 1.5 r over 1.5 r above
+//    its centre, for any wheel) it goes up towards the slow rest at 0.95 r per second instead;
+//  - a free one goes towards its rest: springLength, or the slow rest (springLength - 0.95 springSag) for a car
+//    slower than 5 km/h after a move that met the track or with the room above a wheel taken. Down by r per second,
+//    r (1 + 18 t) t s after the car last went slower than 5 km/h like that, 10 r from 0.5 s on, and 10 r while the
+//    car is being placed, at most 0.99 r a step, and then lifted out of the track again (0x4fbc50) without ending
+//    higher than it was; up by as much, as long as that does not put it in the track;
+//  - a wheel whose centre would cross the track on the way stays where it was.
+// A wheel that cannot be helped stops it: the rest keep their lengths and the step is taken as a hit (0x4f5e50).
+// What each spring changed by is its damper's (0x4f0f80), none after such a stop.
 bool Vehicle::suspension(float h, bool hit) {
   constexpr float Moving    = 1.388889f; // m/s, 5 km/h
   constexpr float WheelLift = 0.3f;
-  const Vec3  v     = velocity();
-  const float speed = v.length();
-  movingTime = speed>=Moving ? movingTime+h : 0.f;
-
-  // the track only: RCCars.exe's wheels do not stand on the props (0x4fbd70 asks the static world), they bump into
-  // them (Vehicle::hits)
-  struct Sweep : btCollisionWorld::ClosestConvexResultCallback {
-    const btCollisionObject* ground;
-    Sweep(const btVector3& f, const btVector3& t, const btCollisionObject* g)
-      : ClosestConvexResultCallback(f,t), ground(g) {}
-    bool needsCollision(btBroadphaseProxy* proxy) const override {
-      return proxy->m_clientObject==ground && ClosestConvexResultCallback::needsCollision(proxy);
-      }
-    };
+  const float speed = velocity().length();
 
   Mat4 m = rot*Mat4::translate(com*-1.f);
   m.m[0][3] += st.x.x; m.m[1][3] += st.x.y; m.m[2][3] += st.x.z;
-  const Vec3      up    = axis(1);
-  const Vec3      fwd   = axis(2);
-  const float     reach = std::max(prm.springMax,prm.springLength);
-  // how far down each sphere can go from the top of its spring before it touches the ground
-  struct Ground { float d = 1e9f; Vec3 point, normal; };
-  Ground found[16];
-  bool   blocked = false;
-  for(size_t i=0; i<wheels.size() && i<std::size(found); ++i) {
-    auto&      wh  = wheels[i];
-    const Vec3 top = m.point(wh.mount);
-    btTransform from, to;
-    from.setIdentity();
-    to.setIdentity();
-    from.setOrigin(toBt(top)*S);
-    to.setOrigin(toBt(top-up*reach)*S);
-    Sweep cb(from.getOrigin(),to.getOrigin(),&owner.ground());
-    owner.bullet().convexSweepTest(wh.front ? wheelShape[0].get() : wheelShape[1].get(),from,to,cb);
-    if(cb.hasHit()) {
-      found[i].d      = float(cb.m_closestHitFraction)*reach;
-      found[i].point  = fromBt(cb.m_hitPointWorld)*(1.f/S);
-      found[i].normal = fromBt(cb.m_hitNormalWorld).normalized();
-      }
-    wh.blocked = found[i].d<prm.springMin;
-    blocked    = blocked || wh.blocked;
-    }
-  float rest = prm.springLength;
-  if(speed<Moving && (hit || blocked)) {
-    rest       = prm.springLength-0.95f*prm.springSag;
-    movingTime = 0;
-    }
-  for(size_t i=0; i<wheels.size() && i<std::size(found); ++i) {
-    auto&       wh     = wheels[i];
-    const float before = wh.length;
-    const float ground = found[i].d;
+  const Vec3 up = axis(1);
+  auto centre = [&](const Wheel& wh) { return m.point(wh.mount-Vec3{0,wh.length,0}); };
+  PhysicsWorld::TrackTouch t;
+  // ours: in by more than WheelSink, as for the step (Vehicle::penetrates); a wheel lifted along the car's up axis
+  // off a slope only comes to touch it
+  auto inside = [&](const Wheel& wh) { return owner.touchTrack(centre(wh),wh.radius-WheelSink,&t,1)>0; };
 
-    float rate = wh.radius;
-    if(settling)
-      rate *= 10.f;
-    else if(speed>=Moving)
-      rate *= 1.f+18.f*std::min(movingTime,0.5f);
-    float len = wh.length;
-    if(len<rest)
-      len = std::min(len+rate*h,rest);
-    else
-      len = std::max(len-rate*h,rest);
-    wh.contact = ground<=len+0.02f*wh.radius;
-    if(ground<len)
-      len = ground;
-    wh.length = std::clamp(len,prm.springMin,reach);
-    if(h>1e-6f)
-      wh.rate = (wh.length-before)/h;
-    if(wh.contact) {
-      wh.point  = found[i].point;
-      wh.normal = found[i].normal;
+  // 0x4fb9e0: out of the track by at most `most`
+  auto lift = [&](Wheel& wh, float most) {
+    const float r = wh.radius, was = wh.length;
+    if(most>r-1e-6f)
+      return false;
+    float moved = 0;
+    int   i     = 0;
+    for(; i<5; ++i) {
+      if(!inside(wh))
+        break;
+      if(wh.length<prm.springMin+1e-4f)
+        break;
+      // along the up axis from 3 r under the point touched, to where it meets the sphere
+      const Vec3  c = centre(wh), w = t.point-up*(3.f*r)-c;
+      const float b = Vec3::dot(w,up), disc = b*b-(Vec3::dot(w,w)-r*r);
+      if(disc<0)
+        break;
+      const Vec3 e = t.point-up*(3.f*r)+up*(-b-std::sqrt(disc));
+      moved += (t.point-e).length();
+      if(moved>most)
+        break;
+      wh.length = std::max(was-moved-0.01f*r,prm.springMin);
       }
+    if(i<5 && !inside(wh))
+      return true;
+    wh.length = was;
+    return false;
+    };
+  // 0x4fbc50: down by `by`, then out of the track again
+  auto lower = [&](Wheel& wh, float by) {
+    const float r = wh.radius, was = wh.length;
+    if(by>r)
+      by = 0.99f*r;
+    wh.length = std::min(wh.length+std::min(by,0.99f*r),prm.springMax);
+    if(lift(wh,0.99f*r))
+      wh.length = std::max(wh.length,was);
+    else
+      wh.length = was;
+    };
+  auto towards = [](float from, float to, float by) {
+    return std::abs(from-to)<by ? to : (from<to ? from+by : from-by);
+    };
+
+  // the room above the wheels (0x4fbd70)
+  bool roof = false;
+  roofed = false;
+  for(auto& wh:wheels) {
+    const float r = 1.5f*wh.radius;
+    if(owner.touchTrack(centre(wh)+Vec3{0,r,0},r,&t,1)>0) {
+      roof   = true;
+      roofed = true;
+      break;
+      }
+    }
+
+  const float slowRest = prm.springLength-0.95f*prm.springSag;
+  float       before[16];
+  bool        stopped  = false;
+  for(size_t i=0; i<wheels.size() && i<std::size(before); ++i)
+    before[i] = wheels[i].length;
+  for(size_t i=0; i<wheels.size() && i<std::size(before) && !stopped; ++i) {
+    auto&       wh   = wheels[i];
+    const float r    = wh.radius;
+    const float was  = wh.length;
+    const Vec3  from = centre(wh);
+    if(inside(wh)) {
+      if(!roof) {
+        stopped = !lift(wh,0.95f*r);
+        }
+      else {
+        wh.length = towards(wh.length,slowRest,0.95f*r*h);
+        if(inside(wh)) {
+          wh.length = was;
+          stopped   = true;
+          }
+        else if(speed<Moving)
+          movingTime = 0;
+        }
+      }
+    else {
+      float to = prm.springLength, by = r*h;
+      if((!hit && !roof) || speed>=Moving) {
+        if(movingTime>0.5f)
+          by = 10.f*r*h;
+        else if(movingTime>=0)
+          by = r*h*(1.f+18.f*movingTime);
+        }
+      else {
+        movingTime = 0;
+        to         = slowRest;
+        }
+      if(settling)
+        by = 10.f*r*h;
+      by = std::clamp(by,0.f,0.99f*r);
+      if(wh.length<to)
+        lower(wh,by);
+      if(to<wh.length) {
+        const float b = wh.length;
+        wh.length = towards(wh.length,to,by);
+        if(inside(wh))
+          wh.length = b;
+        }
+      }
+    if(!stopped && owner.crossesTrack(from,centre(wh))) {
+      wh.length = was;
+      stopped   = true;
+      }
+    }
+
+  const Vec3 v   = velocity();
+  const Vec3 fwd = axis(2);
+  for(size_t i=0; i<wheels.size(); ++i) {
+    auto& wh = wheels[i];
+    wh.change = stopped || i>=std::size(before) ? 0.f : wh.length-before[i];
     // the wheel's sphere in the shape, for the bodies the wheel runs into
     btTransform local;
     local.setIdentity();
     local.setOrigin(toBt(wh.mount-Vec3{0,std::max(wh.length-WheelLift*wh.radius,prm.springMin),0}-com)*S);
-    shape->updateChildTransform(int(prm.body.size())+int(&wh-wheels.data()),local,false);
+    shape->updateChildTransform(int(prm.body.size())+int(i),local,false);
     // rolling, for drawing
     if(wh.contact && !braking)
       wh.spin = std::fmod(wh.spin+Vec3::dot(v,fwd)/wh.radius*h,2.f*Pi);
     }
   shape->recalculateLocalAabb();
-  // a spring that cannot take the ground in gives the dampers no rate of change (0x4fb340)
-  if(blocked)
-    for(auto& wh:wheels)
-      wh.rate = 0;
-  return blocked;
+  return stopped;
+  }
+
+// RCCars.exe (0x4f0230, 0x4efe00): the wheels touching the track at the start of a part of the step, their spheres
+// within 6 mm of it: where, and the normal there, for the springs, the engine and the tires of that part
+bool Vehicle::wheelTouches() {
+  PhysicsWorld::TrackTouch t;
+  Mat4 m = rot*Mat4::translate(com*-1.f);
+  m.m[0][3] += st.x.x; m.m[1][3] += st.x.y; m.m[2][3] += st.x.z;
+  bool any = false;
+  for(auto& wh:wheels) {
+    wh.contact = owner.touchTrack(m.point(wh.mount-Vec3{0,wh.length,0}),wh.radius+TouchMargin,&t,1)>0;
+    if(wh.contact) {
+      wh.point  = t.point;
+      wh.normal = t.normal;
+      any       = true;
+      }
+    }
+  return any;
   }
 
 // RCCars.exe (0x4edac0, 0x4ee280): the tires act at two wheels at most, one front and one rear: those touching
@@ -1265,12 +1355,8 @@ void Vehicle::surfaces(float dt) {
   groundSnd   = SoundSurface::None;
   groundedNow = false;
   float  wetSum = 0;
-  // per wheel: where it is held back (RCCars.exe: in water by depth, otherwise in deep sand) and how much
-  struct Drag { Vec3 at; float k = 0; };
-  Drag   drags[16];
-  int    dragCount = 0;
   for(int i=0; i<n; ++i) {
-    const Wheel& wh  = wheels[size_t(i)];
+    Wheel&       wh  = wheels[size_t(i)];
     const float r    = wh.radius;
     const Vec3  hub  = m.point({geom.wheels[size_t(i)].center.x,wh.mount.y-wh.length,geom.wheels[size_t(i)].center.z});
     float       inWater = 0;  // how deep the wheel is, 0 .. 1 of its diameter
@@ -1290,25 +1376,14 @@ void Vehicle::surfaces(float dt) {
       groundSnd   = std::max(groundSnd,g);
       groundedNow = true;
       }
-    Drag d;
-    if(depth>0.3f*r) {
-      d.at = hub;
-      d.k  = prm.waterDrag*std::clamp((depth-0.3f*r)/(0.6f*r),0.f,1.f);
-      }
-    if(!wh.contact) {
-      if(d.k>0 && dragCount<int(std::size(drags)))
-        drags[dragCount++] = d;
+    // held back (0x4eeea0): a wheel in water by how deep it is, otherwise one on deep sand
+    wh.drag = depth>0 ? prm.waterDrag*std::clamp((depth-0.3f*r)/(0.6f*r),0.f,1.f) : 0.f;
+    if(!wh.contact)
       continue;
-      }
-    const Vec3    at = wh.point;
-    const Surface s  = track.surfaceBelow(at+Vec3{0,0.02f,0},0.05f);
+    const Surface s = track.surfaceBelow(wh.point+Vec3{0,0.02f,0},0.05f);
     count[size_t(s)]++;
-    if(d.k<=0 && s==Surface::DeepSand) {
-      d.at = at;
-      d.k  = prm.deepSandDrag;
-      }
-    if(d.k>0 && dragCount<int(std::size(drags)))
-      drags[dragCount++] = d;
+    if(depth<=0 && s==Surface::DeepSand)
+      wh.drag = prm.deepSandDrag;
     }
   const float wetNow = n>0 ? wetSum/float(n) : 0.f;
 
@@ -1330,17 +1405,6 @@ void Vehicle::surfaces(float dt) {
     st.P.x *= keep;
     st.P.z *= keep;
     set(st);
-    }
-
-  // deep sand and water hold every wheel in them back: k * v^2 against the motion of that point of the car
-  const float v2 = vel.length()*vel.length();
-  for(int i=0; i<dragCount; ++i) {
-    const Vec3 pv = pointVelocity(drags[i].at);
-    if(pv.length()<1e-4f)
-      continue;
-    const Vec3 f = pv.normalized()*(-prm.mass*drags[i].k*v2);
-    frameForce  = frameForce+f;
-    frameTorque = frameTorque+Vec3::cross(drags[i].at-st.x,f);
     }
 
   // under water: everything slows down, falling and tumbling included

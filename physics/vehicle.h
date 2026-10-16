@@ -218,11 +218,11 @@ class Vehicle {
       bool        driven   = false;   // the rear pair: the engine pulls on these
       float       steerBy  = 0;       // share of the steering angle (the Hummer's middle wheels 1/3)
       float       length   = 0;       // m: the sphere's centre is this far below the mount, along the car's up axis
-      float       rate     = 0;       // m/s: how fast `length` changed in the last step
+      float       change   = 0;       // m: what `length` changed by in the last suspension pass (0x5970)
       bool        contact  = false;
-      bool        blocked  = false;   // the ground is higher than the spring lets the wheel go up
-      Vec3        point, normal;      // world: where the sphere touches the ground, the ground's normal there
+      Vec3        point, normal;      // world: the point of the track the sphere touches, the normal there
       float       spin     = 0;       // rad, for drawing
+      float       drag     = 0;       // 1/m: deep sand or water holding it back, k v^2 (0x4eeea0)
       };
 
     // RCCars.exe's rigid body (car data 0x57f4, state 0x5884): the centre of mass, the orientation, the momentum and
@@ -283,6 +283,7 @@ class Vehicle {
     // the spring lengths after the ground under the wheels, after a move of `h` s, `hit` after one that met the
     // track (0x4fb340); true when the ground is higher than a spring lets its wheel go
     bool                                  suspension(float h, bool hit);
+    bool                                  wheelTouches();
     // the grip of the tires (0x4edac0): the forces at up to one front and one rear wheel that stop the car sliding
     // sideways (or, braking, sliding at all), added to `force` / `torque`
     void                                  tires(float h, Vec3& force, Vec3& torque);
@@ -326,7 +327,9 @@ class Vehicle {
     bool                                  brakeKey = false;
     float                                 drive = 0;      // m/s^2 the engine pulls with (backwards < 0)
     float                                 climb = 0;      // m/s^2 of CarParams::climb while it pulls forwards
-    float                                 movingTime = 0; // s since the car last went slower than 5 km/h
+    float                                 movingTime = 0; // s since the springs last took the slow rest (car data 0x8)
+    bool                                  springsOn  = true; // off for the part after a hit (car data 0x48)
+    bool                                  roofed     = false; // no room above a wheel in the last suspension pass
     bool                                  settling   = false; // placed: gravity and springs only (car data +0xa4)
     bool                                  keysHeld   = false; // throttle, brake, steering or turbo held
     float                                 slowFor    = 0;     // s slower than SleepSpeed      (car data 0x5c74)
@@ -352,7 +355,6 @@ class Vehicle {
     float                                 sinceProp = 1e3f;   // s since the last hit on a prop
 
     std::vector<std::unique_ptr<btSphereShape>> sphereShapes;
-    std::unique_ptr<btSphereShape>        wheelShape[2];      // front, rear: what the wheels are swept with
     std::unique_ptr<btCompoundShape>      shape;
     std::unique_ptr<btDefaultMotionState> motion;
     std::unique_ptr<btRigidBody>          body;

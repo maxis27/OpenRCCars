@@ -350,6 +350,8 @@ void Vehicle::place(const Mat4& pose, const Vec3& velocity, const Vec3& spin) {
   gear         = 1;
   braking      = false;
   brakeKey     = false;
+  throttle     = 0;
+  handbrake    = false;
   drive        = 0;
   movingTime   = 0;
   springsOn    = true;
@@ -384,7 +386,6 @@ void Vehicle::addBoost(float units) {
   }
 
 void Vehicle::update(const Input& in, float dt) {
-  const float v  = speed();
   const float ls = vel.length();
   frameForce = frameTorque = {};
   // the keys that keep the car awake (0x4f59a0)
@@ -435,35 +436,9 @@ void Vehicle::update(const Input& in, float dt) {
   else
     tank = std::min(tank+prm.boostCharge*dt,prm.boostTank);
 
-  // gears and brakes (RCCars.exe, 0x4ee5e0): the brake key brakes going forwards and puts the reverse in once the
-  // car is down to ReverseSpeed, the throttle the same the other way round; the handbrake holds the car. Braking,
-  // the tires hold the car (Vehicle::tires) and the engine does not pull.
-  constexpr float GearSpeed = 2.f;
-  brakeKey = in.throttle<0;
-  braking  = in.handbrake;
-  if(in.throttle>0 && gear<0) {
-    if(std::abs(v)<=GearSpeed) gear = 1; else braking = true;
-    }
-  else if(in.throttle<0 && gear>0) {
-    if(std::abs(v)<=GearSpeed) gear = -1; else braking = true;
-    }
-  // engine (0x4eea50): while it pulls it also cancels the resistance
-  const float resist = prm.airDrag*ls*ls + prm.rolling;
-  drive = 0;
-  climb = 0;
-  if(!braking && in.throttle>0 && gear>0) {
-    if(float a = prm.acceleration(v,in.throttle,boostOn); a>0.001f) {
-      drive = a + resist;
-      climb = prm.climbing(v,in.throttle);
-      }
-    }
-  else if(!braking && in.throttle<0 && gear<0) {
-    const float full = (boostOn ? 1.5f : 1.f)*prm.reverseAccel*(-in.throttle);
-    if(ls<prm.reverseFullSpeed)
-      drive = -full;
-    else if(ls<prm.reverseSpeed)
-      drive = -full*(prm.reverseSpeed-ls)/(prm.reverseSpeed-prm.reverseFullSpeed);
-    }
+  brakeKey  = in.throttle<0;
+  throttle  = in.throttle;
+  handbrake = in.handbrake;
 
   // jump (RCCars.exe): a kick along the car's up axis; tipped over by more than JumpFlipAngle it puts the car
   // back on its wheels instead
@@ -552,6 +527,39 @@ void Vehicle::step(float h) {
   syncChassis();
   }
 
+// gears and brakes (RCCars.exe, 0x4ee5e0), anew for every Euler step of the body that has a wheel on the ground:
+// the brake key brakes going forwards and puts the reverse in once the car is down to GearSpeed (its whole
+// velocity, sideways too), the throttle the same the other way round; the handbrake holds the car. Braking, the
+// tires hold the car (Vehicle::tires) and the engine does not pull. The engine (0x4eea50) pulls with `drive`,
+// cancelling the air and the bearings while it pulls forwards.
+void Vehicle::engine() {
+  constexpr float GearSpeed = 2.f;
+  const float v  = speed();
+  const float ls = vel.length();
+  braking = handbrake;
+  if(throttle>0 && gear<0) {
+    if(ls<=GearSpeed) gear = 1; else braking = true;
+    }
+  else if(throttle<0 && gear>0) {
+    if(ls<=GearSpeed) gear = -1; else braking = true;
+    }
+  drive = 0;
+  climb = 0;
+  if(!braking && throttle>0 && gear>0) {
+    if(float a = prm.acceleration(v,throttle,boostOn); a>0.001f) {
+      drive = a + prm.airDrag*ls*ls + prm.rolling;
+      climb = prm.climbing(v,throttle);
+      }
+    }
+  else if(!braking && throttle<0 && gear<0) {
+    const float full = (boostOn ? 1.5f : 1.f)*prm.reverseAccel*(-throttle);
+    if(ls<prm.reverseFullSpeed)
+      drive = -full;
+    else if(ls<prm.reverseSpeed)
+      drive = -full*(prm.reverseSpeed-ls)/(prm.reverseSpeed-prm.reverseFullSpeed);
+    }
+  }
+
 // RCCars.exe's forces on the car (0x4f0910), anew for every Euler step of the body:
 //  - gravity;
 //  - the air and the bearings (0x4ed970): coeffAirResistance v^2 + coeffFrictionBearings against the motion;
@@ -565,7 +573,8 @@ void Vehicle::step(float h) {
 //    on ground less steep than 46 degrees, half each, along the ground under the wheel; with `climb` added
 //    (0x4ee5e0, CarParams::climb);
 //  - the tires (Vehicle::tires).
-// A car being placed (settling) only has gravity and the springs.
+// A car being placed (settling) only has gravity and the springs, and of them neither a push along the ground
+// nor a turn about the vertical (0x4f0910 zeroes them).
 void Vehicle::forces(float h) {
   const Vec3 up  = axis(1);
   const Vec3 fwd = axis(2);
@@ -599,6 +608,8 @@ void Vehicle::forces(float h) {
 
   if(!settling) {
     // engine
+    if(wheelsOnGround()>0)
+      engine();
     if(!braking && drive!=0) {
       const float grip = prm.gripRear*(drifting() ? prm.driftGrip : 1.f);
       const float a    = std::clamp(drive,-20.f*grip,20.f*grip)*prm.mass;
@@ -637,6 +648,10 @@ void Vehicle::forces(float h) {
     tires(h,force,torque);
     force  = force+frameForce;
     torque = torque+frameTorque;
+    }
+  else {
+    force.x  = force.z = 0;
+    torque.y = 0;
     }
 
   moveForce  = force;

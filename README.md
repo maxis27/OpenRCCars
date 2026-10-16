@@ -435,8 +435,9 @@ lib/Tempest     silnik (submoduł git)
     (`AXLE_FRONT_*_SUPPORT`), a amortyzatory między nadwoziem a osią lub wahaczem obracają się i rozciągają
     (Overkill: sięgają `SpringLength` z `WheelsVisual.crs`, 0,01..0,1 m, 77 → 0,079 m, wzdłuż osi Z węzła);
   - napęd (0x4eea50): siła silnika (najwyżej 20 × przyczepność tyłu) po połowie na tylne koła stojące na
-    podłożu nachylonym mniej niż 46°, wzdłuż podłoża. Klawisz hamulca hamuje i przy |v| ≤ 2 m/s wrzuca wsteczny,
-    gaz tak samo w drugą stronę (0x4ee5e0); hamując silnik nie ciągnie;
+    podłożu nachylonym mniej niż 46°, wzdłuż podłoża. Klawisz hamulca hamuje i przy |v| ≤ 2 m/s (cała prędkość,
+    też w bok) wrzuca wsteczny, gaz tak samo w drugą stronę (0x4ee5e0); hamując silnik nie ciągnie. Biegi, hamulec
+    i siłę silnika gra liczy od nowa w każdym kroku Eulera, gdy choć jedno koło dotyka ziemi;
   - opony (`tires<N>.ini`, 0x4f7fa0, 0x4edac0, 0x4ee280): przyczepność `CoeffFrontTires|RearTires` 0,1..1
     × ulepszenie `TIRES`. Działają najwyżej w dwóch kołach, przednim i tylnym: przy mniej niż 3 kołach na ziemi
     w pierwszych dwóch dotykających, inaczej w zewnętrznych w zakręcie (jadąc prosto w prawych). Każde zatrzymuje
@@ -457,7 +458,8 @@ lib/Tempest     silnik (submoduł git)
     napęd, opony; 0x4f0910) liczą się od nowa przy każdym kroku Eulera, także w próbach szukania zderzenia.
     Opór powietrza i łożysk działa od 0,0001 m/s, bez wygładzania (0x4ed970);
   - start (0x4f27a0): auto postawione na trasie najpierw osiada przez 2 s (100 kroków po 0,02 s) tylko pod
-    grawitacją i sprężynami, które wtedy opadają z szybkością 10·r;
+    grawitacją i sprężynami, które wtedy opadają z szybkością 10·r; gra zeruje przy tym poziomą część siły
+    i obrót wokół pionu (0x4f0910), więc auto osiada w miejscu i nie zsuwa się ani nie obraca;
   - spoczynek (0x4f59a0, 0x4f6610): gdy przez 2 s nie jest wciśnięty gaz, hamulec, skręt ani turbo, auto
     jedzie wolniej niż 1,3 km/h i obraca się wolniej niż 1 rad/s, a od 1 s cały czas dotyka trasy (koło do 6 mm
     od niej albo zderzenie), gra zeruje mu pęd i moment pędu i pomija krok, póki jakaś kula jest do 3 cm od

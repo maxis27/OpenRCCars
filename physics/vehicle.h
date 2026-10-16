@@ -275,6 +275,7 @@ class Vehicle {
     // one step of RCCars.exe's car physics (0x4f5e50)
     void                                  step(float h);
     // the forces on the body as it is now, for an Euler step of `h` s (0x4f0910) -> moveForce / moveTorque
+    void                                  engine();
     void                                  forces(float h);
     // the stillness timers (0x4f59a0); true when the car is held still (0x4f6610)
     bool                                  asleep(float h);
@@ -325,6 +326,8 @@ class Vehicle {
     int                                   gear = 1;       // 1 forward, -1 reverse
     bool                                  braking = false; // the wheels hold the car instead of the engine pulling
     bool                                  brakeKey = false;
+    float                                 throttle = 0;   // Input::throttle of the frame, for Vehicle::engine
+    bool                                  handbrake = false;
     float                                 drive = 0;      // m/s^2 the engine pulls with (backwards < 0)
     float                                 climb = 0;      // m/s^2 of CarParams::climb while it pulls forwards
     float                                 movingTime = 0; // s since the springs last took the slow rest (car data 0x8)

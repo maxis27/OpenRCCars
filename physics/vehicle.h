@@ -222,6 +222,7 @@ class Vehicle {
       bool        contact  = false;
       Vec3        point, normal;      // world: the point of the track the sphere touches, the normal there
       float       spin     = 0;       // rad, for drawing
+      float       drag     = 0;       // 1/m: deep sand or water holding it back, k v^2 (0x4eeea0)
       };
 
     // RCCars.exe's rigid body (car data 0x57f4, state 0x5884): the centre of mass, the orientation, the momentum and
@@ -328,6 +329,7 @@ class Vehicle {
     float                                 climb = 0;      // m/s^2 of CarParams::climb while it pulls forwards
     float                                 movingTime = 0; // s since the springs last took the slow rest (car data 0x8)
     bool                                  springsOn  = true; // off for the part after a hit (car data 0x48)
+    bool                                  roofed     = false; // no room above a wheel in the last suspension pass
     bool                                  settling   = false; // placed: gravity and springs only (car data +0xa4)
     bool                                  keysHeld   = false; // throttle, brake, steering or turbo held
     float                                 slowFor    = 0;     // s slower than SleepSpeed      (car data 0x5c74)

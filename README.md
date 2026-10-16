@@ -421,7 +421,7 @@ lib/Tempest     silnik (submoduł git)
     nie wejdzie przez to w ziemię. Koło, którego środek przeszedłby przez trasę, zostaje. Koło, któremu nic nie
     pomoże, kończy przebieg: reszta zostaje, a krok liczy się jako uderzenie (0x4f5e50). Kół dotykających ziemi
     (w 6 mm od trasy) i ich punktów szuka się na początku każdej części kroku (0x4f0230); po części z uderzeniem
-    sprężyny w następnej nie pchają (0x48 danych auta). U nas kula „w ziemi” to o ponad 2 mm, inaczej koło
+    albo z kołem bez miejsca nad sobą sprężyny w następnej nie pchają (0x48 danych auta). U nas kula „w ziemi” to o ponad 2 mm, inaczej koło
     podnoszone wzdłuż osi auta ze zbocza tylko by go dotykało;
   - rysowanie kół (0x504820 Overkill, 0x505780 Buggy, 0x5068e0 Hummer): gra nigdy nie przesuwa koła o długość
     sprężyny, tylko obraca węzły, na których koła wiszą, więc koła zostają na osiach. Sztywna oś (`FRONT_AXLE`,
@@ -446,8 +446,10 @@ lib/Tempest     silnik (submoduł git)
     (najwyżej 5 × przyczepność z przodu, 10 × z tyłu) i jego prędkość w tym kierunku (najwyżej 10 × przyczepność
     na sekundę). Hamulec ze skrętem powyżej `angleDriftOn` (1..45°) to poślizg: tył ma przyczepność
     × `coeffDriftRear` (1..0,1) i oba koła limit 10. Z kołami prosto opony gaszą też obrót auta (1/s);
-  - głęboki piasek i woda (`tires<N>.ini`, 0..1): każde koło w głębokim piasku dokłada `coeffDeepSand·v²` przeciw
-    ruchowi w swoim punkcie, a w wodzie `coeffWater·v²`, od zera przy kole zanurzonym w 30% do całości przy 90%;
+  - głęboki piasek i woda (`tires<N>.ini`, 0..1; 0x4eeea0): każde koło stojące na ziemi (v to prędkość auta)
+    w wodzie dokłada `coeffWater·v²` przeciw ruchowi punktu, którym jej dotyka, od zera przy kole zanurzonym
+    w 30% do całości przy 90%, a poza wodą w głębokim piasku `coeffDeepSand·v²`; koło w powietrzu nie hamuje.
+    Liczy się to razem z resztą sił przy każdym kroku Eulera;
   - kroki (0x4f6ea0): klatka krótsza niż 0,02 s to jeden krok, dłuższa to kroki po 0,02 s, dopóki zostaje
     więcej niż 0,038 s, a reszta w dwóch połowach (przy 60 kl./s krok 1/60 s). U nas każdy z nich dzieli się
     jeszcze na równe części najwyżej po 1/120 s: przy krokach długości klatki nasze sprężyny co chwilę tracą

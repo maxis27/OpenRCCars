@@ -343,6 +343,7 @@ void Vehicle::place(const Mat4& pose, const Vec3& velocity, const Vec3& spin) {
     wh.change  = 0;
     wh.contact = false;
     wh.spin    = 0;
+    wh.drag    = 0;
     }
   steer        = 0;
   steerDeg     = 0;
@@ -620,6 +621,19 @@ void Vehicle::forces(float h) {
         torque = torque+Vec3::cross(wh.point-c,f);
         }
       }
+    // deep sand and water (0x4eeea0): each wheel on the ground in them is held back by k * v^2 (the car's speed)
+    // against the motion of the point it touches
+    const float v2 = vel.length()*vel.length();
+    for(auto& wh:wheels) {
+      if(!wh.contact || wh.drag<=0)
+        continue;
+      Vec3 pv = pointVelocity(wh.point);
+      if(const float l = pv.length(); l>=1e-6f)
+        pv = pv*(1.f/l);
+      const Vec3 f = pv*(-prm.mass*wh.drag*v2);
+      force  = force+f;
+      torque = torque+Vec3::cross(wh.point-c,f);
+      }
     tires(h,force,torque);
     force  = force+frameForce;
     torque = torque+frameTorque;
@@ -846,11 +860,12 @@ void Vehicle::move(float h) {
     float t = std::clamp(sweep(from,rest),0.f,rest);
     // a body sphere in the track, or else, after the springs have followed the ground, a wheel's where a spring
     // cannot take it in
+    roofed = false;
     bool hit = penetrates(BodySpheres);
     if(!hit && suspension(t,false))
       hit = penetrates(WheelSpheres);
-    // the springs push in the next part only after one that met nothing (0x4f5e50)
-    springsOn = !hit;
+    // the springs push in the next part only after one that met nothing, with room above the wheels (0x4f5e50)
+    springsOn = !hit && !roofed;
     if(hit) {
       sinceTouch = 0;
       // what the sounds hear of it (0x4f6730): where it went in, at the speed it went in
@@ -946,10 +961,12 @@ bool Vehicle::suspension(float h, bool hit) {
 
   // the room above the wheels (0x4fbd70)
   bool roof = false;
+  roofed = false;
   for(auto& wh:wheels) {
     const float r = 1.5f*wh.radius;
     if(owner.touchTrack(centre(wh)+Vec3{0,r,0},r,&t,1)>0) {
-      roof = true;
+      roof   = true;
+      roofed = true;
       break;
       }
     }
@@ -1338,12 +1355,8 @@ void Vehicle::surfaces(float dt) {
   groundSnd   = SoundSurface::None;
   groundedNow = false;
   float  wetSum = 0;
-  // per wheel: where it is held back (RCCars.exe: in water by depth, otherwise in deep sand) and how much
-  struct Drag { Vec3 at; float k = 0; };
-  Drag   drags[16];
-  int    dragCount = 0;
   for(int i=0; i<n; ++i) {
-    const Wheel& wh  = wheels[size_t(i)];
+    Wheel&       wh  = wheels[size_t(i)];
     const float r    = wh.radius;
     const Vec3  hub  = m.point({geom.wheels[size_t(i)].center.x,wh.mount.y-wh.length,geom.wheels[size_t(i)].center.z});
     float       inWater = 0;  // how deep the wheel is, 0 .. 1 of its diameter
@@ -1363,25 +1376,14 @@ void Vehicle::surfaces(float dt) {
       groundSnd   = std::max(groundSnd,g);
       groundedNow = true;
       }
-    Drag d;
-    if(depth>0.3f*r) {
-      d.at = hub;
-      d.k  = prm.waterDrag*std::clamp((depth-0.3f*r)/(0.6f*r),0.f,1.f);
-      }
-    if(!wh.contact) {
-      if(d.k>0 && dragCount<int(std::size(drags)))
-        drags[dragCount++] = d;
+    // held back (0x4eeea0): a wheel in water by how deep it is, otherwise one on deep sand
+    wh.drag = depth>0 ? prm.waterDrag*std::clamp((depth-0.3f*r)/(0.6f*r),0.f,1.f) : 0.f;
+    if(!wh.contact)
       continue;
-      }
-    const Vec3    at = wh.point;
-    const Surface s  = track.surfaceBelow(at+Vec3{0,0.02f,0},0.05f);
+    const Surface s = track.surfaceBelow(wh.point+Vec3{0,0.02f,0},0.05f);
     count[size_t(s)]++;
-    if(d.k<=0 && s==Surface::DeepSand) {
-      d.at = at;
-      d.k  = prm.deepSandDrag;
-      }
-    if(d.k>0 && dragCount<int(std::size(drags)))
-      drags[dragCount++] = d;
+    if(depth<=0 && s==Surface::DeepSand)
+      wh.drag = prm.deepSandDrag;
     }
   const float wetNow = n>0 ? wetSum/float(n) : 0.f;
 
@@ -1403,17 +1405,6 @@ void Vehicle::surfaces(float dt) {
     st.P.x *= keep;
     st.P.z *= keep;
     set(st);
-    }
-
-  // deep sand and water hold every wheel in them back: k * v^2 against the motion of that point of the car
-  const float v2 = vel.length()*vel.length();
-  for(int i=0; i<dragCount; ++i) {
-    const Vec3 pv = pointVelocity(drags[i].at);
-    if(pv.length()<1e-4f)
-      continue;
-    const Vec3 f = pv.normalized()*(-prm.mass*drags[i].k*v2);
-    frameForce  = frameForce+f;
-    frameTorque = frameTorque+Vec3::cross(drags[i].at-st.x,f);
     }
 
   // under water: everything slows down, falling and tumbling included

@@ -410,11 +410,19 @@ lib/Tempest     silnik (submoduł git)
     sprężynę i ściągać auto w dół (gra ogranicza je do 2·10⁶ × siła sprężyny, czyli praktycznie wcale), a gdy
     któraś sprężyna nie mieści podłoża, zmiana długości liczy się jako zero; do ruchu liczy się tylko część wzdłuż normalnej podłoża, a moment w osiach auta razy
     `coeffMomentOX` (0,5..2, pochylenie) i `coeffMomentOZ` (1..3, przechył), bez obrotu wokół pionu.
-    Koło wciśnięte w ziemię od razu idzie w górę (najwyżej do `lenMin`), w dół opada do spoczynku (`length`, a
-    gdy auto jedzie wolniej niż 5 km/h i w tej części kroku uderzyło w trasę albo któraś sprężyna nie mieści
-    podłoża, `length − 0,95·kPos`) z szybkością r (promień koła) na sekundę, a po t s jazdy szybciej niż 5 km/h
-    r·(1 + 18·t), czyli 10·r od 0,5 s (0x4fb340). Sprężyny idą za podłożem po każdej części kroku, już po ruchu
-    nadwozia;
+    Koło to kula o promieniu r wisząca `długość` pod górą sprężyny wzdłuż osi „w górę” auta (0x4ef680). Po ruchu
+    nadwozia, koło po kole (0x4fb340): kula w ziemi idzie w górę (0x4fb9e0) do 5 razy o tyle, ile trzeba, żeby
+    dotykany punkt trasy wyszedł z niej wzdłuż osi auta, plus 0,01 r, najwyżej do `lenMin` i łącznie o 0,95 r; gdy
+    nad którymś kołem nie ma miejsca (trasa w kuli 1,5 r nad jego środkiem, 0x4fbd70), idzie zamiast tego ku wolnemu
+    spoczynkowi o 0,95 r na sekundę. Wolna kula zmierza do spoczynku (`length`, a gdy auto jedzie wolniej niż
+    5 km/h i w tej części kroku uderzyło w trasę albo nad kołem nie ma miejsca, `length − 0,95·kPos`): w dół o r na
+    sekundę, r·(1 + 18·t) po t s od ostatniego wolnego spoczynku, 10·r od 0,5 s i przy ustawianiu auta, najwyżej
+    0,99 r na krok, po czym znowu wychodzi z ziemi, ale nie wyżej, niż była (0x4fbc50); w górę o tyle samo, o ile
+    nie wejdzie przez to w ziemię. Koło, którego środek przeszedłby przez trasę, zostaje. Koło, któremu nic nie
+    pomoże, kończy przebieg: reszta zostaje, a krok liczy się jako uderzenie (0x4f5e50). Kół dotykających ziemi
+    (w 6 mm od trasy) i ich punktów szuka się na początku każdej części kroku (0x4f0230); po części z uderzeniem
+    sprężyny w następnej nie pchają (0x48 danych auta). U nas kula „w ziemi” to o ponad 2 mm, inaczej koło
+    podnoszone wzdłuż osi auta ze zbocza tylko by go dotykało;
   - rysowanie kół (0x504820 Overkill, 0x505780 Buggy, 0x5068e0 Hummer): gra nigdy nie przesuwa koła o długość
     sprężyny, tylko obraca węzły, na których koła wiszą, więc koła zostają na osiach. Sztywna oś (`FRONT_AXLE`,
     `REAR_AXLE`) wychyla się o atan(opad kół / `lenAxe`) (0,05..0,2 m), najwyżej 30° w dół i 90° w górę, i przechyla

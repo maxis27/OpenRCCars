@@ -373,7 +373,11 @@ lib/Tempest     silnik (submoduł git)
   - silnik (`engine<N>.ini`): bez dopalacza przyspieszenie = krzywa auta w punkcie `v·3,6 / (gaz · RESONATORS)`,
     razy `RESONATORS *_SPL_OY`; powyżej `speedBaseMax + 0,1` km/h × `RESONATORS` silnik nie ciągnie. Z dopalaczem
     krzywa jest rozciągnięta o `speedBoostMax / speedBaseMax`, ×1,2, a limit to `speedBoostMax + 0,1`. Kiedy silnik
-    ciągnie, dodaje też opór (niżej), więc na płaskim auto przyspiesza dokładnie wg krzywej. Wsteczny: 4 m/s²
+    ciągnie, dodaje też opór (niżej), więc na płaskim auto przyspiesza dokładnie wg krzywej. Siła silnika najwyżej
+    20 × przyczepność tyłu (w poślizgu razem z `coeffDriftRear`). Pod górę (napęd ponad 10° od poziomu), gdy
+    sprężyny spychają auto w dół zbocza, każde tylne koło dodaje połowę krzywej `Splines/<auto>_RESTRICT.bspl`
+    w punkcie `v·3,6 / (gaz · RESONATORS)`, najwyżej tyle, ile spychają (0x4ee5e0): Overkill +2 m/s² do 15 km/h,
+    Hummer +6 do 20 km/h, Buggy −4 do 25 km/h (pod górę słabszy). Wsteczny: 4 m/s²
     (z dopalaczem 6) do 2,83 m/s, dalej malejąco do zera przy 3,33 m/s (12 km/h);
   - opór (`resistance<N>.ini`): `a = coeffAirResistance·v² + coeffFrictionBearings` przeciw ruchowi, zakresy 0..0,1
     i 0..10 (Overkill 0,032 i 0,51);
@@ -402,12 +406,15 @@ lib/Tempest     silnik (submoduł git)
   - sprężyny (`springs<N>.ini`, 0x4f91b0, 0x4f0f80): `length` 0,01..0,5 m, `lenMin` × 0,1..0,9, `lenMax`
     × 1,1..2, ugięcie `kPos` = (length − lenMin) × 0,1..0,9, tłumienie `kSpeed` 1..10, mocowanie `touchPoint`
     (0..1 m) nad piastą. Sztywność k = m·g / (liczba kół · ugięcie). Koło dotykające ziemi pcha auto wzdłuż jego osi
-    „w górę” siłą k·(length − długość − 0,02 r) − kSpeed·(zmiana długości)/dt, tłumienie najwyżej tyle co
-    sprężyna; do ruchu liczy się tylko część wzdłuż normalnej podłoża, a moment w osiach auta razy
+    „w górę” siłą k·(length − długość − 0,02 r) − kSpeed·(zmiana długości)/dt; tłumienie może przeważyć
+    sprężynę i ściągać auto w dół (gra ogranicza je do 2·10⁶ × siła sprężyny, czyli praktycznie wcale), a gdy
+    któraś sprężyna nie mieści podłoża, zmiana długości liczy się jako zero; do ruchu liczy się tylko część wzdłuż normalnej podłoża, a moment w osiach auta razy
     `coeffMomentOX` (0,5..2, pochylenie) i `coeffMomentOZ` (1..3, przechył), bez obrotu wokół pionu.
     Koło wciśnięte w ziemię od razu idzie w górę (najwyżej do `lenMin`), w dół opada do spoczynku (`length`, a
-    wolniej niż 5 km/h `length − 0,95·kPos`) z szybkością r (promień koła) na sekundę, a po t s jazdy szybciej
-    niż 5 km/h r·(1 + 18·t), czyli 10·r od 0,5 s (0x4fb340);
+    gdy auto jedzie wolniej niż 5 km/h i w tej części kroku uderzyło w trasę albo któraś sprężyna nie mieści
+    podłoża, `length − 0,95·kPos`) z szybkością r (promień koła) na sekundę, a po t s jazdy szybciej niż 5 km/h
+    r·(1 + 18·t), czyli 10·r od 0,5 s (0x4fb340). Sprężyny idą za podłożem po każdej części kroku, już po ruchu
+    nadwozia;
   - rysowanie kół (0x504820 Overkill, 0x505780 Buggy, 0x5068e0 Hummer): gra nigdy nie przesuwa koła o długość
     sprężyny, tylko obraca węzły, na których koła wiszą, więc koła zostają na osiach. Sztywna oś (`FRONT_AXLE`,
     `REAR_AXLE`) wychyla się o atan(opad kół / `lenAxe`) (0,05..0,2 m), najwyżej 30° w dół i 90° w górę, i przechyla
@@ -426,11 +433,25 @@ lib/Tempest     silnik (submoduł git)
     × ulepszenie `TIRES`. Działają najwyżej w dwóch kołach, przednim i tylnym: przy mniej niż 3 kołach na ziemi
     w pierwszych dwóch dotykających, inaczej w zewnętrznych w zakręcie (jadąc prosto w prawych). Każde zatrzymuje
     poślizg w bok (hamując: każdy poślizg) siłą, która razem z drugą znosi przyspieszenie punktu koła od reszty sił
+    wzdłuż obracającego się z autem kierunku, razem z odśrodkowym i z prędkością punktu wzdłuż obrotu tego
+    kierunku (0x476c50, 0x476ba0; bez tego auto ślizgało się w każdym zakręcie)
     (najwyżej 5 × przyczepność z przodu, 10 × z tyłu) i jego prędkość w tym kierunku (najwyżej 10 × przyczepność
     na sekundę). Hamulec ze skrętem powyżej `angleDriftOn` (1..45°) to poślizg: tył ma przyczepność
     × `coeffDriftRear` (1..0,1) i oba koła limit 10. Z kołami prosto opony gaszą też obrót auta (1/s);
   - głęboki piasek i woda (`tires<N>.ini`, 0..1): każde koło w głębokim piasku dokłada `coeffDeepSand·v²` przeciw
     ruchowi w swoim punkcie, a w wodzie `coeffWater·v²`, od zera przy kole zanurzonym w 30% do całości przy 90%;
+  - kroki (0x4f6ea0): klatka krótsza niż 0,02 s to jeden krok, dłuższa to kroki po 0,02 s, dopóki zostaje
+    więcej niż 0,038 s, a reszta w dwóch połowach (przy 60 kl./s krok 1/60 s). U nas każdy z nich dzieli się
+    jeszcze na równe części najwyżej po 1/120 s: przy krokach długości klatki nasze sprężyny co chwilę tracą
+    i łapią podłoże, więc stojące auto drży bez końca (np. na deskach pomostu). Siły (grawitacja, opór, sprężyny,
+    napęd, opony; 0x4f0910) liczą się od nowa przy każdym kroku Eulera, także w próbach szukania zderzenia.
+    Opór powietrza i łożysk działa od 0,0001 m/s, bez wygładzania (0x4ed970);
+  - start (0x4f27a0): auto postawione na trasie najpierw osiada przez 2 s (100 kroków po 0,02 s) tylko pod
+    grawitacją i sprężynami, które wtedy opadają z szybkością 10·r;
+  - spoczynek (0x4f59a0, 0x4f6610): gdy przez 2 s nie jest wciśnięty gaz, hamulec, skręt ani turbo, auto
+    jedzie wolniej niż 1,3 km/h i obraca się wolniej niż 1 rad/s, a od 1 s cały czas dotyka trasy (koło do 6 mm
+    od niej albo zderzenie), gra zeruje mu pęd i moment pędu i pomija krok, póki jakaś kula jest do 3 cm od
+    trasy. Które bity klawiszy gra sprawdza, odczytaliśmy tylko po turbo (0x577c); reszta to nasze założenie;
   - ruch i trasa (0x4f5e50): krok dzieli się na najwyżej 3 części. Każda najpierw przycina pęd do 20 i moment pędu
     do 1 (0x4f5770), potem przesuwa auto krokiem Eulera (0x4f5590) o tyle, ile kroku zostało, a gdy po drodze kula
     przeszłaby przez ścianę, tylko o tyle, by żaden punkt kuli nie przeszedł więcej niż 0,9 promienia, połowiąc, aż

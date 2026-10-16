@@ -50,6 +50,7 @@ CarParams CarParams::load(PackFile& pack, int32_t car, int32_t upgrade) {
   p.accel = spline(pack,Engine[p.car-1]);
   if(p.accel.empty())
     p.accel = Spline({{0,6.f},{32.f,0}});
+  p.climb = spline(pack,std::string(Engine[p.car-1])+"_RESTRICT");
 
   KeySections up;
   if(auto e = pack.find("Scripts\\upgrades.ini")) {
@@ -157,6 +158,13 @@ CarParams CarParams::load(PackFile& pack, int32_t car, int32_t upgrade) {
       p.body.push_back(sp);
       }
   return p;
+  }
+
+float CarParams::climbing(float v, float throttle) const {
+  throttle = std::abs(throttle);
+  if(throttle<=0 || climb.empty())
+    return 0;
+  return climb.at(v*3.6f/(throttle*resonator));
   }
 
 float CarParams::steerRate(float speed) {

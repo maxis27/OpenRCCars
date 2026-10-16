@@ -25,6 +25,8 @@ struct btDefaultMotionState;
 
 namespace rc {
 
+class Vehicle;
+
 // Bullet world of one track. The track is a static triangle mesh made of the COLL triangles but the water: what
 // the props (Prop) standing on the track hit. The cars (Vehicle) move by RCCars.exe's own rules, against the same
 // triangles (touchTrack, crossesTrack); Bullet only tells them what other bodies they touch.
@@ -41,9 +43,10 @@ class PhysicsWorld {
     explicit PhysicsWorld(const CollisionMesh& track);
     ~PhysicsWorld();
 
-    // advances the simulation in fixed steps of FixedDt (at most 8 per call)
+    // advances the cars as RCCars.exe does (Vehicle::advance), then the props in fixed steps of FixedDt (at most
+    // 8 per call)
     void                     step(float dt);
-    // s of the last step() not simulated yet (less than FixedDt): what the bodies are drawn ahead by
+    // s of the last step() the props are not simulated for yet (less than FixedDt)
     float                    pending() const { return localTime; }
 
     // a point of the solid track (not water) within reach of a sphere (RCCars.exe 0x4549f0)
@@ -75,6 +78,7 @@ class PhysicsWorld {
     uint8_t                  groundSound(int triangle) const;
 
   private:
+    friend class Vehicle;
     const CollisionMesh&                                  coll;
     std::unique_ptr<btDefaultCollisionConfiguration>      config;
     std::unique_ptr<btCollisionDispatcher>                dispatcher;
@@ -89,6 +93,7 @@ class PhysicsWorld {
     std::unique_ptr<btRigidBody>                          groundBody;
     std::vector<uint32_t>                                 solidTris;   // ground mesh triangle -> CollisionMesh one
     float                                                 localTime = 0;
+    std::vector<Vehicle*>                                 cars;        // Vehicle adds and removes itself
     mutable std::vector<uint32_t>                         seen;        // touchTrack: triangle -> query it was last seen in
     mutable uint32_t                                      query = 0;
   };
@@ -205,7 +210,7 @@ class Vehicle {
     Mat4                       wheelPose(size_t i) const;
 
   private:
-    class Action;
+    friend class PhysicsWorld;
     struct Wheel {
       Vec3        mount;              // model space: the top of the spring, CarParams::springMount above the hub
       float       radius   = 0;
@@ -243,8 +248,8 @@ class Vehicle {
 
     // the body at `b`, with what follows from it: rotation, velocities, the inverse inertia
     void                                  set(const Body& b);
-    // Euler step of `h` s from `from` (0x4f5590, 0x4f5400) under moveForce / moveTorque
-    Body                                  advanced(const Body& from, float h) const;
+    // Euler step of `h` s from `from` (0x4f5590) under the forces there (0x4f5400 -> forces())
+    Body                                  advanced(const Body& from, float h);
     void                                  spheres(std::vector<Sphere>& out, Which which) const;
     // a sphere is inside the track (0x4efdc0), but those that were at the start of the move part
     bool                                  penetrates(Which which) const;
@@ -265,10 +270,19 @@ class Vehicle {
     Vec3                                  inertia(const Vec3& v) const;
     Vec3                                  axis(int i) const { return {rot.m[0][i],rot.m[1][i],rot.m[2][i]}; }
 
-    // one step of RCCars.exe's car physics, called by Bullet on every fixed step of PhysicsWorld
+    // the frame of `dt` s in RCCars.exe's steps (0x4f6ea0, see PhysicsWorld::step)
+    void                                  advance(float dt);
+    // one step of RCCars.exe's car physics (0x4f5e50)
     void                                  step(float h);
-    // the spring lengths after the ground under the wheels (0x4fb340)
-    void                                  suspension(float h);
+    // the forces on the body as it is now, for an Euler step of `h` s (0x4f0910) -> moveForce / moveTorque
+    void                                  forces(float h);
+    // the stillness timers (0x4f59a0); true when the car is held still (0x4f6610)
+    bool                                  asleep(float h);
+    // a sphere (`which`) is within `margin` of the track (0x4efe00)
+    bool                                  near(Which which, float margin) const;
+    // the spring lengths after the ground under the wheels, after a move of `h` s, `hit` after one that met the
+    // track (0x4fb340); true when the ground is higher than a spring lets its wheel go
+    bool                                  suspension(float h, bool hit);
     // the grip of the tires (0x4edac0): the forces at up to one front and one rear wheel that stop the car sliding
     // sideways (or, braking, sliding at all), added to `force` / `torque`
     void                                  tires(float h, Vec3& force, Vec3& torque);
@@ -290,7 +304,7 @@ class Vehicle {
     Mat4                                  rot;        // rotation of st
     Vec3                                  vel, omega; // m/s, rad/s, world
     Vec3                                  inertiaBody; // kg m^2, about the car's own axes
-    Vec3                                  frameForce, frameTorque; // pushed by update() for the whole frame
+    Vec3                                  frameForce, frameTorque; // pushed by update() for the whole frame (water, sand)
     Vec3                                  moveForce, moveTorque;   // the forces of the step move() runs
     std::vector<Sphere>                   sphereBuf[2];
     std::vector<Touch>                    touchBuf;
@@ -311,7 +325,14 @@ class Vehicle {
     bool                                  braking = false; // the wheels hold the car instead of the engine pulling
     bool                                  brakeKey = false;
     float                                 drive = 0;      // m/s^2 the engine pulls with (backwards < 0)
+    float                                 climb = 0;      // m/s^2 of CarParams::climb while it pulls forwards
     float                                 movingTime = 0; // s since the car last went slower than 5 km/h
+    bool                                  settling   = false; // placed: gravity and springs only (car data +0xa4)
+    bool                                  keysHeld   = false; // throttle, brake, steering or turbo held
+    float                                 slowFor    = 0;     // s slower than SleepSpeed      (car data 0x5c74)
+    float                                 calmFor    = 0;     // s turning slower than SleepSpin (0x5c78)
+    float                                 sinceTouch = 2e6f;  // s since a wheel or a hit touched the track (0x5c7c)
+    float                                 touchFor   = 0;     // s touching it all along (0x5c80)
     float                                 jumpTimer = 0;
     float                                 tank = 0;
     float                                 boostTimer = 0;     // s since the start or since the tank ran dry
@@ -335,7 +356,6 @@ class Vehicle {
     std::unique_ptr<btCompoundShape>      shape;
     std::unique_ptr<btDefaultMotionState> motion;
     std::unique_ptr<btRigidBody>          body;
-    std::unique_ptr<Action>               action;
   };
 
 }

@@ -46,9 +46,6 @@ class MainWindow : public Tempest::Window {
     void resizeEvent    (Tempest::SizeEvent&  e) override;
     void keyDownEvent   (Tempest::KeyEvent&   e) override;
     void keyUpEvent     (Tempest::KeyEvent&   e) override;
-    void mouseDownEvent (Tempest::MouseEvent& e) override;
-    void mouseDragEvent (Tempest::MouseEvent& e) override;
-    void mouseWheelEvent(Tempest::MouseEvent& e) override;
 
     void resetSwapchain();
     void tick(float dt);
@@ -165,7 +162,6 @@ class MainWindow : public Tempest::Window {
     int                     forcedDirt  = -1;    // dt0..dt5 (0x532490): the car's dirt held at that level, dtx: -1
     Camera                  camera;
     ChaseCamera             chase;          // the camera behind the car (Settings\Camera.ini)
-    bool                    freeCamera = false; // V (developer mode)
     bool                    showCollision = false; // K: collision debug overlay (developer mode)
     bool                    showGates     = false; // G: checkpoint gates outlined (developer mode)
 
@@ -174,8 +170,6 @@ class MainWindow : public Tempest::Window {
     uint8_t                 frameId = 0;
 
     std::array<bool,256>    keys = {};
-    Tempest::Point          mousePos;
-    float                   speed    = 8.f; // m/s
     uint64_t                lastTick = 0;
     float                   time     = 0; // seconds since start, animates the water
   };

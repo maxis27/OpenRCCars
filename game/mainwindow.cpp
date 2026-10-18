@@ -271,7 +271,7 @@ ChaseCamera::Car MainWindow::chaseCar() const {
   c.velocity = vehicle ? vehicle->velocity() : rc::Vec3{};
   c.spin     = vehicle ? vehicle->localSpin().length() : 0.f;
   // RCCars.exe 0x500c1d: the boost and the gas keys, held
-  const bool control = race && !race->holdCar() && !freeCamera && !flying;
+  const bool control = race && !race->holdCar() && zeroCam==ZeroCam::Off && !flying;
   c.boost    = control && (keys[Event::K_LShift] || keys[Event::K_RShift]) && (keys[Event::K_W] || keys[Event::K_Up]);
   // a person picking the car up holds the camera still (RCCars.exe 0x4f3640)
   c.grabbed  = characters && characters->grabbedPlayer();
@@ -405,18 +405,11 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     if(vehicle)
       vehicle->reset(at);   // same place, standing still
     }
-  if(e.key==Event::K_Space && !freeCamera && !flying)
+  if(e.key==Event::K_Space && zeroCam==ZeroCam::Off && !flying)
     jumpPressed = true;
   // our debug keys, only in the developer mode (-dev)
   if(devMode && e.key==Event::K_T && vehicle && !flying)
     vehicle->recover();
-  if(devMode && e.key==Event::K_V) {
-    freeCamera = !freeCamera;
-    if(freeCamera)
-      chase.apply(chaseCar(),nullptr,0,camera); // free flight starts from the chase view
-    }
-  if(devMode && e.key==Event::K_K)
-    showCollision = !showCollision;
   if(devMode && e.key==Event::K_G)
     showGates = !showGates;
   // R: back to the last checkpoint, as in the original
@@ -462,21 +455,6 @@ void MainWindow::keyUpEvent(KeyEvent& e) {
   keys[e.key] = false;
   }
 
-void MainWindow::mouseDownEvent(MouseEvent& e) {
-  mousePos = e.pos();
-  }
-
-void MainWindow::mouseDragEvent(MouseEvent& e) {
-  const auto d = e.pos()-mousePos;
-  mousePos = e.pos();
-  if(freeCamera)
-    camera.rotate(float(d.x)*0.2f,-float(d.y)*0.2f);
-  }
-
-void MainWindow::mouseWheelEvent(MouseEvent& e) {
-  speed = (e.delta>0) ? speed*1.25f : speed/1.25f;
-  }
-
 void MainWindow::tick(float dt) {
   sounds->tick();
   const bool stopped = zeroCam==ZeroCam::Detached && !frameStep;
@@ -499,7 +477,7 @@ void MainWindow::tick(float dt) {
     if(race->holdCar() || shotTime>=0) {
       in.handbrake = true;  // waiting for the start, or shot (RCCars.exe 0x4f6b20: no keys, Brake held)
       }
-    else if(!freeCamera && !flying) {
+    else if(zeroCam==ZeroCam::Off && !flying) {
       const bool up    = keys[Event::K_W] || keys[Event::K_Up];
       const bool down  = keys[Event::K_S] || keys[Event::K_Down];
       const bool left  = keys[Event::K_A] || keys[Event::K_Left];
@@ -513,7 +491,7 @@ void MainWindow::tick(float dt) {
     jumpPressed = false;
     if(flying) {
       // RCCars.exe 0x4f39e0 -> 0x482900: moved by hand instead of the physics, at rest where it is put
-      if(!freeCamera && zeroCam==ZeroCam::Off)
+      if(zeroCam==ZeroCam::Off)
         fly(dt);
       vehicle->hold(flightPose);
       }
@@ -573,7 +551,7 @@ void MainWindow::tick(float dt) {
     lastCarPos = at;
     arrow->tick(dt,arrowInput());
     {
-      const bool driving = !race->holdCar() && !freeCamera && !flying;
+      const bool driving = !race->holdCar() && zeroCam==ZeroCam::Off && !flying;
       const bool gas     = driving && (keys[Event::K_W] || keys[Event::K_Up]);
       const bool brake   = driving && (keys[Event::K_S] || keys[Event::K_Down]);
       effects->tick(dt,*vehicle,opponents.get(),level->collision(),camera.position,gas,brake);
@@ -621,37 +599,19 @@ void MainWindow::tick(float dt) {
     tickSounds(dt);
     }
 
-  if(!freeCamera && zeroCam!=ZeroCam::Off) {
+  if(zeroCam!=ZeroCam::Off) {
     tickZeroCamera(dt);
     return;
     }
-  if(!freeCamera && flying) {
+  if(flying) {
     // 0x500ce9, 0x501183: rigid behind the car, nothing hides it, under water too
     chase.applyRigid(chaseCar(),camera);
     return;
     }
-  if(!freeCamera) {
-    const ChaseCamera::Car c = chaseCar();
-    chase.update(c,dt);
-    chase.apply(c,&level->collision(),dt,camera);
-    level->keepAboveWater(camera,time);
-    return;
-    }
-  const float s = speed*dt*((keys[Event::K_LShift] || keys[Event::K_RShift]) ? 4.f : 1.f);
-  float f = 0, r = 0, u = 0;
-  if(keys[Event::K_W]) f += s;
-  if(keys[Event::K_S]) f -= s;
-  if(keys[Event::K_D]) r += s;
-  if(keys[Event::K_A]) r -= s;
-  if(keys[Event::K_E] || keys[Event::K_Space]) u += s;
-  if(keys[Event::K_Q] || keys[Event::K_C])     u -= s;
-  camera.move(f,r,u);
-
-  const float rs = 90.f*dt;
-  if(keys[Event::K_Left])  camera.rotate(-rs,0);
-  if(keys[Event::K_Right]) camera.rotate( rs,0);
-  if(keys[Event::K_Up])    camera.rotate(0, rs);
-  if(keys[Event::K_Down])  camera.rotate(0,-rs);
+  const ChaseCamera::Car c = chaseCar();
+  chase.update(c,dt);
+  chase.apply(c,&level->collision(),dt,camera);
+  level->keepAboveWater(camera,time);
   }
 
 void MainWindow::setFlying(bool on) {
@@ -811,7 +771,7 @@ void MainWindow::tickZeroCamera(float dt) {
 
 void MainWindow::tickSounds(float dt) {
   const bool racing = race->phase()==rc::Race::Phase::Racing;
-  const bool control = !race->holdCar() && !freeCamera && !flying;
+  const bool control = !race->holdCar() && zeroCam==ZeroCam::Off && !flying;
   const float fwd   = vehicle->speed();
   airborne = !vehicle->grounded() ? airborne+dt : 0.f;
 

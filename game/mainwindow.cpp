@@ -334,32 +334,31 @@ DirectionArrow::Input MainWindow::arrowInput() const {
   return in;
   }
 
-std::vector<rc::Mat4> MainWindow::carPartPoses() const {
+std::vector<rc::Mat4> MainWindow::partPoses(const ModelMesh& mesh, const rc::CarGeometry& geom,
+                                            const rc::CarRig::Pose& pose) {
   std::vector<rc::Mat4> ret;
-  for(auto& p:car->parts()) {
-    rc::Mat4 m = rc::Mat4::translate(p.pivot);
-    if(vehicle!=nullptr && !p.name.empty()) {
-      auto& wheels = vehicle->geometry().wheels;
-      for(size_t i=0; i<wheels.size(); ++i)
-        if(wheels[i].name==p.name)
-          m = vehicle->wheelPose(i);
-      }
+  for(auto& p:mesh.parts()) {
+    rc::Mat4 m = pose.part(p.name,p.pivot);
+    for(size_t i=0; i<geom.wheels.size() && !p.name.empty(); ++i)
+      if(geom.wheels[i].name==p.name)
+        m = pose.wheel(i);
     ret.push_back(m);
     }
   return ret;
   }
 
-std::vector<rc::Mat4> MainWindow::opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const {
-  std::vector<rc::Mat4> ret;
-  auto& wheels = o.geometry().wheels;
-  for(auto& p:mesh.parts()) {
-    rc::Mat4 m = rc::Mat4::translate(p.pivot);
-    for(size_t i=0; i<wheels.size() && !p.name.empty(); ++i)
-      if(wheels[i].name==p.name)
-        m = o.wheelPose(i);
-    ret.push_back(m);
+std::vector<rc::Mat4> MainWindow::carPartPoses() const {
+  if(vehicle==nullptr) {
+    std::vector<rc::Mat4> ret;
+    for(auto& p:car->parts())
+      ret.push_back(rc::Mat4::translate(p.pivot));
+    return ret;
     }
-  return ret;
+  return partPoses(*car,vehicle->geometry(),vehicle->rigPose());
+  }
+
+std::vector<rc::Mat4> MainWindow::opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const {
+  return partPoses(mesh,o.geometry(),o.rigPose());
   }
 
 void MainWindow::resetSwapchain() {
@@ -609,13 +608,14 @@ void MainWindow::tick(float dt) {
       upsideDown = 0;
       }
     // back to the last checkpoint (RCCars.exe 0x508160): out of the track's collision box (sideways, or more
-    // than 0.1 m under it), drowned, or a while in a reset volume; never while F9 flies the car (0x5082c0)
+    // than 0.1 m under it), drowned, a while in a reset volume or stuck in the track (0x4f5e50); never while F9
+    // flies the car (0x5082c0)
     const auto&    grid = level->scene().collision;
     const rc::Vec3 pos  = carPose.translation();
     const bool     out  = !grid.empty() && (pos.x<grid.min.x || pos.x>grid.max.x || pos.z<grid.min.z ||
                                             pos.z>grid.max.z || pos.y<grid.min.y-0.1f);
     const bool inVolume = resetVolumes.tick(pos,dt);
-    if(!flying && (out || vehicle->drowned() || inVolume || shotTime>rc::Vehicle::ShotHold)) {
+    if(!flying && (out || vehicle->drowned() || vehicle->stuck() || inVolume || shotTime>rc::Vehicle::ShotHold)) {
       respawnCar();
       }
     tickSounds(dt);

@@ -26,13 +26,14 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   z tego powstaje siatka kolizji (trójkąty w przestrzeni świata) z raycastem po komórkach (DDA). Auto staje na
   ziemi wyznaczonej raycastem. Klawisz **K** (w trybie `-dev`) pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
   ściany, niebieskie niewidoczne ściany (ściany bez tekstury)
-- **fizyka jazdy** ([Bullet](https://github.com/bulletphysics/bullet3) `btRaycastVehicle`): auto jeździ po trasie
-  z klawiatury. Koła to promienie rzucane przez siatkę kolizji `COLL` (raycast z kroku 2), nadwozie to prostopadłościan
-  zderzający się z tymi samymi trójkątami (ściany, słupy, niewidoczne bariery). Parametry każdego auta z
+- **fizyka jazdy** jak w `RCCars.exe`: własny model auta (sprężyny, opony z poślizgiem, koła jako kule) i jego
+  własny ruch i zderzenia z trasą, autami, rekwizytami i postaciami; [Bullet](https://github.com/bulletphysics/bullet3)
+  porusza tylko rekwizyty i mówi autu, czego dotyka. Nadwozie to 9 kul z `cdt<N>.ini`, koła to kule wisące na
+  sprężynach i opadające na trójkąty siatki `COLL` (ściany, słupy, niewidoczne bariery). Parametry każdego auta z
   `Settings/engine|springs|tires|steering|resistance|cdt<N>.ini`, silnik, dopalacz, turbo, skręt, skok, opory oraz
   głęboki piasek i woda tak jak w kodzie `RCCars.exe` (krzywa `Splines/OVERKILL|BUGGY|HUMMER.bspl`, zob. „Fizyka wg
   `RCCars.exe`”), ulepszenia (dopalacze, rezonatory, opony) z `Scripts/upgrades.ini`. Koła kręcą się, skręcają i pracują na
-  zawieszeniu; klawisze jak w instrukcji oryginału (`Instrukcja.pdf`: spacja skok, Shift dopalacz, B blokada kół);
+  zawieszeniu; hamulec przy skręcie powyżej `angleDriftOn` puszcza tył w poślizg; klawisze jak w instrukcji oryginału (`Instrukcja.pdf`: spacja skok, Shift dopalacz, B blokada kół);
   zbiornik turbo ładuje się sam i dostaje 10 jednostek za każdy punkt kontrolny; skok +3 m/s w górę auta (spacja
   na przewróconym aucie stawia je na koła); auto przewrócone na dach wraca na koła po 2 s
 - **nawierzchnie i woda**: rodzaj nawierzchni pochodzi z bitów materiału tekstury (`GLTX`): piasek, mokry piasek,
@@ -85,8 +86,10 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   koła do 35° (przez pierwszą sekundę co najmniej 30°, z prędkością 90°/s); zablokowane (wolniej niż 2 km/h
   albo dociśnięte do przeszkody) cofa przez 1,5 s. Po 2 s wraca do odtwarzania, gdy jest 10 cm od punktu
   nagrania i jedzie w jego kierunku (do 10°), a po 5 s wraca od razu, jeśli gracz go nie widzi (u nas: dalej niż
-  50 m albo za graczem, zgadnięte). Powrót płynnie przechodzi w nagranie przez sekundę. Przy zderzeniu wolniejsze
-  auto (przy podobnej prędkości przeciwnik) dostaje impuls lekko w górę, bo gra liczy jego środek 10 cm wyżej.
+  50 m albo za graczem, zgadnięte). Powrót płynnie przechodzi w nagranie przez sekundę. Stykające się auta odbijają
+  się sprężyście wzdłuż linii środków mas (0x533990); gdy jednym z nich jest gracz, a oba ostatnio zderzyły się z
+  autem ponad 2 s temu, wolniejsze auto (przy podobnej prędkości przeciwnik) ma środek liczony 10 cm wyżej, więc
+  dostaje impuls lekko w górę.
   Przeciwników obowiązują te same zasady powrotu na trasę co gracza (utonięcie, pudło kolizji, strefy
   `car_reset_volume_*`), a wypchnięty z nagrania wraca od razu po wjechaniu w dowolną strefę (0x4fe3f0). Trafia na
   ostatni minięty główny punkt kontrolny (przed pierwszym na swoje miejsce na starcie) i stamtąd autopilot prowadzi
@@ -95,8 +98,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   (`place1..6.csi`: „1szy” … „6ty”), a meta tabelę wyników, w którą wpadają czasy kolejnych kierowców
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
   baloniki, łuski, toczące się kłębki) stoją tam, gdzie kładzie je trasa (od 8 do 17 na trasie), i są bryłami
-  sztywnymi: auto je potrąca, przewraca i pcha, a koła po nich przejeżdżają. Masa, sprężystość, tarcie, kształt
-  (kula, walec albo otoczka wypukła modelu) i środek masy pochodzą ze skryptu `SCRI` każdego modelu
+  sztywnymi: auto je potrąca, przewraca i odbija jak oryginał (koła na nich nie stają). Masa, sprężystość, tarcie,
+  kształt (kula, walec albo otoczka wypukła modelu) i środek masy pochodzą ze skryptu `SCRI` każdego modelu
 - **ruch uliczny** (`Roadcar.sb`) jak w `RCCars.exe`: na beach_2 i beach_3 po drodze jeżdżą w obie strony hummer,
   dwa kampery i trzy pikapy (w kilku malowaniach), na urban_1 hummer, a na beach_4 pływający BTR, który obraca
   wieżę do aut przed sobą i strzela do nich seriami. Auta ruszają od startu wyścigu co kilka sekund po nagranych
@@ -307,6 +310,7 @@ RCSHOT_COLL=1 rcshot ...                                        # z nakładką k
 RCSHOT_DRIVE=3 RCSHOT_STEER=1 rcshot ...                        # najpierw 3 s jazdy na pełnym gazie, druga połowa ze skrętem
 RCSHOT_DRIVE=2 RCSHOT_JUMP=1.6 rcshot ...                       # skok w 1,6 s, zdjęcie w 2 s
 RCSHOT_DRIVE=3 RCSHOT_BOOST=1 rcshot ...                        # z dopalaczem
+RCSHOT_DRIVE=1 RCSHOT_JUMP=0.8 RCSHOT_VIEW=90,0.6 rcshot ...   # z bliska, z lewego boku auta (0 = z tyłu), z 0,6 m
 RCSHOT_START="-8 -41 90" RCSHOT_DRIVE=1.6 rcshot ...            # auto najpierw w punkcie x z, obrócone o yaw (tu: do morza)
 RCSHOT_TIME=2.5 rcshot ...                                       # chwila animacji wody (fale, piana)
 RCSHOT_OBJECTS=0 rcshot ...                                      # bez rekwizytów
@@ -331,10 +335,11 @@ formats/        formaty danych, czyste C++ bez zależności
   carprofile.*  nagrane przejazdy przeciwników (CarProfiles/*.dat), Scripts/ailayouts.ini
   skeleton.*    szkielet modelu .sb: kości, sekwencje ASEQ, poza w chwili animacji
   actorpath.*   ścieżki postaci (Profiles/<nazwa>.dat) i lotu sępów (Profiles/vlt_*.gpf)
-physics/        fizyka jazdy (Bullet, bez GPU)
+physics/        fizyka jazdy (RCCars.exe i Bullet dla rekwizytów, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
-  vehicle.*     świat Bulleta trasy, btRaycastVehicle z promieniami przez siatkę COLL, nawierzchnie i woda
+  carrig.*      jak oryginał rysuje koła i zawieszenie: wychylenie osi, wahacze, skręt, amortyzatory
+  vehicle.*     świat Bulleta trasy, auto jak w RCCars.exe (sprężyny, opony, kule kół, ruch i zderzenia), nawierzchnie i woda
   checkpoints.* punkty kontrolne w kolejności, zaliczanie (1,6 m), postęp auta, powrót do ostatniego punktu
   race.*        wyścig: odliczanie, okrążenia, czasy, zły kierunek, meta
   props.*       rekwizyty: parametry ze skryptu SCRI, kształt, bryła sztywna
@@ -384,14 +389,18 @@ lib/Tempest     silnik (submoduł git)
   32 km/h, Buggy 9 → 0 przy 38, Hummer 4 → 0 przy 30. `splAccelBase<N>.bspl`, `splAccelGrav<N>.bspl`,
   `Height2Stiffness.bspl`, `AngleSteer2RearDrift.spl` i `Settings/Water.ini` zostały w danych z edytora; `RCCars.exe`
   ich nie czyta.
-- Auto: osie X w lewo, Y w górę, Z do przodu; koła `WHEEL_FRONT_LEFT` itd. (Hummer ma 6 kół). Fizyka liczy w Bullecie
-  w skali ×10 (z grawitacją ×10), bo Bullet nie lubi obiektów 0,4 m; na zewnątrz wszystko jest w metrach.
+- Auto: osie X w lewo, Y w górę, Z do przodu; koła `WHEEL_FRONT_LEFT` itd. (Hummer ma 6 kół). Bullet liczy w skali
+  ×10 (z grawitacją ×10), bo nie lubi obiektów 0,4 m; na zewnątrz wszystko jest w metrach.
 - **Fizyka wg `RCCars.exe`** (odszyfrowany kod, tylko do analizy). Oryginał ma własny silnik fizyki: auto waży 1 kg,
   grawitacja to 10 m/s², więc siły są przyspieszeniami. Suwak `s` (1..100) przechodzi w `od + (s-1)·(do-od)/99`:
   - silnik (`engine<N>.ini`): bez dopalacza przyspieszenie = krzywa auta w punkcie `v·3,6 / (gaz · RESONATORS)`,
     razy `RESONATORS *_SPL_OY`; powyżej `speedBaseMax + 0,1` km/h × `RESONATORS` silnik nie ciągnie. Z dopalaczem
     krzywa jest rozciągnięta o `speedBoostMax / speedBaseMax`, ×1,2, a limit to `speedBoostMax + 0,1`. Kiedy silnik
-    ciągnie, dodaje też opór (niżej), więc na płaskim auto przyspiesza dokładnie wg krzywej. Wsteczny: 4 m/s²
+    ciągnie, dodaje też opór (niżej), więc na płaskim auto przyspiesza dokładnie wg krzywej. Siła silnika najwyżej
+    20 × przyczepność tyłu (w poślizgu razem z `coeffDriftRear`). Pod górę (napęd ponad 10° od poziomu), gdy
+    sprężyny spychają auto w dół zbocza, każde tylne koło dodaje połowę krzywej `Splines/<auto>_RESTRICT.bspl`
+    w punkcie `v·3,6 / (gaz · RESONATORS)`, najwyżej tyle, ile spychają (0x4ee5e0): Overkill +2 m/s² do 15 km/h,
+    Hummer +6 do 20 km/h, Buggy −4 do 25 km/h (pod górę słabszy). Wsteczny: 4 m/s²
     (z dopalaczem 6) do 2,83 m/s, dalej malejąco do zera przy 3,33 m/s (12 km/h);
   - opór (`resistance<N>.ini`): `a = coeffAirResistance·v² + coeffFrictionBearings` przeciw ruchowi, zakresy 0..0,1
     i 0..10 (Overkill 0,032 i 0,51);
@@ -412,8 +421,90 @@ lib/Tempest     silnik (submoduł git)
     który rośnie do `AngleSteer` (0..100, 29,3°). Pełny skręt nie maleje z prędkością, tylko wolniej się go nabiera;
   - skok (spacja, co najmniej 0,5 s od poprzedniego): +3 m/s wzdłuż osi „w górę” auta (Buggy 3,3) i obrót wokół
     pionu ×1,5; auto przechylone o ponad 80° zamiast skoczyć staje na koła;
-  - głęboki piasek i woda (`tires<N>.ini`, 0..1): każde koło w głębokim piasku dokłada `coeffDeepSand·v²` przeciw
-    ruchowi w swoim punkcie, a w wodzie `coeffWater·v²`, od zera przy kole zanurzonym w 30% do całości przy 90%;
+  - auto (0x4f0910, 0x4f5e50): bryła sztywna o masie 1 kg, bezwładność prostopadłościanu całego modelu (Buggy
+    ×2 wokół osi przód-tył), środek masy `CenterMassOY` (0..0,2 m) nad początkiem modelu; prędkość najwyżej 20 m/s,
+    moment pędu najwyżej 1. Kule nadwozia z `cdt<N>.ini`: `CdtRadUp<i>` (0,01..0,3 m) w `CdtDeltaX|Y|Z<i>`
+    (−0,3..0,3 m, Buggy `CdtDeltaZ_CENTRAL<i>`), każda trzy razy: na środku i przesunięta o `shiftRoofBaseLefter`
+    w lewo i w prawo. Koło to kula `CdtRadWheel` (0,01..0,1 m, tylne × `coeffRadBackWheels` 1..2);
+  - sprężyny (`springs<N>.ini`, 0x4f91b0, 0x4f0f80): `length` 0,01..0,5 m, `lenMin` × 0,1..0,9, `lenMax`
+    × 1,1..2, ugięcie `kPos` = (length − lenMin) × 0,1..0,9, tłumienie `kSpeed` 1..10, mocowanie `touchPoint`
+    (0..1 m) nad piastą. Sztywność k = m·g / (liczba kół · ugięcie). Koło dotykające ziemi pcha auto wzdłuż jego osi
+    „w górę” siłą k·(length − długość − 0,02 r) − kSpeed·(zmiana długości)/dt; tłumienie może przeważyć
+    sprężynę i ściągać auto w dół (gra ogranicza je do 2·10⁶ × siła sprężyny, czyli praktycznie wcale), a gdy
+    któraś sprężyna nie mieści podłoża, zmiana długości liczy się jako zero; do ruchu liczy się tylko część wzdłuż normalnej podłoża, a moment w osiach auta razy
+    `coeffMomentOX` (0,5..2, pochylenie) i `coeffMomentOZ` (1..3, przechył), bez obrotu wokół pionu.
+    Koło to kula o promieniu r wisząca `długość` pod górą sprężyny wzdłuż osi „w górę” auta (0x4ef680). Po ruchu
+    nadwozia, koło po kole (0x4fb340): kula w ziemi idzie w górę (0x4fb9e0) do 5 razy o tyle, ile trzeba, żeby
+    dotykany punkt trasy wyszedł z niej wzdłuż osi auta, plus 0,01 r, najwyżej do `lenMin` i łącznie o 0,95 r; gdy
+    nad którymś kołem nie ma miejsca (trasa w kuli 1,5 r nad jego środkiem, 0x4fbd70), idzie zamiast tego ku wolnemu
+    spoczynkowi o 0,95 r na sekundę. Wolna kula zmierza do spoczynku (`length`, a gdy auto jedzie wolniej niż
+    5 km/h i w tej części kroku uderzyło w trasę albo nad kołem nie ma miejsca, `length − 0,95·kPos`): w dół o r na
+    sekundę, r·(1 + 18·t) po t s od ostatniego wolnego spoczynku, 10·r od 0,5 s i przy ustawianiu auta, najwyżej
+    0,99 r na krok, po czym znowu wychodzi z ziemi, ale nie wyżej, niż była (0x4fbc50); w górę o tyle samo, o ile
+    nie wejdzie przez to w ziemię. Koło, którego środek przeszedłby przez trasę, zostaje. Koło, któremu nic nie
+    pomoże, kończy przebieg: reszta zostaje, a krok liczy się jako uderzenie (0x4f5e50). Kół dotykających ziemi
+    (w 6 mm od trasy) i ich punktów szuka się na początku każdej części kroku (0x4f0230); po części z uderzeniem
+    albo z kołem bez miejsca nad sobą sprężyny w następnej nie pchają (0x48 danych auta). U nas kula „w ziemi” to o ponad 2 mm, inaczej koło
+    podnoszone wzdłuż osi auta ze zbocza tylko by go dotykało;
+  - rysowanie kół (0x504820 Overkill, 0x505780 Buggy, 0x5068e0 Hummer): gra nigdy nie przesuwa koła o długość
+    sprężyny, tylko obraca węzły, na których koła wiszą, więc koła zostają na osiach. Sztywna oś (`FRONT_AXLE`,
+    `REAR_AXLE`) wychyla się o atan(opad kół / `lenAxe`) (0,05..0,2 m), najwyżej 30° w dół i 90° w górę, i przechyla
+    o atan(4 · różnica wysokości lewego i prawego koła). Hummer czyta kąty z tablic wysokości koła od kąta,
+    zbudowanych przy wczytaniu auta (0x5065c0), czyli osie obracają się dokładnie tak, by koła były tam, gdzie
+    sprężyny (najwyżej 20° w dół); środkowa oś przesuwa się w pionie najwyżej o tyle, o ile opada przednie koło
+    przy 20° (0x14edd4c). Wahacze Buggy (`AXLE_*_UP`, `AXLE_*_DOWN`)
+    obracają się tak, by zwrotnica z kołem (`AXLE_*_WHEEL`) była na wysokości koła, najwyżej `angleProcUpMax`
+    w górę i `angleProcDownMax` w dół (0..90°, 35,5° i 26,4°). Przednie koła skręcają z wspornikami
+    (`AXLE_FRONT_*_SUPPORT`), a amortyzatory między nadwoziem a osią lub wahaczem obracają się i rozciągają
+    (Overkill: sięgają `SpringLength` z `WheelsVisual.crs`, 0,01..0,1 m, 77 → 0,079 m, wzdłuż osi Z węzła);
+  - napęd (0x4eea50): siła silnika (najwyżej 20 × przyczepność tyłu) po połowie na tylne koła stojące na
+    podłożu nachylonym mniej niż 46°, wzdłuż podłoża. Klawisz hamulca hamuje i przy |v| ≤ 2 m/s (cała prędkość,
+    też w bok) wrzuca wsteczny, gaz tak samo w drugą stronę (0x4ee5e0); hamując silnik nie ciągnie. Biegi, hamulec
+    i siłę silnika gra liczy od nowa w każdym kroku Eulera, gdy choć jedno koło dotyka ziemi;
+  - opony (`tires<N>.ini`, 0x4f7fa0, 0x4edac0, 0x4ee280): przyczepność `CoeffFrontTires|RearTires` 0,1..1
+    × ulepszenie `TIRES`. Działają najwyżej w dwóch kołach, przednim i tylnym: przy mniej niż 3 kołach na ziemi
+    w pierwszych dwóch dotykających, inaczej w zewnętrznych w zakręcie (jadąc prosto w prawych). Każde zatrzymuje
+    poślizg w bok (hamując: każdy poślizg) siłą, która razem z drugą znosi przyspieszenie punktu koła od reszty sił
+    wzdłuż obracającego się z autem kierunku, razem z odśrodkowym i z prędkością punktu wzdłuż obrotu tego
+    kierunku (0x476c50, 0x476ba0; bez tego auto ślizgało się w każdym zakręcie)
+    (najwyżej 5 × przyczepność z przodu, 10 × z tyłu) i jego prędkość w tym kierunku (najwyżej 10 × przyczepność
+    na sekundę). Hamulec ze skrętem powyżej `angleDriftOn` (1..45°) to poślizg: tył ma przyczepność
+    × `coeffDriftRear` (1..0,1) i oba koła limit 10. Z kołami prosto opony gaszą też obrót auta (1/s);
+  - głęboki piasek i woda (`tires<N>.ini`, 0..1; 0x4eeea0): każde koło stojące na ziemi (v to prędkość auta)
+    w wodzie dokłada `coeffWater·v²` przeciw ruchowi punktu, którym jej dotyka, od zera przy kole zanurzonym
+    w 30% do całości przy 90%, a poza wodą w głębokim piasku `coeffDeepSand·v²`; koło w powietrzu nie hamuje.
+    Liczy się to razem z resztą sił przy każdym kroku Eulera;
+  - kroki (0x4f6ea0): klatka krótsza niż 0,02 s to jeden krok, dłuższa to kroki po 0,02 s, dopóki zostaje
+    więcej niż 0,038 s, a reszta w dwóch połowach (przy 60 kl./s krok 1/60 s). U nas każdy z nich dzieli się
+    jeszcze na równe części najwyżej po 1/120 s: przy krokach długości klatki nasze sprężyny co chwilę tracą
+    i łapią podłoże, więc stojące auto drży bez końca (np. na deskach pomostu). Siły (grawitacja, opór, sprężyny,
+    napęd, opony; 0x4f0910) liczą się od nowa przy każdym kroku Eulera, także w próbach szukania zderzenia.
+    Opór powietrza i łożysk działa od 0,0001 m/s, bez wygładzania (0x4ed970);
+  - start (0x4f27a0): auto postawione na trasie najpierw osiada przez 2 s (100 kroków po 0,02 s) tylko pod
+    grawitacją i sprężynami, które wtedy opadają z szybkością 10·r; gra zeruje przy tym poziomą część siły
+    i obrót wokół pionu (0x4f0910), więc auto osiada w miejscu i nie zsuwa się ani nie obraca;
+  - spoczynek (0x4f59a0, 0x4f6610): gdy przez 2 s nie jest wciśnięty gaz, hamulec, skręt ani turbo, auto
+    jedzie wolniej niż 1,3 km/h i obraca się wolniej niż 1 rad/s, a od 1 s cały czas dotyka trasy (koło do 6 mm
+    od niej albo zderzenie), gra zeruje mu pęd i moment pędu i pomija krok, póki jakaś kula jest do 3 cm od
+    trasy. Które bity klawiszy gra sprawdza, odczytaliśmy tylko po turbo (0x577c); reszta to nasze założenie;
+  - ruch i trasa (0x4f5e50): krok dzieli się na najwyżej 3 części. Każda najpierw przycina pęd do 20 i moment pędu
+    do 1 (0x4f5770), potem przesuwa auto krokiem Eulera (0x4f5590) o tyle, ile kroku zostało, a gdy po drodze kula
+    przeszłaby przez ścianę, tylko o tyle, by żaden punkt kuli nie przeszedł więcej niż 0,9 promienia, połowiąc, aż
+    żaden nie przejdzie więcej niż 0,99 (0x4f5b60). Jeśli potem kula nadwozia jest w ścianie (albo kula koła, którego
+    sprężyna nie mieści podłoża, 0x4fb340), auto wraca i w 5 próbach szuka chwili zderzenia: najpierw 0,2 drogi od
+    wolnego do zajętego, potem w połowie, aż kula jest 6 mm od ściany (0x4f0270). Wtedy pierwsza dotykająca kula
+    nadwozia traci poślizg wzdłuż ściany, najwyżej 10 m/s × przebyty czas (0x4f0560), a każdy styk dostaje impuls,
+    po którym odjeżdża od ściany z prędkością 0,05 m/s, bez odbicia (0x4f0750, do 10 przejść). Reszta kroku
+    przepada; auto, które zrobiło mniej niż 5% kroku, podnosi się o 2ⁿ·3 mm (albo, gdy to w ścianie, schodzi
+    o 15 mm), a po 5 takich krokach z rzędu wraca na ostatni punkt kontrolny (0x508b30). Nasze dodatki: kula już w
+    ścianie na początku części kroku (koło, które sprężyna opuściła przy ścianie) nie zatrzymuje ruchu, tylko jest
+    wypychana, a kula koła może wejść w ścianę na 2 mm (stoi na niej);
+  - inne ciała (0x534d00, raz na klatkę): auto i rekwizyt odbijają się sprężyście wzdłuż linii środków mas, przez
+    jej środek, co najmniej z prędkością 0,2 m/s (0x533ee0, 0x4f0750 z drugim ciałem: impuls na podwójną prędkość
+    zbliżania); człowiek, strażnik i pies odpychają samo auto od punktu styku do 0,05 m/s (0x534340, 0x5344f0,
+    0x5349d0); ruch uliczny tylko pcha (0x534880). Koła nie stają na rekwizytach (oryginał pyta o podłoże tylko
+    trasę, 0x4fbd70), lecz w nie uderzają. Oryginał bierze kule rekwizytu z tablic kształtów (0x50dc50), my styk
+    z Bulleta;
   - R (co najmniej 1 s od poprzedniego) stawia auto na markerze ostatniego zaliczonego punktu, przodem w stronę
     następnego markera trasy; przed pierwszym punktem na starcie;
   - punkt kontrolny `cp_N` zalicza się, gdy auto gracza minie jego marker bliżej niż 1,6 m (auta AI: 2,88 m).
@@ -775,8 +866,8 @@ lib/Tempest     silnik (submoduł git)
 
 1. ~~Model auta postawiony na starcie~~ (zrobione; LOD-y i ulepszenia `UPGRADES*` jeszcze niewyświetlane)
 2. ~~Kolizje trasy z węzła `COLL`~~ (zrobione: siatka kolizji, raycast, nakładka debug)
-3. ~~Fizyka jazdy: Bullet `btRaycastVehicle` + parametry z ustawień gry~~ (zrobione; do dostrojenia na wyczucie
-   względem oryginału; kolizje kul z `cdt*.ini` nieużyte)
+3. ~~Fizyka jazdy: model auta z `RCCars.exe` (sprężyny, opony z poślizgiem, kule kół i nadwozia z `cdt*.ini`) na
+   Bullecie~~ (zrobione; szybkość opadania kół przyjęta, nie odczytana)
    - ~~nawierzchnie i woda~~ (zrobione: głęboki piasek i woda spowalniają, w głębokiej wodzie auto tonie i wraca do
      ostatniego punktu kontrolnego, strefy `car_reset_volume_*`); ~~kurz i bryzgi spod kół, ślady opon, kilwater,
      spaliny, brudzenie auta~~ (zrobione)

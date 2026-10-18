@@ -18,12 +18,13 @@ class Resources;
 
 // One MODL of a scene on the GPU: a car from RCCarsDB/Car.sb ("Car1" Overkill, "Car2" Buggy, "Car3" Hummer;
 // +Z forward, +Y up, about 0.4 m long) or an object placed on a track (stone.sb, people.sb ...).
-// The body and every WHEEL_* node are separate parts, so wheels can spin, steer and move with the suspension.
+// The body, every WHEEL_* node and the suspension's nodes are separate parts (rc::carNode), so wheels can spin
+// and steer and the axles, arms and springs can move (rc::CarRig).
 class ModelMesh {
   public:
     struct Part {
-      std::string name;   // empty for the body, otherwise the wheel node, e.g. WHEEL_FRONT_LEFT
-      rc::Vec3    pivot;  // model space centre of the part (wheel hub); part vertices are relative to it
+      std::string name;   // empty for the body, otherwise the node, e.g. WHEEL_FRONT_LEFT or FRONT_AXLE
+      rc::Vec3    pivot;  // model space centre of the part (a wheel's hub); part vertices are relative to it
       };
 
     // other models than the cars (the road traffic of Roadcar.sb)
@@ -52,8 +53,8 @@ class ModelMesh {
               const rc::Vec3& origin, const Options& options);
 
     // `world` places the model (rotation, translation and a uniform scale); `partPoses`, if given, places each part in model
-    // space (index as in parts(), rotation + translation), default: translate(pivot) - the modelled position.
-    // `lightsOn`: how the Options::lights are switched
+    // space (index as in parts(); rotation, translation, a spring's stretch), default: translate(pivot) - the modelled
+    // position. `lightsOn`: how the Options::lights are switched
     void                     draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, const rc::Mat4& viewProj,
                                   const LevelMesh::Push& frame, const rc::Mat4& world,
                                   const std::vector<rc::Mat4>* partPoses = nullptr, bool lightsOn = false) const;

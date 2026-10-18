@@ -60,6 +60,7 @@ class MainWindow : public Tempest::Window {
     void setupOpponents();                      // the opponents of the track for aiLevel
     // engines, checkpoint voice: once per frame after the physics
     void tickSounds(float dt);
+    static std::vector<rc::Mat4> partPoses(const ModelMesh& mesh, const rc::CarGeometry& geom, const rc::CarRig::Pose& pose);
     std::vector<rc::Mat4> carPartPoses() const;
     std::vector<rc::Mat4> opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const;
     Hud::Info             hudInfo() const;

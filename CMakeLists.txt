@@ -60,10 +60,11 @@ else()
   target_compile_options(bullet PRIVATE -w)
 endif()
 
-# --- driving physics: car geometry and parameters, btRaycastVehicle on the COLL track (no GPU) ---
+# --- driving physics: car geometry and parameters, RCCars.exe's car model on the COLL track (no GPU) ---
 add_library(rcphysics STATIC
   physics/cargeometry.h physics/cargeometry.cpp
   physics/carparams.h   physics/carparams.cpp
+  physics/carrig.h      physics/carrig.cpp
   physics/vehicle.h     physics/vehicle.cpp
   physics/checkpoints.h physics/checkpoints.cpp
   physics/resetvolumes.h physics/resetvolumes.cpp

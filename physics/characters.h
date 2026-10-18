@@ -64,8 +64,17 @@ class Characters {
       float                     time = 0;       // s into the sequence
       // textures the model wears instead of its own ("clother" in the INST script)
       std::vector<std::pair<std::string,std::string>> textures;
-      // a sound of the model's sound channel (SNCH named like the model) to start now, empty if none
+      // what the character asks of its sound channel (the SNCH named like its model) in this update, as RCCars.exe
+      // calls 0x494400 each frame: `sound` to play (empty: nothing; the sound's flags decide whether it restarts,
+      // waits or leaves what plays alone) or `silence` to stop it
+      //  - people: their voice once, when the animation turns to Hurt (0x510714); guards never use theirs
+      //  - seagull: seagull_vzliot while it takes off (start_flight), the "seagull" loop after it, silence while
+      //    the player cannot see it (0x5127bb)
+      //  - dog, while the player is near: dog_pain while a car faster than 15 km/h touches it (0x5349d0), else
+      //    dog_attack while it barks at the car (attack; it only starts when the channel is silent), else silence
+      //    (0x518fa2)
       std::string               sound;
+      bool                      silence = false;
       // a person walking where the path leaves footprints (RCCars.exe 0x50f930: moving, path state 1..3 or 5, not
       // RepairMan); fx::Footprints puts them down
       bool                      soles = false;
@@ -104,6 +113,9 @@ class Characters {
     // someone holds the player's car after this update (0x4f3690 lets go of it when thrown)
     bool                        holdingPlayer() const { return carried; }
     size_t                      size()   const { return view.size(); }
+    // the player's car ran into someone in this update hard enough for car_cdt_obj: a person or a guard faster than
+    // 10 km/h (0x534340, 0x5344f0), a dog faster than 15 km/h (0x5349d0)
+    bool                        bumpedPlayer() const { return bumped; }
 
   private:
     struct Body;
@@ -160,6 +172,7 @@ class Characters {
     bool                                          greatHit    = false;
     bool                                          grabbed     = false;
     bool                                          carried     = false;
+    bool                                          bumped      = false;
     float                                         carKmh      = 0;    // the player's speed before this step
     float                                         lastKmh     = 0;
     int                                           vultures    = 0;

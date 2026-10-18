@@ -565,6 +565,7 @@ void MainWindow::tick(float dt) {
     for(auto& h:effects->gunHits()) {
       if(h.target==0) {
         vehicle->shotFrom(h.gun);
+        shotSound = true;   // car_cdt_bullet on every hit (0x50859f)
         if(shotTime<0) {
           shotTime = 0;
           Log::i("shot at ",Hud::formatTime(race->time()));
@@ -710,6 +711,9 @@ void MainWindow::tickSounds(float dt) {
   in.ground   = vehicle->groundSound();
   in.contact  = {vehicle->contact().surface,vehicle->contact().hit,vehicle->contact().impact};
   in.carBump  = vehicle->carBump();
+  in.objBump  = (characters && characters->bumpedPlayer()) || (traffic && traffic->bumpedPlayer());
+  in.shot     = shotSound;
+  shotSound   = false;
   carSound->update(in,dt);
 
   // the computer's cars and the water, heard from the camera

@@ -110,6 +110,8 @@ class Traffic {
     size_t                     size()  const { return view.size(); }
     bool                       slow()  const { return prm.slow; }
     const std::vector<Shot>&   shots() const { return fired; }
+    // a car touched the player's car in this update (its car_cdt_obj sound, RCCars.exe 0x534880)
+    bool                       bumpedPlayer() const { return bumped; }
     // cars sent off so far, and the time between the last two (for rcinfo)
     int                        departures() const { return sent; }
     float                      lastDelay()  const { return delay; }
@@ -147,6 +149,7 @@ class Traffic {
     std::vector<std::unique_ptr<State>> states;
     std::vector<Car*>                   view;
     std::vector<Shot>                   fired;
+    bool                                bumped = false;
     std::mt19937                        rng{20061014};
     float                               clock   = 0;  // s since the race started
     float                               waited  = 0;  // s since the last car left

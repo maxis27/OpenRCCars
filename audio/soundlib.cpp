@@ -51,6 +51,9 @@ void BankChannel::play(int i) {
     return;
     }
   auto& s = sounds[size_t(i)];
+  // RCCars.exe 0x494400: such a sound never cuts anything, not even itself
+  if(s.def.idleOnly() && isPlaying())
+    return;
   Mixer::Play p;
   p.startMs   = s.start;
   p.volume    = s.def.volume+s.level;

@@ -43,8 +43,8 @@ constexpr float OtherCarSize   = 0.25f;    // m: an opponent's car around its ce
 constexpr float HurtSpeed      = 15.f;     // km/h: a car faster than this hurts a person or a dog
 constexpr float DogPushOut     = 0.5f;     // m/s: a dog touched pushes the car off itself ..
 constexpr float DogPushUp      = 0.12f;    // .. and up
-constexpr float DogPainPause   = 0.5f;     // s without a hit before the dog whines again (ours)
 constexpr float GuardHitSpeed  = 10.f;     // km/h: hitting a guard
+constexpr float BumpSpeed      = 10.f;     // km/h: the car hitting a person or a guard sounds car_cdt_obj
 constexpr float GuardFirst     = 0.15f;    // s from locking on a car to the first burst (0x51a6f6 -> 0x535720) ..
 constexpr float GuardNext      = 1.25f;    // .. and between the next ones,
 constexpr int   GuardBursts    = 3;        // three in all, then it picks the nearest car again
@@ -145,7 +145,6 @@ struct Characters::State {
   float             actTime  = 0;
   bool              holding  = false;
   float             noHit    = 0;      // s the car can't hurt this one (just kicked or thrown)
-  float             sinceHurt = 1e3f;  // s since a car hurt this one: the voice once per hit
   // guard: the car it aims at (Shot::car, NoCar none), the one it turns to, the one it fired at last; the time
   // locked on and the bursts fired at it (the detector of 0x535720)
   static constexpr int NoCar = -2;
@@ -504,6 +503,7 @@ bool Characters::update(float dt, Vehicle* player, std::vector<Car>& cars) {
   greatHit = false;
   grabbed  = false;
   carried  = false;
+  bumped   = false;
   guns.clear();
   // the speed the car hit with: the step that brought it into contact has already stopped it
   const float nowKmh = player ? player->velocity().length()*3.6f : 0.f;
@@ -515,6 +515,7 @@ bool Characters::update(float dt, Vehicle* player, std::vector<Car>& cars) {
   for(auto& p:states) {
     State& s = *p;
     s.actor.sound.clear();
+    s.actor.silence = false;
     switch(s.actor.kind) {
       case Kind::Person:  person (s,dt,player,cars); break;
       case Kind::Guard:   guard  (s,dt,player,cars); break;
@@ -549,6 +550,7 @@ void Characters::person(State& s, float dt, Vehicle* player, std::vector<Car>& c
   s.active = player!=nullptr && (car-s.pos).length()<PeopleActive;
   s.actor.visible = s.active;
 
+  bumped |= hitBy(s,player,BumpSpeed);
   // hit by a car faster than 15 km/h: hurt (0x510b30); the player's hit is "Wielkie Łup!"
   bool hurt = false;
   if(s.noHit<=0 && hitBy(s,player,HurtSpeed)) {
@@ -738,6 +740,7 @@ void Characters::guard(State& s, float dt, Vehicle* player, std::vector<Car>& ca
 
   for(auto& c:cars)
     touches(c,s.pos,BodyRadius,0.6f);
+  bumped |= hitBy(s,player,BumpSpeed);
   if(s.noHit<=0 && hitBy(s,player,GuardHitSpeed) && sinceGuard>HitPause) {
     sinceGuard = 0;
     greatHit   = true;
@@ -790,6 +793,7 @@ void Characters::seagull(State& s, float dt, Vehicle* player, const std::vector<
   if(!sees) {
     s.active = false;
     s.actor.visible = false;
+    s.actor.silence = true;
     return;
     }
   if(!s.active) {
@@ -814,7 +818,6 @@ void Characters::seagull(State& s, float dt, Vehicle* player, const std::vector<
     if(scared) {
       s.state = 0x10;
       s.timer = prm.gullIdle;
-      s.actor.sound = "seagull_vzliot";
       }
     }
 
@@ -872,6 +875,8 @@ void Characters::seagull(State& s, float dt, Vehicle* player, const std::vector<
     case 4:  play(s,s.sFly,true);     break;
     default: play(s,s.sTakeOff,false); break;
     }
+  // the cry of taking off, then the gull's call in a loop, queued after it (0x5127e8)
+  s.actor.sound = s.seq==s.sTakeOff ? "seagull_vzliot" : "seagull";
   animate(s,dt);
   }
 
@@ -1060,7 +1065,6 @@ void Characters::dog(State& s, float dt, Vehicle* player, std::vector<Car>& cars
   s.actor.visible = true;
 
   // any touch pushes the car off the dog: 0.5 m/s away from it and 0.12 m/s up (0x5349d0 -> 0x4f3470)
-  s.sinceHurt += dt;
   bool hurt = false;
   for(auto& c:cars)
     hurt |= touches(c,s.pos,DogRadius,0.4f) && c.velocity.length()*3.6f>HurtSpeed;
@@ -1071,18 +1075,14 @@ void Characters::dog(State& s, float dt, Vehicle* player, std::vector<Car>& cars
     player->addVelocity(away*DogPushOut+Vec3{0,DogPushUp,0});
     }
   if(hitBy(s,player,HurtSpeed)) {
-    hurt = true;
+    hurt   = true;
+    bumped = true;
     if(sinceDog>HitPause) {
       sinceDog = 0;
       greatHit = true;
       player->addBoost(HitBoost);
       }
     }
-  // whines once a hit, not on every step the car stays on it
-  if(hurt && s.sinceHurt>DogPainPause)
-    s.actor.sound = "dog_pain";
-  if(hurt)
-    s.sinceHurt = 0;
 
   const bool chase = s.inst->volume("attackVolume")->contains(car);
   bool run = false;
@@ -1129,7 +1129,6 @@ void Characters::dog(State& s, float dt, Vehicle* player, std::vector<Car>& cars
       else if(s.state!=0x20) {
         s.state = 0x20;
         s.timer = 0;
-        s.actor.sound = "dog_attack";
         }
       if(reached)
         aim = car;
@@ -1165,6 +1164,13 @@ void Characters::dog(State& s, float dt, Vehicle* player, std::vector<Car>& cars
     play(s,s.sRun,true,prm.dogAnim);
   else
     play(s,s.sStand,true,prm.dogAnim);
+  // whining while hurt (that cuts the barking and is not cut by it), barking while it attacks, else quiet (0x518fa2)
+  if(hurt)
+    s.actor.sound = "dog_pain";
+  else if(s.seq==s.sAttack)
+    s.actor.sound = "dog_attack";
+  else
+    s.actor.silence = true;
   animate(s,dt);
   }
 

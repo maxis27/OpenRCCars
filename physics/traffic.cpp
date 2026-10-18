@@ -433,6 +433,7 @@ void Traffic::depart() {
 
 void Traffic::update(float dt, bool racing, Vehicle* player, const Vec3& camera, std::vector<Characters::Car>& cars) {
   fired.clear();
+  bumped = false;
   if(states.empty())
     return;
   if(racing) {
@@ -528,8 +529,9 @@ void Traffic::drive(State& s, float dt, const Vec3& camera, Vehicle* player, std
     if(touches(s,c.pos,OtherCarSize))
       c.hit = true;
 
-  // the player's car is pushed off (0x5165a0 -> 0x4f3470), each update it touches
+  // the player's car is pushed off (0x5165a0 -> 0x4f3470), each update it touches, with car_cdt_obj (0x534892)
   if(player!=nullptr && s.inWorld && playerTouches(s,*player)) {
+    bumped = true;
     Vec3 away = player->pose().translation()-k.pos;
     away.y = 0;
     away = horiz(away)>1e-4f ? away*(1.f/horiz(away)) : Vec3{};

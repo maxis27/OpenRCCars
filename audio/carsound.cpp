@@ -301,8 +301,16 @@ void CarSound::cdtSound(const Input& in, float accelPos) {
     cdt.stop();
     return;
     }
+  if(in.shot) {
+    cdt.play(CdtBullet);
+    return;
+    }
   if(in.carBump) {
     cdt.play(CdtCar);
+    return;
+    }
+  if(in.objBump) {
+    cdt.play(CdtObj);
     return;
     }
   if(cdtSurf) {

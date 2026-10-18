@@ -58,12 +58,12 @@ static SoundBank::Channel readChannel(const Chunk& node) {
 
 static void walk(const Range& range, SoundBank& bank) {
   for(auto& c:range) {
-    if(!c.isNode())
+    if(c.type!=0x92)
       continue;
     if(c.is("SNCH"))
       bank.channels.push_back(readChannel(c));
-    else if(c.is("DESC") || c.is("FOLD"))
-      walk(c.children(),bank);
+    else if(!c.is("MESH"))
+      walk(c.children(),bank);  // DESC, FOLD, and the models (MODL) of people.sb / AIChars.sb
     }
   }
 

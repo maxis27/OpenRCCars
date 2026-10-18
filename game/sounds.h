@@ -45,8 +45,9 @@ class Sounds {
     void setTrack(const rc::SbScene& scene, const std::vector<rc::Vec3>& coast);
     void tickAmbient(const rc::Vec3& ear, const rc::Vec3& right, float dt, std::optional<float> waterAtEar);
 
-    // the voices of the people and animals (the sound channel named like the model in people.sb / AIChars.sb),
-    // heard from `ear`
+    // the voices of the people and animals (the sound channel named like the model in people.sb / AIChars.sb:
+    // Man, Woman, RepairMan, Seagull, Dog; rc::Characters::Actor::sound says what each one asks for), heard from
+    // `ear`
     void tickCharacters(const rc::Characters& chars, const rc::Vec3& ear, const rc::Vec3& right);
 
     // the road traffic (RCCars.exe 0x517530): each car's engine (channel Roadcar_slow, all the time) or horn and

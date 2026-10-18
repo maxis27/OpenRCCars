@@ -14,8 +14,9 @@ namespace rc {
 //
 // Around the engine (0x50a620 / 0x50a750 / 0x50a7d0 / 0x50ac80, state 0x50acf0):
 //  - car_CDT&Boost: car_break while braking, car_boost from where motor_accel1 is while the turbo works and the car
-//    speeds up (car_boost_end after it), car_cdt_car bumping into another car, car_cdt_surf a hit harder than
-//    20 km/h;
+//    speeds up (car_boost_end after it), car_cdt_bullet hit by a bullet, car_cdt_car bumping into another car,
+//    car_cdt_obj running into a person, guard, dog or road car, car_cdt_surf a hit harder than 20 km/h (in that
+//    order when several come at once);
 //  - car_suspension: car_flying (jump key held) or car_flying2 taking off, car_landing back on the ground;
 //  - car_Surfaces: the wheels rolling on sand, gravel, wood, stone, metal or water from 2 km/h (-20 dB at 0.5 km/h
 //    up to 0 dB at 35 km/h, in water -10 dB up to 0 dB at 15 km/h), and a hit or a touch of the body against the
@@ -48,6 +49,8 @@ class CarSound {
       uint8_t ground   = 0;     // SoundSurface under the wheels (Vehicle::groundSound)
       Contact contact;          // the body's contact in this update
       bool    carBump  = false; // started touching another car
+      bool    objBump  = false; // ran into a person, guard, dog or road car (Characters/Traffic::bumpedPlayer)
+      bool    shot     = false; // a bullet hit the car
       };
 
     // `car` 0..2: Overkill, Buggy, Hummer
@@ -64,7 +67,7 @@ class CarSound {
     // sounds of car_motor*
     enum { Accel1, Engine, IdleSnd, Off, Flying, FlyingEnd, Reverse };
     // sounds of car_CDT&Boost, car_suspension, car_motor_ws
-    enum { CdtCar, CdtObj, CdtSurf, Break, Boost, BoostEnd };
+    enum { CdtCar, CdtObj, CdtSurf, Break, Boost, BoostEnd, CdtBullet };
     enum { CarFlying, CarLanding, CarFlying2 };
     enum { AccelWs, EngineWs, DecelWs };
     // speed band for the start points

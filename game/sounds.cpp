@@ -112,7 +112,7 @@ void Sounds::tickCharacters(const rc::Characters& chars, const rc::Vec3& ear, co
     auto it = actorChannels.find(key);
     if(it==actorChannels.end()) {
       if(a->sound.empty())
-        continue;
+        continue;   // nothing to stop either
       const bool people = a->kind==rc::Characters::Kind::Person || a->kind==rc::Characters::Kind::Guard;
       auto&      lib    = people ? peopleLib : animalLib;
       if(lib==nullptr) {
@@ -133,6 +133,8 @@ void Sounds::tickCharacters(const rc::Characters& chars, const rc::Vec3& ear, co
     ch.setPlace(d,d>1e-3f ? rc::Vec3::dot(to,right)/d : 0.f);
     if(!a->sound.empty())
       ch.play(a->sound);
+    else if(a->silence)
+      ch.play(-1);   // stops it, after its tail (RCCars.exe 0x494400 with -1)
     }
   }
 

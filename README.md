@@ -111,7 +111,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   nagranych ścieżkach (`Profiles/<nazwa>.dat`), kopią auto albo podnoszą je i rzucają; strażnicy obracają się do
   gracza, celują i kopią; mewy chodzą i odlatują z krzykiem, gdy ktoś podejdzie; kraby wychodzą z dziur i uciekają
   bokiem do morza; pająki biegają między dziurami, uciekają przed autem i giną pod kołami; psy gonią auto i
-  szczekają; sępy krążą nad country_2. Potrącenie człowieka, strażnika albo psa to „Wielkie Łup!” i ich głos.
+  szczekają; sępy krążą nad country_2. Potrącenie człowieka, strażnika albo psa to „Wielkie Łup!” (człowiek krzyczy, pies skomli).
   Idący plażowicze zostawiają na piasku ślady stóp (`sole_footprint`), na zmianę prawej i lewej, które po 20 s
   zaczynają blednąć i znikają po 30 s
   Animacje szkieletowe są liczone na CPU
@@ -636,7 +636,7 @@ lib/Tempest     silnik (submoduł git)
   Ludzie: ścieżka `.dat` to rekordy co drugi (0, 2, 4 …), są tylko do 50 m od gracza; auto bliżej niż 0,8 m od
   stóp (albo szybsze niż 15 km/h do 4 m przed nimi, w kącie 25°) dostaje kopniaka (`Pendal`, 4 m/s od nich i
   7 m/s w górę) albo raz na pięć, gdy jest 2,2 m miejsca, zostaje podniesione i rzucone (`Brosok`). Mewa odlatuje,
-  gdy auto, człowiek albo pies podejdzie na 4 m (`seagull_vzliot`). Krab rusza z punktu między `landhole1`
+  gdy auto, człowiek albo pies podejdzie na 4 m. Krab rusza z punktu między `landhole1`
   a `seahole1` bokiem do auta i ginie pod kołami. Pająk biega 0,25 m/s, ucieka (1,65 m/s) przed autem bliżej niż
   1,8 m. Pies (do 25 m od domu) goni punkt przed autem w stożku 45° i atakuje przez 1,5 s (`dog_attack`).
   Zderzenia aut z postaciami liczy własny moduł gry (0x534d00: pary klas i ich funkcje): ciało człowieka i
@@ -646,6 +646,17 @@ lib/Tempest     silnik (submoduł git)
   przeciwnika, wytrąca to auto z nagrania (0x4fd9d0): przeciwnik, który potrąci człowieka, psa albo rozjedzie kraba,
   jedzie dalej sam.
   Sępy lecą po `Profiles/vlt_<trasa>_<1|2>.gpf` (nagłówek 0x28 bajtów, potem pozycja, przód i góra na klucz).
+  Dźwięki postaci: kanały `SNCH` siedzą w modelach `people.sb` (`Man`, `Woman`, `RepairMan`: `man_voice`/
+  `woman_voice`, `Guard` nieużywany) i `AIChars.sb` (`Seagull`: `seagull_vzliot`, `seagull`; `Dog`: `dog_attack`,
+  `dog_pain`); krab, pająk i sęp ich nie mają. Gra co klatkę woła kanał postaci (0x494400): człowiek mówi raz, gdy
+  animacja zmienia się na `Hurt` (0x510714); mewa krzyczy `seagull_vzliot` w animacji `start_flight`, a w każdej
+  innej gra pętlę `seagull` (czeka, aż krzyk się skończy, flaga 0x800), a gdy gracz jej nie widzi, kanał milknie
+  (0x5127bb); pies przy graczu skomli `dog_pain`, póki dotyka go auto szybsze niż 15 km/h (0x5349d0), inaczej
+  szczeka `dog_attack` w animacji `attack` (flaga 0x100: zaczyna tylko w cichym kanale, więc nie przerywa skomlenia
+  i powtarza się po skończeniu), a poza nią milknie (0x518fa2). Gracz słyszy `car_cdt_obj`, gdy wjedzie
+  w człowieka albo strażnika szybciej niż 10 km/h, w psa szybciej niż 15 km/h albo dotknie auta z ruchu ulicznego
+  (0x534340, 0x5344f0, 0x5349d0, 0x534880), i `car_cdt_bullet` przy każdym trafieniu kulą (0x508560); kanał
+  `car_CDT&Boost` bierze najpierw kulę, potem auto, obiekt, nawierzchnię (0x50a620).
 - **Ruch uliczny** (klasa `RDCR`, 0x516650; `physics/traffic.h`): wszystkie auta stoją w jednym miejscu poza
   trasą. `Settings/rdc_<trasa>.ini` (bez pliku nie ma ruchu): `Freq`/100 s między autami, `Disp`/100 tego w obie
   strony losowo, `Accel`/10 tempo odtwarzania nagrania, `Wheel` obrót kół w °/s, `Slow` (hummer z urban_1 i BTR:

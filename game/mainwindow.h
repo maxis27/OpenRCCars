@@ -121,6 +121,7 @@ class MainWindow : public Tempest::Window {
     bool                    jumpPressed = false;
     float                   upsideDown = 0; // seconds on the roof or side, then the car is put back
     float                   shotTime   = -1; // seconds since a bullet hit the car (held, then put back), < 0 none
+    bool                    shotSound  = false; // a bullet hit the car since the last tickSounds (car_cdt_bullet)
     // RCCars.exe's developer mode (-dev, 0x147d204) and its F9 (0x147d254, the "ZERO" mode of 0x482900): the
     // player's car leaves the physics and is flown by hand, the camera rigid behind it, and nothing puts the car
     // back on the track

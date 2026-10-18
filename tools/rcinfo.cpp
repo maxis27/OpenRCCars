@@ -1167,6 +1167,8 @@ static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile
     bool knocked = false;
     int32_t lastSeq = -2;
     bool    lastVis = true, hits = false;
+    std::string lastSound;
+    bool    bumped = false;
     float   maxUp = 0;
     for(int f=0; f<60*5; ++f) {
       const float t = float(f)/60.f;
@@ -1198,8 +1200,14 @@ static int cmdChars(const fs::path& game, const std::string& track, rc::PackFile
         std::printf("  %5.2f %s\n",t,a->visible ? "back" : "gone");
         lastVis = a->visible;
         }
-      if(!a->sound.empty())
-        std::printf("  %5.2f sound %s\n",t,a->sound.c_str());
+      // what it asks of its sound channel, when that changes
+      const std::string asks = !a->sound.empty() ? a->sound : (a->silence ? "(silence)" : "");
+      if(asks!=lastSound && !asks.empty())
+        std::printf("  %5.2f sound %s\n",t,asks.c_str());
+      lastSound = asks;
+      if(chars.bumpedPlayer() && !bumped)
+        std::printf("  %5.2f car_cdt_obj (car %.1f km/h)\n",t,car.velocity().length()*3.6f);
+      bumped = chars.bumpedPlayer();
       if(kmh>0 && f%5==0 && f<60)
         std::printf("  %5.2f car %.1f km/h, %.2f m from it\n",t,car.velocity().length()*3.6f,
                     (a->world.translation()-car.pose().translation()).length());

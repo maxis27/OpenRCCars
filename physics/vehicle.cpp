@@ -1410,26 +1410,6 @@ void Vehicle::surfaces(float dt) {
   if(auto level = track.waterLevel(centre,5.f))
     subNow = std::clamp((*level-(centre.y-height*0.5f))/height,0.f,1.f);
 
-  // splashing in: the first wheel, then the body, each takes away a share of the horizontal speed
-  float keep = 1;
-  if(wet<=0 && wetNow>0)
-    keep *= 1.f-prm.waterDropWheels;
-  if(sub<=0 && subNow>0)
-    keep *= 1.f-prm.waterDropBody;
-  if(keep<1) {
-    st.P.x *= keep;
-    st.P.z *= keep;
-    set(st);
-    }
-
-  // under water: everything slows down, falling and tumbling included
-  if(subNow>0) {
-    const float k = std::pow(prm.waterDamping,dt*30.f*subNow);
-    st.P = st.P*k;
-    st.L = st.L*k;
-    set(st);
-    }
-
   wet        = wetNow;
   sub        = subNow;
   const float drown = drownRate(track,m.translation(),prm);

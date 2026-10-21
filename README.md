@@ -502,9 +502,9 @@ lib/Tempest     silnik (submoduł git)
 - Woda to ściany z teksturą `sea` (bez bitu materiału; `RCCars.exe` szuka jej po nazwie). Leżą w `COLL` jak reszta,
   w kilku kopiach `_LOD1`–`_LOD4` na tej samej wysokości. Poziom morza: 0 na beach_1, 2,15 na beach_3; dno pod nim
   to zwykłe ściany kolizji (na beach_1 piasek opada od -0,3 m przy brzegu do -1,4 m). Na country_1 płytkie kałuże
-  (`pool1..3`), na country_3 strumień (kilka cm) i wodospady. `Settings/Water.ini` (`speedDropCenter` 125/500,
-  `speedDropOther` 76/500, `DampingVelocity2` 950/1000) czytamy jako utratę prędkości przy wpadnięciu do wody
-  nadwozia i kół oraz tłumienie pod wodą; to nasze odczytanie nazw.
+  (`pool1..3`), na country_3 strumień (kilka cm) i wodospady. Wodę hamuje tylko opór kół
+  (`coeffWater`, zob. „Fizyka wg `RCCars.exe`”); `Settings/Water.ini` (`speedDropCenter`, `speedDropOther`,
+  `DampingVelocity2`) gra pomija, więc my też.
 - Woda wg kodu oryginału (`RCCars.exe`; kod jest zaszyfrowany zabezpieczeniem Steam, odszyfrowaliśmy go tylko do
   analizy). Morze to ściany `sea` pod węzłem, który ma plik `Settings/WLOD_<trasa>_<węzeł>.ini` (np.
   `WLOD_beach_1_more1.ini`; `formats/water.*`). Suwaki są przycinane do zakresu i skalowane: `amp`, `amp2`, `speed`,

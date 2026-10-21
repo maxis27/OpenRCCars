@@ -12,8 +12,7 @@ namespace rc {
 
 // Driving parameters of one car (1 = Overkill, 2 = Buggy, 3 = Hummer), from RCCars.pack:
 //   Settings\engine<N>.ini, springs<N>.ini, tires<N>.ini, steering<N>.ini, resistance<N>.ini, cdt<N>.ini,
-//   Splines\OVERKILL|BUGGY|HUMMER.bspl (engine), Splines\steering<N>.bspl, Scripts\upgrades.ini and
-//   Settings\Water.ini (shared by all cars).
+//   Splines\OVERKILL|BUGGY|HUMMER.bspl (engine), Splines\steering<N>.bspl, Scripts\upgrades.ini.
 // RCCars.exe maps every slider linearly from its position 1..100 (whatever range the .ini file shows) onto a
 // fixed range of its own; the values marked "RCCars.exe" below use the game's mapping (see README, "Fizyka
 // w RCCars.exe"). The rest is our guess. The original car weighs 1 kg and falls at 10 m/s^2, so its forces are
@@ -105,9 +104,6 @@ struct CarParams {
   // at the wheel; in water k grows from 0 with the wheel 30% under water to all of it at 90%
   float   deepSandDrag = 0.06f; // 1/m per wheel, tires<N>.ini coeffDeepSand
   float   waterDrag    = 0.19f; // 1/m per wheel, coeffWater
-  float   waterDropWheels = 0.15f; // fraction of speed lost when the first wheel splashes in, Water.ini speedDropOther
-  float   waterDropBody   = 0.25f; // ... when the body does, Water.ini speedDropCenter
-  float   waterDamping    = 0.95f; // velocity kept per 1/30 s with the body under water, Water.ini DampingVelocity2
   // RCCars.exe 0x508a10: drowning is timed at a point 0.2 m above the car's origin. Under the water surface the
   // timer runs, 4x as fast when the point is more than 0.5 m under; out of the water it starts again from zero.
   float   drownHeight     = 0.2f;  // m above the car's origin

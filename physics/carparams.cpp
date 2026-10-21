@@ -14,14 +14,6 @@ SliderFile sliders(PackFile& pack, const std::string& name) {
   return SliderFile::parse(std::string_view(reinterpret_cast<const char*>(d.data()),d.size()));
   }
 
-// slider position as 0..1
-float unit(const SliderFile& f, std::string_view key, float def) {
-  auto s = f.find(key);
-  if(s==nullptr || s->max<=s->min)
-    return def;
-  return std::clamp(float(s->value-s->min)/float(s->max-s->min),0.f,1.f);
-  }
-
 // RCCars.exe: slider position 1..100 mapped linearly onto lo..hi, whatever range the file declares
 float mapped(const SliderFile& f, std::string_view key, float lo, float hi, float def) {
   auto s = f.find(key);
@@ -123,13 +115,6 @@ CarParams CarParams::load(PackFile& pack, int32_t car, int32_t upgrade) {
   // coeffDeepSand 7, coeffWater 20 (Hummer 7): 0..1 per wheel
   p.deepSandDrag = mapped(tir,"coeffDeepSand",0,1,0.06f);
   p.waterDrag    = mapped(tir,"coeffWater",   0,1,0.19f);
-
-  // Water.ini: speedDropCenter 125/500, speedDropOther 76/500, DampingVelocity2 950/1000. RCCars.exe does not read
-  // this file; how these would apply is our guess.
-  const auto wtr = sliders(pack,"Settings\\Water.ini");
-  p.waterDropBody   = unit(wtr,"speedDropCenter",0.25f);
-  p.waterDropWheels = unit(wtr,"speedDropOther",0.15f);
-  p.waterDamping    = unit(wtr,"DampingVelocity2",0.95f);
 
   // resistance<N>.ini: coeffFrictionBearings 6 (0..10 m/s^2), coeffAirResistance 33 (0..0.1 1/m)
   const auto res = sliders(pack,"Settings\\resistance"+n+".ini");

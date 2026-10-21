@@ -57,6 +57,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   characterView = std::make_unique<CharacterView>(device);
   trafficView   = std::make_unique<TrafficView>(device,res);
   chase    = ChaseCamera(ChaseCamera::Settings::load([&res](const std::string& f){ return res.pack().read(f); }));
+  lodDistances = CarModel::Distances::load(res.pack());
   try {
     const auto d = res.pack().read("Settings\\AIEmu.ini");
     aiEmu.load(rc::SliderFile::parse(std::string_view(reinterpret_cast<const char*>(d.data()),d.size())));
@@ -120,11 +121,26 @@ void MainWindow::loadLevel(const std::string& name) {
 void MainWindow::loadCar(size_t id) {
   device.waitIdle();
   carId = id;
-  car   = std::make_unique<ModelMesh>(device,resources,carScene,Cars[id]);
+  fitCar();
   if(carSound)
     carSound->stop();
   carSound = std::make_unique<rc::CarSound>(sounds->mixer(),sounds->library(),int(id));
   setupPhysics();
+  }
+
+void MainWindow::fitCar() {
+  ModelMesh::CarLook look;
+  look.boost = look.resonator = look.tires = upgrade;
+  car = std::make_unique<CarModel>(device,resources,carScene,carId,look);
+  }
+
+ModelMesh::CarLook MainWindow::aiLook(const rc::Opponent& o) {
+  ModelMesh::CarLook look;
+  look.skin      = o.skin;
+  look.boost     = o.boost;
+  look.resonator = o.reson;
+  look.tires     = o.tires;
+  return look;
   }
 
 void MainWindow::setupOpponents() {
@@ -145,9 +161,9 @@ void MainWindow::setupOpponents() {
   opponents->setTrack(level->scene());
   for(size_t i=0; i<opponents->size(); ++i) {
     auto& o   = (*opponents)[i];
-    auto& m   = aiMeshes[{o.car,o.skin}];
+    auto& m   = aiMeshes[{o.car,o.skin,o.boost,o.reson,o.tires}];
     if(m==nullptr)
-      m = std::make_unique<ModelMesh>(device,resources,carScene,Cars[o.car],rc::Vec3{},o.skin);
+      m = std::make_unique<CarModel>(device,resources,carScene,size_t(o.car),aiLook(o));
     }
   // the channels stay in the mixer, so they are made once and reused
   while(aiSounds.size()<opponents->size())
@@ -158,7 +174,7 @@ void MainWindow::setupOpponents() {
 void MainWindow::setupPhysics(bool restartRace, bool again) {
   if(level==nullptr || car==nullptr)
     return;
-  carPose = level->carStart(car->bboxMin().y);
+  carPose = level->carStart(car->full().bboxMin().y);
   vehicle.reset();
   if(physics==nullptr) {
     physics = std::make_unique<rc::PhysicsWorld>(level->collision());
@@ -220,7 +236,7 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
 void MainWindow::respawnCar() {
   if(level==nullptr || vehicle==nullptr)
     return;
-  carPose = checkpoints->respawn(car->bboxMin().y);
+  carPose = checkpoints->respawn(car->full().bboxMin().y);
   vehicle->reset(carPose);
   effects->clear(true);
   sounds->play("Checkpoint","cp_reset");
@@ -357,14 +373,14 @@ std::vector<rc::Mat4> MainWindow::partPoses(const ModelMesh& mesh, const rc::Car
   return ret;
   }
 
-std::vector<rc::Mat4> MainWindow::carPartPoses() const {
+std::vector<rc::Mat4> MainWindow::carPartPoses(const ModelMesh& mesh) const {
   if(vehicle==nullptr) {
     std::vector<rc::Mat4> ret;
-    for(auto& p:car->parts())
+    for(auto& p:mesh.parts())
       ret.push_back(rc::Mat4::translate(p.pivot));
     return ret;
     }
-  return partPoses(*car,vehicle->geometry(),vehicle->rigPose());
+  return partPoses(mesh,vehicle->geometry(),vehicle->rigPose());
   }
 
 std::vector<rc::Mat4> MainWindow::opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const {
@@ -410,6 +426,8 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
   // U - next upgrade level (boosters, resonators and tires together)
   if(e.key==Event::K_U) {
     upgrade = (upgrade+1)%4;
+    device.waitIdle();
+    fitCar();
     const rc::Mat4 at = carPose;
     setupPhysics(false);
     if(vehicle)
@@ -442,7 +460,7 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     const float    yaw = std::atan2(p.dir.x,p.dir.z)*180.f/3.14159265f;
     rc::Mat4       at  = rc::Mat4::translate(p.position)*rc::Mat4::rotate(1,yaw);
     if(auto g = level->collision().groundHeight(p.position+rc::Vec3{0,1.f,0}))
-      at.m[1][3] = *g-car->bboxMin().y;
+      at.m[1][3] = *g-car->full().bboxMin().y;
     carPose = at;
     flightPose = at;
     vehicle->reset(carPose);
@@ -966,18 +984,20 @@ void MainWindow::render() {
       if(traffic)
         trafficView->draw(enc,frameId,*traffic,viewProj,push,level ? &level->collision() : nullptr);
       if(car) {
-        const auto parts = carPartPoses();
-        car->setDirt(forcedDirt>=0 ? float(forcedDirt) : effects->dirt());
-        car->draw(enc,viewProj,push,carPose,&parts);
+        auto&      mesh  = car->at((carPose.translation()-camera.position).length(),lodDistances);
+        const auto parts = carPartPoses(mesh);
+        mesh.setDirt(forcedDirt>=0 ? float(forcedDirt) : effects->dirt());
+        mesh.draw(enc,viewProj,push,carPose,&parts);
         }
       if(opponents) {
         for(size_t i=0; i<opponents->size(); ++i) {
           const auto& o = (*opponents)[i];
-          auto        m = aiMeshes.find({o.car,o.skin});
+          auto        m = aiMeshes.find({o.car,o.skin,o.boost,o.reson,o.tires});
           if(m==aiMeshes.end())
             continue;
-          const auto parts = opponentPartPoses(*m->second,o);
-          m->second->draw(enc,viewProj,push,o.pose(),&parts);
+          auto&       mesh  = m->second->at((o.pose().translation()-camera.position).length(),lodDistances);
+          const auto  parts = opponentPartPoses(mesh,o);
+          mesh.draw(enc,viewProj,push,o.pose(),&parts);
           }
         }
       effects->setFog(push.cameraPos[3],push.fogColor);

@@ -30,6 +30,7 @@
 #include "sounds.h"
 #include "world/characters.h"
 #include "world/traffic.h"
+#include "world/carmodel.h"
 #include "world/modelmesh.h"
 #include "world/level.h"
 #include "world/objects.h"
@@ -52,6 +53,8 @@ class MainWindow : public Tempest::Window {
     void tick(float dt);
     void loadLevel(const std::string& name);
     void loadCar(size_t id);
+    void fitCar();                              // the car's model with its upgrades
+    static ModelMesh::CarLook aiLook(const rc::Opponent& o);
     void respawnCar();    // back to the last checkpoint passed (R, drowned, out of the track, reset volume)
     // the car on the start line and the race from the countdown; `again`: "Jeszcze raz", no delay before "3"
     void setupPhysics(bool restartRace = true, bool again = false);
@@ -59,7 +62,7 @@ class MainWindow : public Tempest::Window {
     // engines, checkpoint voice: once per frame after the physics
     void tickSounds(float dt);
     static std::vector<rc::Mat4> partPoses(const ModelMesh& mesh, const rc::CarGeometry& geom, const rc::CarRig::Pose& pose);
-    std::vector<rc::Mat4> carPartPoses() const;
+    std::vector<rc::Mat4> carPartPoses(const ModelMesh& mesh) const;
     std::vector<rc::Mat4> opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const;
     Hud::Info             hudInfo() const;
     // the bursts fired in this update and the cars they can hit (fx::Gunfire)
@@ -97,7 +100,8 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<Level>  level;
     rc::SbScene             carScene;       // RCCarsDB/Car.sb, all cars
     rc::ObjectLibrary       library;        // stone.sb ...: models of the objects placed on tracks
-    std::unique_ptr<ModelMesh> car;
+    std::unique_ptr<CarModel> car;
+    CarModel::Distances     lodDistances;
     size_t                  carId    = 0;   // 0..2: Car1..Car3
     int32_t                 upgrade  = 0;   // 0..3, Scripts/upgrades.ini column
     rc::Mat4                carPose;
@@ -116,7 +120,7 @@ class MainWindow : public Tempest::Window {
     // declared after `checkpoints` and `physics`: they refer to both
     std::unique_ptr<rc::Opponents>    opponents;
     rc::Opponents::Level              aiLevel = rc::Opponents::Level::Normal; // O: off, easy, normal, hard
-    std::map<std::pair<int32_t,int32_t>,std::unique_ptr<ModelMesh>> aiMeshes; // by car and skin
+    std::map<std::array<int32_t,5>,std::unique_ptr<CarModel>> aiMeshes; // by car, skin and upgrades
     float                             playerFinish = -1;  // race time of the player's finish
     rc::AiEmu                         aiEmu;              // what the opponents seem to run into
     // s since each car's last "kochaś zderzaków" (RCCars.exe car+0x5704): the player's, then the opponents'

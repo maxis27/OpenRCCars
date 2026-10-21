@@ -19,6 +19,8 @@
 //   env RCSHOT_TRAFFIC=<seconds> lets the road traffic run that long after the start of the race and, with
 //   RCSHOT_TRAFFIC_CAR=<n>, looks at the n-th car on the road from RCSHOT_ACTOR_DIST m (default 8),
 //   RCSHOT_ACTOR_SIDE degrees round it (default 30) and RCSHOT_ACTOR_RISE times that distance up (default 0.35).
+//   env RCSHOT_UPGRADE=<0..3> fits the car with that level of every upgrade (as the game's U key), RCSHOT_LOD=1|2
+//   draws its Car<n>LOD<n> model instead.
 
 #include <Tempest/Device>
 #include <Tempest/Fence>
@@ -90,7 +92,15 @@ int main(int argc, const char** argv) {
     std::vector<rc::Mat4>    parts;
     if(carName==nullptr || std::string(carName)!="none") {
       carSb   = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
-      car     = std::make_unique<ModelMesh>(device,res,carSb,carName ? carName : "Car1");
+      ModelMesh::CarLook look;
+      std::string        model = carName ? carName : "Car1";
+      if(const char* u = std::getenv("RCSHOT_UPGRADE"))
+        look.boost = look.resonator = look.tires = std::atoi(u);
+      if(const char* l = std::getenv("RCSHOT_LOD")) {
+        model    += std::string("LOD")+l;
+        look.lod  = true;
+        }
+      car     = std::make_unique<ModelMesh>(device,res,carSb,model,look);
       carPose = level.carStart(car->bboxMin().y);
       if(const char* start = std::getenv("RCSHOT_START")) {
         // "x z yaw": somewhere else on the track, standing on the ground

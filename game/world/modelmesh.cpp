@@ -48,18 +48,24 @@ float environmentOf(const rc::SbMesh& m, bool car, rc::PackFile& pack) {
 }
 
 ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
-                     const rc::Vec3& origin, int skin)
-  :ModelMesh(device,res,sb,model,origin,Options(),skin) {
+                     const rc::Vec3& origin)
+  :ModelMesh(device,res,sb,model,origin,Options(),CarLook()) {
+  }
+
+ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
+                     const CarLook& look)
+  :ModelMesh(device,res,sb,model,rc::Vec3{},Options(),look) {
   }
 
 ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
                      const rc::Vec3& origin, const Options& opt)
-  :ModelMesh(device,res,sb,model,origin,opt,0) {
+  :ModelMesh(device,res,sb,model,origin,opt,CarLook()) {
   }
 
 ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
-                     const rc::Vec3& origin, const Options& opt, int skin)
+                     const rc::Vec3& origin, const Options& opt, const CarLook& look)
   :modelName(model), pso(device) {
+  const int skin = look.skin;
   const int32_t modelId = sb.findModel(model);
   if(modelId<0)
     throw std::runtime_error("model \""+std::string(model)+"\" not found");
@@ -97,7 +103,10 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
         return -1;
       return under(mesh,opt.parts)+1;
       }
-    auto name = rc::carNode(sb,mesh);
+    rc::CarAddOns addOns;
+    if(!look.lod)
+      addOns = {look.boost,look.resonator};
+    auto name = rc::carNode(sb,mesh,addOns);
     if(!name)
       return -1;
     if(name->empty())
@@ -112,6 +121,28 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
 
   // 1. model space triangles, bucketed by part, texture and environment map
   const bool car = model.size()>3 && model.rfind("Car",0)==0 && model[3]>='1' && model[3]<='9';
+  // RCCars.exe 0x50be40: with the boost upgraded the WHEEL_* nodes get their own z axis (the axle's direction)
+  // as long as the TIRES level's factor; their meshes are stretched along it about the node
+  static const float WheelWidth[] = {0.95f, 1.07f, 1.25f, 1.35f};
+  struct Stretch {
+    rc::Vec3 at, axis;  // about the node's origin, along its z axis (unit)
+    float    k = 1;
+    };
+  auto widen = [&](size_t mesh) -> Stretch {
+    if(!car || look.boost<=0 || look.tires<0 || look.tires>3)
+      return {};
+    for(int32_t i=int32_t(mesh); i>=0; i=sb.meshes[size_t(i)].parent) {
+      auto& n = sb.meshes[size_t(i)];
+      if(n.name.rfind("WHEEL_",0)!=0)
+        continue;
+      // 0x50bf2e: only nodes of a sane size
+      const float s = n.local.vector({0,0,1}).length();
+      if(s<=0.1f || s>=10.f)
+        return {};
+      return {n.world.translation()-origin,n.world.vector({0,0,1}).normalized(),WheelWidth[look.tires]/s};
+      }
+    return {};
+    };
   // key: part, texture, environment map, head light variant (Batch::lit)
   std::map<std::tuple<size_t,int32_t,float,int8_t>,std::vector<LevelMesh::Vertex>> buckets;
   for(size_t mi=0; mi<sb.meshes.size(); ++mi) {
@@ -125,6 +156,7 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
     const bool  mirrored = m.world.determinant3()<0;
     const float env      = m.faces.empty() ? 0.f : environmentOf(m,car,res.pack());
     const bool  light    = !opt.lights.empty() && under(mi,opt.lights)>=0;
+    const auto  stretch  = widen(mi);
     for(int8_t variant=(light ? 0 : -1); variant<=(light ? 1 : -1); ++variant)
     for(auto& f:m.faces) {
       const size_t n    = f.pos.size();
@@ -139,7 +171,8 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
         const uint32_t pi = f.pos[corner];
         if(pi>=m.positions.size())
           return v;
-        const rc::Vec3 p  = m.world.point(m.positions[pi])-origin;
+        rc::Vec3 p = m.world.point(m.positions[pi])-origin;
+        p = p+stretch.axis*(rc::Vec3::dot(p-stretch.at,stretch.axis)*(stretch.k-1.f));
         const rc::Vec3 nr = corner<f.normals.size() ? m.world.vector(f.normals[corner]).normalized() : rc::Vec3{0,1,0};
         v.pos[0]    = p.x;  v.pos[1]    = p.y;  v.pos[2]    = p.z;
         v.normal[0] = nr.x; v.normal[1] = nr.y; v.normal[2] = nr.z;
@@ -191,6 +224,11 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
       for(auto& [from,to]:opt.textures)
         if(name==from && res.texture(to)!=nullptr)
           name = to;
+      // 0x50bf90: the Buggy's textures named tire2*, the others' tire3*, become the TIRES level's tire<2|3>_<n>
+      const std::string tire = car && model[3]=='2' ? "tire2" : "tire3";
+      if(car && look.tires>=0 && look.tires<4 && name.rfind(tire,0)==0 &&
+         res.texture(tire+"_"+char('1'+look.tires))!=nullptr)
+        name = tire+"_"+char('1'+look.tires);
       if(skin>0 && skin<4 && name.rfind("car_",0)==0 && name.find("skin")!=std::string::npos && name.back()=='1') {
         std::string other = name;
         other.back() = char('1'+skin);

@@ -141,6 +141,7 @@ class Opponent {
     std::string          name;
     int32_t              car = 0;           // 0 Overkill, 1 Buggy, 2 Hummer
     int32_t              skin = 0;          // AIPlayer<n> Skin
+    int32_t              boost = 0, reson = 0, tires = 0; // AIRace<n> AI<n>Boost, Reson, Tires: how it looks
     size_t               putBacks = 0;      // times put back on the track
     float                shotTime = -1;     // s since a bullet hit it, < 0 none
 

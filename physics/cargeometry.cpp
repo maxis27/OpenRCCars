@@ -49,24 +49,34 @@ struct Box {
 
 }
 
-std::optional<std::string> rc::carPart(const SbScene& sb, size_t mesh) {
-  // low detail copies, drawn by the original engine only at distance
+std::optional<std::string> rc::carPart(const SbScene& sb, size_t mesh, const CarAddOns& addOns) {
+  // low detail copies, drawn by the original engine only at distance (the Car<n>LOD<n> models are their own)
   auto& self = sb.meshes[mesh].name;
-  if(self.find("_LOD1")!=std::string::npos || self.find("_LOD2")!=std::string::npos)
+  auto& model = sb.meshes[mesh].model>=0 ? sb.models[size_t(sb.meshes[mesh].model)] : self;
+  if(model.find("LOD")==std::string::npos &&
+     (self.find("_LOD1")!=std::string::npos || self.find("_LOD2")!=std::string::npos))
     return std::nullopt;
   std::string part;
+  std::string_view addOn; // booster_<n> or compressor_<n> above the mesh
   for(int32_t i=int32_t(mesh); i>=0; i=sb.meshes[size_t(i)].parent) {
     auto& name = sb.meshes[size_t(i)].name;
-    if(startsWith(name,"UPGRADES"))
-      return std::nullopt; // boosters and compressors, shown only once bought
+    for(std::string_view p:{"booster_","compressor_"})
+      if(addOn.empty() && name.size()==p.size()+1 && startsWith(name,p) && name.back()>='1' && name.back()<='4')
+        addOn = name;
+    // UPGRADES (UPGRADE<n> in the Buggy)
+    if(startsWith(name,"UPGRADE")) {
+      const int32_t shown = addOn.empty() ? -1 : addOn[0]=='b' ? addOns.boost : addOns.resonator;
+      if(shown<0 || addOn.back()!=char('1'+shown))
+        return std::nullopt;
+      }
     if(part.empty() && startsWith(name,"WHEEL_"))
       part = name;
     }
   return part;
   }
 
-std::optional<std::string> rc::carNode(const SbScene& sb, size_t mesh) {
-  if(!carPart(sb,mesh))
+std::optional<std::string> rc::carNode(const SbScene& sb, size_t mesh, const CarAddOns& addOns) {
+  if(!carPart(sb,mesh,addOns))
     return std::nullopt;
   for(int32_t i=int32_t(mesh); i>=0; i=sb.meshes[size_t(i)].parent) {
     auto& name = sb.meshes[size_t(i)].name;

@@ -656,7 +656,10 @@ Opponents::Opponents(PhysicsWorld& world, const Reader& read, const SbScene& car
       }
     const CarParams prm = params ? params(o.car+1) : CarParams{};
     auto car = std::make_unique<Opponent>(world,carGeometry(carScene,CarModels[o.car]),std::move(laps),route,band,prm);
-    car->car = o.car;
+    car->car   = o.car;
+    car->boost = o.boost;
+    car->reson = o.reson;
+    car->tires = o.tires;
     if(auto d = layout.drivers.find(o.driver); d!=layout.drivers.end()) {
       // the face picture names the driver: "MCJocker.tga"
       const std::string& f = d->second.face;

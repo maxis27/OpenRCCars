@@ -9,12 +9,20 @@
 
 namespace rc {
 
+// The add-ons a car shows (RCCars.exe 0x50bf90): of the booster_1..4 nodes under UPGRADES* only booster_<boost+1>,
+// of compressor_1..4 only compressor_<resonator+1>; -1 shows none of them, and so do the LOD models.
+struct CarAddOns {
+  int32_t boost     = -1;
+  int32_t resonator = -1;
+  };
+
 // Which part of a car from RCCarsDB/Car.sb a mesh belongs to: "" for the body, "WHEEL_..." for the wheel node
-// above it (or itself), nullopt for meshes that are not shown (UPGRADES* add-ons, _LOD copies).
-std::optional<std::string> carPart(const SbScene& sb, size_t mesh);
+// above it (or itself), nullopt for meshes that are not shown (UPGRADES* add-ons not in `addOns`, the _LOD copies
+// inside the full models).
+std::optional<std::string> carPart(const SbScene& sb, size_t mesh, const CarAddOns& addOns = {});
 // The same for drawing: the nearest node above the mesh (or itself) that moves on its own (CarRig): a WHEEL_*
 // node or one of the suspension's axles, arms, steering supports and springs; "" for the body.
-std::optional<std::string> carNode(const SbScene& sb, size_t mesh);
+std::optional<std::string> carNode(const SbScene& sb, size_t mesh, const CarAddOns& addOns = {});
 
 // Physical layout of one car model, in model space (+Z forward, +Y up, +X left), from its render geometry.
 struct CarGeometry {

@@ -131,6 +131,7 @@ add_library(rcengine STATIC
   game/sounds.h            game/sounds.cpp
   game/world/levelmesh.h   game/world/levelmesh.cpp
   game/world/modelmesh.h     game/world/modelmesh.cpp
+  game/world/carmodel.h      game/world/carmodel.cpp
   game/world/level.h       game/world/level.cpp
   game/world/collisionview.h game/world/collisionview.cpp
   game/world/objects.h     game/world/objects.cpp

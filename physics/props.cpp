@@ -151,7 +151,7 @@ void Prop::blow(float dt) {
   const float u  = f*f*f*(f*(f*6.f-15.f)+10.f);
   const float n  = std::clamp(2.f*(g0+(g1-g0)*u),-1.f,1.f);
   // the noise times 360 degrees turns +Z about Y
-  const float a  = n*360.f*float(M_PI)/180.f;
+  const float a  = n*2.f*3.14159265f;
   Vec3 force = Vec3{std::sin(a),0,std::cos(a)}*mass;
 
   const Vec3  at   = pose().translation();

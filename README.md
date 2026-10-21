@@ -19,12 +19,12 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   każdej trasy jak w oryginale (`Settings/fog_<trasa>.ini`);
   przełączanie 10 tras
 - **auto**: model z `Car.sb` (Overkill, Buggy, Hummer) stoi na pozycji startowej gracza (`INST 'Player'`), osadzony
-  na ziemi; nadwozie i koła są osobnymi częściami (pod obrót i skręt kół); kamera za autem albo kamera swobodna;
+  na ziemi; nadwozie i koła są osobnymi częściami (pod obrót i skręt kół); kamera za autem;
   kamera za autem działa jak w oryginale (`Settings/Camera.ini`: odległość, opóźnienie wysokości i kąta, odsuwanie
   przy prędkości i turbo, unoszenie, gdy teren zasłania auto), nie schodzi pod wodę, a karoseria, szyby i chromy mają odbicia z mapy otoczenia jak w oryginale
 - **kolizje trasy** z węzła `COLL`: siatka komórek nad trasą, w każdej lista ścian siatek renderu, które ją przecinają;
   z tego powstaje siatka kolizji (trójkąty w przestrzeni świata) z raycastem po komórkach (DDA). Auto staje na
-  ziemi wyznaczonej raycastem. Klawisz **K** (w trybie `-dev`) pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
+  ziemi wyznaczonej raycastem. Kod `constr` (w trybie `-dev`) pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
   ściany, niebieskie niewidoczne ściany (ściany bez tekstury)
 - **fizyka jazdy** jak w `RCCars.exe`: własny model auta (sprężyny, opony z poślizgiem, koła jako kule) i jego
   własny ruch i zderzenia z trasą, autami, rekwizytami i postaciami; [Bullet](https://github.com/bulletphysics/bullet3)
@@ -134,7 +134,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 
 ![Auto na starcie (beach_1)](docs/car_beach_1.jpg)
 
-![Nakładka kolizji (beach_1, klawisz K)](docs/collision_beach_1.jpg)
+![Nakładka kolizji (beach_1, kod `constr`)](docs/collision_beach_1.jpg)
 
 ![Jazda: skręt w lewo (beach_1)](docs/driving_beach_1.jpg)
 
@@ -237,27 +237,43 @@ Tryb deweloperski (`-dev`, jak `RCCars.exe -dev`):
 | End | (lot) wypoziomuj |
 | Shift | (lot) dwa razy szybciej |
 | F11 | natychmiastowe wyjście (oryginał: `WM_CLOSE`) |
-| V | kamera za autem ↔ kamera swobodna (auto wtedy stoi) |
-| K | nakładka kolizji (turkusowa woda, fioletowy głęboki piasek) |
+| kody `dt0`–`dt5` / `dtx` | (wpisywane w grze) brud auta na stałym poziomie / znowu normalnie |
+| kod `constr` | nakładka kolizji (turkusowa woda, fioletowy głęboki piasek) |
+| kod `E1` | kamera „ZERO”: lata klawiszami jak auto przy F9, gra toczy się dalej, auto stoi bez kierowcy |
+| kod `E2` | kamera stoi w miejscu |
+| kod `C1` | z powrotem kamera wyścigowa |
+| kod `I` | własna kamera „ZERO” i gra zatrzymana; drugi raz: powrót i gra rusza |
+| kod `F` | przy zatrzymanej grze (`I`) jedna klatka gry (`FixedTime` ms albo czas ostatniej klatki); inaczej jak `I` |
 | G | kule zaliczania punktów kontrolnych, 1,6 m |
 | N | przeskok do następnego głównego punktu kontrolnego (do sprawdzania okrążeń i mety) |
 | T | postaw auto na koła w miejscu |
-| W / S / A / D | ruch kamery swobodnej |
-| E, Spacja / Q, C | w górę / w dół |
-| Shift | szybciej ×4 |
-| przeciąganie myszą, strzałki | obrót kamery swobodnej |
-| kółko myszy | prędkość kamery |
 
 Co `-dev` robi w `RCCars.exe` (0x4883dd ustawia flagę 0x147d204, w logu „-dev mode on”): klawisz F9 (0x48c0e3)
 przełącza flagę 0x147d254, F11 zamyka okno; wczytuje skrypt `debug.gm`, pomija przy starcie kilka kroków (m.in. styl
-dźwięku `Snd_Style`), dodaje polecenia konsoli (`GetInfo`, `GetStat`, `cash`, `stat`, `dt0`–`dtx`, `burst`, `constr`, „ZERO”
-`F`/`E1`/`E2`/`I`) i pozwala wczytać trasę wprost z instancją `Player`. Przy F9 auto gracza nie przechodzi przez
+dźwięku `Snd_Style`), dodaje polecenia skryptów (`GetInfo`, `GetStat`, `Give`, `Buy`, `EmRace`) i wpisywane kody (`stat`, `dt0`–`dtx`,
+`burst`, `road`, `constr`, `C1`, „ZERO” `F`/`E1`/`E2`/`I`) i pozwala wczytać trasę wprost z instancją `Player`. Przy F9 auto gracza nie przechodzi przez
 fizykę (0x4f39e0 → 0x482900): w pierwszej klatce staje prosto, przodem tam, dokąd jechało po ziemi, a potem przesuwa
 się i obraca o `ZeroSpeed`·dt i `ZeroAngle`·dt (sekcja „Debug”, domyślnie 100 i 90, `Autoexec.gm` ustawia
 `ZeroSpeed 15`) klawiszami z 0x482320 (↑↓ przód/tył, ←→ obrót, Alt+↑↓ góra/dół, Alt+←→ oraz `,`/`.` w bok, A/Z
 pochylenie, End poziomo, Shift ×2). Kamera ma wtedy sprężyny bez luzu: 1,0443 m za autem i 0,409 m nad nim (0x500ce9),
 bez podnoszenia przez przeszkody (0x501183) i bez pilnowania wody; 0x508160 nie odsyła auta na punkt kontrolny.
-U nas klawisze debugowania (V, K, G, N, T) działają tylko w tym trybie.
+U nas klawisze debugowania (G, N, T) działają tylko w tym trybie; nakładkę kolizji i kamerę swobodną dają oryginalne kody `constr` i `E1`.
+
+Kody trybu dev (0x47a660 je rejestruje, 0x47a6b0 sprawdza każdy klawisz): litery i cyfry wpisane po kolei, wielkość
+liter bez znaczenia, najwyżej 2 s między nimi (0x47a7a0); zły klawisz zaczyna kod od nowa. U nas klawisz, który
+kontynuuje rozpoczęty kod, nie trafia do naszych skrótów (`E1` nie przełącza auta, `constr` nie zmienia
+przeciwników). `dtN` (0x532490, 0x531cb8) trzyma teksturę brudu nr N (najwyżej ostatnią, u nas poziom 2), `dtx`
+puszcza. `constr` (0x4a4710) rysuje obrysy ścian trasy (0x4a40c4; przyjmujemy, że to siatka kolizji). Kamera „ZERO”
+(0x482cd0, 0x482eb0) używa tego samego sterowania co lot F9 (0x482900): `E1` daje je kamerze widoku 0, `E2` kamerze
+widoku 1, a widok 0 zostaje bez sterownika (u nas jeden widok, więc kamera stoi), `C1` (0x501a60) przywraca kamerę
+wyścigu `RAC$`, `I` tworzy osobną kamerę i zatrzymuje czas gry (licznik pauzy 0x710b74), `F` przy zatrzymanym czasie
+woła jedną klatkę (0x48bce0, `FixedTime` z trybem dev). W oryginale kody kamery sprawdzają flagę ZERO (0x1481fc4),
+którą system `ZERO` (0x482230) włącza na `GMP_INIT_MAP` i wyłącza na `GMP_TERM_MAP`, czyli przez cały czas wczytanej
+trasy; wiadomość 0x83 z interfejsu (0x4c73c9, 0x4ca9a1) wyłącza ją na czas ekranów menu (przypuszczenie z kontekstu).
+U nas nie ma menu w czasie wyścigu, więc kody działają zawsze w trybie dev. `debug.gm` czytamy
+tylko po `Set ZeroSpeed/ZeroAngle/FixedTime`. Nie przeniesione: polecenia skryptów kariery (`GetInfo`, `GetStat`,
+`Give`, `Buy`, `EmRace`) i kody `stat`, `burst`, `road` (oraz drugi `constr`), które przełączają flagi, których
+nikt nie czyta.
 
 ## Narzędzia
 
@@ -333,7 +349,7 @@ fx/             efekty cząsteczkowe, bez GPU
   worldfx.*     efekty trasy: rozbryzgi przy water_splash_N, fale przy water_wave_N, strzały strażników, ślady stóp
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
-  camera.*      kamera (oko, kierunek, rzutowanie); kamera swobodna
+  camera.*      kamera (oko, kierunek, rzutowanie)
   chasecamera.* kamera za autem według RCCars.exe i Settings/Camera.ini
   hud.*         kokpit wyścigu (obrazki i czcionka z Language/<język>)
   effects.*     efekty aut i trasy: sprite'y zwrócone do kamery, posortowane, z testem głębi

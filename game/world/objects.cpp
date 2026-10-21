@@ -36,6 +36,11 @@ Objects::Objects(Device& device, Resources& res, rc::ObjectLibrary& library, con
 
 Objects::~Objects() = default;
 
+void Objects::update(float dt) {
+  for(auto& it:items)
+    it.prop->blow(dt);
+  }
+
 void Objects::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj, const LevelMesh::Push& frame) const {
   for(auto& it:items) {
     it.mesh->draw(enc,viewProj,frame,it.prop->pose()*rc::Mat4::scale({it.scale,it.scale,it.scale}));

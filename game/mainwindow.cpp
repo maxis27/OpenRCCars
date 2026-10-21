@@ -536,6 +536,8 @@ void MainWindow::tick(float dt) {
     if(opponents)
       opponents->update(dt,!race->holdCar(),carPose.translation(),checkpoints->laps(),playerFinish>=0,race->time(),
                         race->laps());
+    if(objects)
+      objects->update(dt);
     physics->step(dt);
     if(flying)
       vehicle->hold(flightPose);  // the step's gravity and bumps undone

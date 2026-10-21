@@ -3,6 +3,8 @@
 #include <btBulletDynamicsCommon.h>
 
 #include <algorithm>
+#include <cmath>
+#include <random>
 
 #include "btconvert.h"
 #include "cargeometry.h"
@@ -107,6 +109,16 @@ Prop::Prop(PhysicsWorld& world, const PropGeometry& g, const PropParams& prm, co
   const float r = std::min({half.x,half.y,half.z});
   rigid->setCcdMotionThreshold(r*S*0.5f);
   rigid->setCcdSweptSphereRadius(r*S*0.8f);
+  mass = prm.mass;
+  wind = prm.wind;
+  if(wind) {
+    // each prop its own noise (0x50c731), seeded by where it stands
+    std::mt19937 rng(uint32_t(std::abs(start.m[0][3])*1000.f+std::abs(start.m[2][3])*7919.f));
+    std::uniform_real_distribution<float> g(-1.f,1.f);
+    for(auto& v:windGrad)
+      v = g(rng);
+    rigid->setActivationState(DISABLE_DEACTIVATION);
+    }
   reset();
   owner.bullet().addRigidBody(rigid.get());
   }
@@ -124,6 +136,35 @@ void Prop::reset() {
   rigid->setAngularVelocity(btVector3(0,0,0));
   rigid->clearForces();
   rigid->activate(true);
+  }
+
+void Prop::blow(float dt) {
+  if(!wind)
+    return;
+  // 0x50d3f0 runs at each of the two evaluations of a step, 0.03 of the noise for its time each
+  windPhase += 0.06f*dt;
+  const float x  = windPhase;
+  const int   i  = int(std::floor(x));
+  const float f  = x-float(i);
+  const float g0 = windGrad[size_t(i)&255]*f, g1 = windGrad[size_t(i+1)&255]*(f-1.f);
+  const float u  = f*f*f*(f*(f*6.f-15.f)+10.f);
+  const float n  = std::clamp(2.f*(g0+(g1-g0)*u),-1.f,1.f);
+  // the noise times 360 degrees turns +Z about Y
+  const float a  = n*360.f*float(M_PI)/180.f;
+  Vec3 force = Vec3{std::sin(a),0,std::cos(a)}*mass;
+
+  const Vec3  at   = pose().translation();
+  const Vec3  home = start.translation();
+  const float dx = home.x-at.x, dz = home.z-at.z;
+  const float d  = std::sqrt(dx*dx+dz*dz);
+  if(d>=3.f) {
+    const float k  = d>5.f ? mass : (d-3.f)*mass*0.5f;
+    const Vec3  to = home-at;
+    if(to.length()>1e-6f)
+      force = force+to.normalized()*k;
+    }
+  // Bullet runs Scale times larger
+  rigid->applyCentralForce(toBt(force)*S);
   }
 
 Mat4 Prop::pose() const {

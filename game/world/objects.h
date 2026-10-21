@@ -22,6 +22,8 @@ class Objects {
             rc::PhysicsWorld& world);
     ~Objects();
 
+    // the wind on the props that blow about (rc::Prop::blow), before rc::PhysicsWorld::step
+    void   update(float dt);
     void   draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, const rc::Mat4& viewProj,
                 const LevelMesh::Push& frame) const;
     size_t size() const { return items.size(); }

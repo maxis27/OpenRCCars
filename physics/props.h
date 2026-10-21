@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -20,7 +21,7 @@ class PhysicsWorld;
 //   Geom:     type (1 sphere, 2 cylinder, 3 cone, 4 bottle, 5 bucket, 6 shell, 7 kettle, 8 balloon),
 //             shiftCenterMassOY (m, centre of mass above the model's origin)
 //   Params:   mass (kg), coeffHookNorm (bounce: 0.7 balls, 0.3 the rest), coeffFrict
-//   ExtForces fWindBlow (tumbleweed "Klubok": rolls in the wind; not simulated yet)
+//   ExtForces fWindBlow (tumbleweed "Klubok": rolls in the wind, Prop::blow)
 struct PropParams {
   enum Shape : int32_t { Hull = 0, Sphere = 1, Cylinder = 2, Cone = 3, Bottle = 4, Bucket = 5, Shell = 6,
                          Kettle = 7, Balloon = 8 };
@@ -54,6 +55,10 @@ class Prop {
 
     // model -> world
     Mat4        pose() const;
+    // the wind on a fWindBlow prop, call once per frame before PhysicsWorld::step (RCCars.exe 0x50d3f0): a push
+    // of 1 m/s^2 its own way, which turns with a 1D noise (0x49d8a0, a table of 256), and, 3 m or more from where
+    // it was placed (across the ground), a pull back of 0 .. 1 m/s^2 (full from 5 m)
+    void        blow(float dt);
 
   private:
     // to the start, at rest
@@ -66,6 +71,10 @@ class Prop {
     std::unique_ptr<btCompoundShape>      shape;
     std::unique_ptr<btDefaultMotionState> motion;
     std::unique_ptr<btRigidBody>          rigid;
+    float                                 mass = 0;
+    bool                                  wind = false;
+    float                                 windPhase = 0;     // where on the noise (0x50d3f0 prop+0x44)
+    std::array<float,256>                 windGrad = {};     // the noise's gradients
   };
 
 }

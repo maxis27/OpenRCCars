@@ -22,6 +22,7 @@
 #include "formats/scene.h"
 #include "formats/collision.h"
 #include "formats/objects.h"
+#include "formats/texttable.h"
 #include "formats/water.h"
 #include "physics/characters.h"
 #include "physics/checkpoints.h"
@@ -1423,6 +1424,8 @@ static int cmdDrown(const fs::path& game, const fs::path& track, rc::PackFile& p
     const auto& d = v.volume->data;
     std::printf("%-24s filter %.3f s, y %.2f .. %.2f, %zu corners\n",v.volume->name.c_str(),v.filter,
                 d.size()>1 ? d[0] : 0.f,d.size()>1 ? d[1] : 0.f,d.size()>2 ? (d.size()-2)/2 : 0);
+    for(size_t i=2; i+1<d.size(); i+=2)
+      std::printf("  corner %.2f %.2f\n",d[i],d[i+1]);
     }
   rc::Checkpoints cps(scene,coll);
   for(auto& p:cps.route()) {
@@ -1659,7 +1662,7 @@ static int cmdShots(const fs::path& game, const std::string& track, rc::PackFile
 
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|sb|obj|nodes|coll|objects|check|drive|race|gates|ai|fx|fog|ram|chars|drown|traffic|shots ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|tbl|sb|obj|nodes|coll|objects|check|drive|race|gates|ai|fx|fog|ram|chars|drown|traffic|shots ...\n");
     return 1;
     }
   try {
@@ -1705,8 +1708,18 @@ int main(int argc, char** argv) {
       writeFile(argv[4],d.data(),d.size());
       return 0;
       }
+    if(cmd=="tbl" && argc>3) {
+      // "rcinfo <game> tbl Game/polish.tbl [id]": the texts of Language/<file>, raw Windows-1250
+      const auto d = readFile(game/"Language"/argv[3]);
+      const auto t = rc::TextTable::parse(d.data(),d.size());
+      std::printf("%s: %zu texts\n",std::string(t.language()).c_str(),t.size());
+      for(auto& [id,text]:t.all())
+        if(argc<5 || id==uint32_t(std::stoul(argv[4])))
+          std::printf("%6u %s\n",id,text.c_str());
+      return 0;
+      }
     if(cmd=="csi" && argc>4) {
-      auto d = pack.read(argv[3]);
+      auto d = std::filesystem::exists(argv[3]) ? readFile(argv[3]) : pack.read(argv[3]);
       writeTga(argv[4],rc::decodeCsi(d.data(),d.size()));
       return 0;
       }

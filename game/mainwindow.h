@@ -18,6 +18,7 @@
 #include "chasecamera.h"
 #include "effects.h"
 #include "hud.h"
+#include "physics/aiemu.h"
 #include "physics/characters.h"
 #include "physics/traffic.h"
 #include "physics/checkpoints.h"
@@ -79,6 +80,10 @@ class MainWindow : public Tempest::Window {
       bool     level = false;
       };
     ZeroInput             zeroInput(float dt) const;
+    // the race's news on the chat console (RCCars.exe 0x4ad140, Language/Game/*.tbl 20102 ..): `car` -1 is the
+    // player, otherwise the opponent
+    void                  tell(uint32_t id, int car, std::string_view what = {});
+    void                  tellNews(float dt, const std::vector<rc::Characters::Car>& others);
     // the developer mode's typed codes (RCCars.exe 0x47a660 / 0x47a6b0), see DevCode
     bool                  devCodeKey(Tempest::Event::KeyType key);
     void                  devCode(const std::string& code);
@@ -113,6 +118,9 @@ class MainWindow : public Tempest::Window {
     rc::Opponents::Level              aiLevel = rc::Opponents::Level::Normal; // O: off, easy, normal, hard
     std::map<std::pair<int32_t,int32_t>,std::unique_ptr<ModelMesh>> aiMeshes; // by car and skin
     float                             playerFinish = -1;  // race time of the player's finish
+    rc::AiEmu                         aiEmu;              // what the opponents seem to run into
+    // s since each car's last "kochaś zderzaków" (RCCars.exe car+0x5704): the player's, then the opponents'
+    std::vector<float>                sinceBumper;
     int                     laps     = rc::Race::DefaultLaps; // L: 3, 5 or 7 as in the original
     bool                    paused   = false;
     rc::Vec3                lastCarPos;     // for the car's velocity

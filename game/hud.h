@@ -12,6 +12,7 @@
 #include <string_view>
 #include <vector>
 
+#include "formats/texttable.h"
 #include "physics/opponents.h"
 #include "physics/race.h"
 
@@ -43,6 +44,7 @@ class Hud {
       std::vector<Car> opponents;             // the other cars on the map
       std::vector<rc::Opponents::Standing> standings;  // with opponents: the order, for the table at the finish
       bool  paused    = false;
+      bool  lowSignal = false; // in a reset volume: "Słaby sygnał" (msg_low_signal.csi)
       bool  gates     = false; // the checkpoints drawn over the 3D view (debug)
       rc::Mat4 viewProj;       // the camera, for the debug spheres and the checkpoint arrows
       };
@@ -55,6 +57,13 @@ class Hud {
     void event(rc::Race::Event e);
     // the player's car hit something (RCCars.exe): "Łup!", or "Wielkie Łup!" when `great`, for a second
     void hit(bool great) { hitAt = clock; hitGreat = great; }
+    // a line for the race's chat console (Windows-1250, as Language/Game/*.tbl has it), see chatConsole()
+    void say(std::string line);
+    // the game's text `id` (Language/Game/<language>.tbl) with its "%s" filled with `who` and then `what`, on the
+    // chat console (RCCars.exe 0x4ad140): the race's news of 20102 .. 20109
+    void tell(uint32_t id, std::string_view who, std::string_view what = {});
+    // the game's text `id`, empty without it
+    std::string_view gameText(uint32_t id) const { return texts.get(id); }
     // `dt` seconds of real time (messages and blinking)
     void tick(float dt) { clock += dt; }
     // `frame` is the frame in flight (its vertex buffer is rewritten)
@@ -82,9 +91,12 @@ class Hud {
     struct Glyph {
       float u0 = 0, u1 = 0;   // texture pixels
       float v0 = 0, v1 = 0;
+      uint8_t page = 0;       // 0: Font::img, 1: Font::extra
       };
     struct Font {
       Image                  img;
+      Image                  extra;   // Smash<size>b.csi: the Polish letters, on the same grid
+
       std::array<Glyph,256>  glyphs = {};
       std::array<bool,256>   has    = {};
       float                  cell   = 0;
@@ -100,7 +112,10 @@ class Hud {
     using Color = std::array<float,4>;
 
     Image  loadImage(Resources& res, std::string_view file, std::vector<uint8_t>* rgba = nullptr);
-    void   loadFont(Resources& res, std::string_view name, Font& f);
+    // `extra`: also the file of the font's Polish letters (Smash<size>b), if the language has one
+    void   loadFont(Resources& res, std::string_view name, Font& f, bool extra = false);
+    void   loadGlyphs(Resources& res, std::string_view name, Font& f, uint8_t page);
+    void   chatConsole();
     void   loadNumbers(Resources& res);
 
     // layout: 800x600 units -> pixels, centred on wide screens; `right` keeps the distance from the right edge
@@ -138,10 +153,12 @@ class Hud {
     Tempest::RenderPipeline          pso;
     Tempest::RenderPipeline          psoDepth;  // the same, tested against the scene's depth
     std::string                      lang;
-    Image                            msg321, msgGo, msgBest, msgWrong, msgPause, msgHits, lapLabel;
+    Image                            msg321, msgGo, msgBest, msgWrong, msgPause, msgHits, msgLow, lapLabel;
     // cp_ar_<2 green, 3 red: the lap's end>_f<1..3>, 256x256: arrows pointing down at the next checkpoint
     const Tempest::Texture2d*        cpArrow[2][3] = {};
     Font                             font;
+    Font                             font20;   // Smash20: the chat console
+    rc::TextTable                    texts;    // Language/Game/<language>.tbl
     Font                             numbers;  // cock_num from RCCars.sb
     Image                            place[6];
     const Tempest::Texture2d*        gaugeBase = nullptr; // cockpit_sp1: the dial with its yellow scale
@@ -162,6 +179,11 @@ class Hud {
     Tempest::VertexBuffer<Vertex>    vbo[2];
 
     float                            clock      = 0;
+    struct ChatLine {
+      std::string text;
+      float       at = 0;   // clock when said
+      };
+    std::vector<ChatLine>            chat;     // the newest last
     Message                          message    = Message::None;
     float                            messageAt  = 0;
     float                            hitAt      = -100;

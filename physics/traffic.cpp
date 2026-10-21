@@ -527,7 +527,7 @@ void Traffic::drive(State& s, float dt, const Vec3& camera, Vehicle* player, std
   // the other cars touching it are knocked off their recordings (0x534880 -> 0x4fd9d0)
   for(auto& c:cars)
     if(touches(s,c.pos,OtherCarSize))
-      c.hit = true;
+      c.hit = c.roadCar = true;
 
   // the player's car is pushed off (0x5165a0 -> 0x4f3470), each update it touches, with car_cdt_obj (0x534892)
   if(player!=nullptr && s.inWorld && playerTouches(s,*player)) {

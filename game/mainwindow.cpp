@@ -73,10 +73,10 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
     zeroAngle = scriptValue(res,f,"ZeroAngle",zeroAngle);
     fixedTime = scriptValue(res,f,"FixedTime",fixedTime);
     }
-  // the codes registered with -dev (0x480568, 0x482728, 0x4e9cc0, 0x4fcb40, 0x5313a8); stat, burst, road and the
+  // the codes registered with -dev (0x480568, 0x482728, 0x4e9cc0, 0x4fcb40, 0x5313a8); burst, road and the
   // first constr only flip flags nothing reads, so they are left out
   if(devMode)
-    for(const char* c:{"DT0","DT1","DT2","DT3","DT4","DT5","DTX","CONSTR","C1","F","E1","E2","I"})
+    for(const char* c:{"DT0","DT1","DT2","DT3","DT4","DT5","DTX","CONSTR","C1","F","E1","E2","I","STAT"})
       devCodes.push_back({c});
   loadCar(0);
   loadLevel(name);
@@ -834,6 +834,12 @@ void MainWindow::devCode(const std::string& code) {
   if(code=="CONSTR") {
     // 0x4a4710 -> 0x4a40c4: outlines of the track's faces drawn over it (the collision overlay of K here)
     showCollision = !showCollision;
+    return;
+    }
+  if(code=="STAT") {
+    // 0x4eae30 flips the flag 0x4eaf03 draws the checkpoints by: the route's corridors and spheres round the main
+    // checkpoints (1.6 m, the one the car has to touch, red; 4 m and 1.12 m too); here the gates of G
+    showGates = !showGates;
     return;
     }
   if(code=="C1") {

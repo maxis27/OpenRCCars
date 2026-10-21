@@ -244,7 +244,7 @@ Tryb deweloperski (`-dev`, jak `RCCars.exe -dev`):
 | kod `C1` | z powrotem kamera wyścigowa |
 | kod `I` | własna kamera „ZERO” i gra zatrzymana; drugi raz: powrót i gra rusza |
 | kod `F` | przy zatrzymanej grze (`I`) jedna klatka gry (`FixedTime` ms albo czas ostatniej klatki); inaczej jak `I` |
-| G | kule zaliczania punktów kontrolnych, 1,6 m |
+| G / kod `stat` | kule zaliczania punktów kontrolnych, 1,6 m |
 | N | przeskok do następnego głównego punktu kontrolnego (do sprawdzania okrążeń i mety) |
 | T | postaw auto na koła w miejscu |
 
@@ -271,9 +271,12 @@ woła jedną klatkę (0x48bce0, `FixedTime` z trybem dev). W oryginale kody kame
 którą system `ZERO` (0x482230) włącza na `GMP_INIT_MAP` i wyłącza na `GMP_TERM_MAP`, czyli przez cały czas wczytanej
 trasy; wiadomość 0x83 z interfejsu (0x4c73c9, 0x4ca9a1) wyłącza ją na czas ekranów menu (przypuszczenie z kontekstu).
 U nas nie ma menu w czasie wyścigu, więc kody działają zawsze w trybie dev. `debug.gm` czytamy
-tylko po `Set ZeroSpeed/ZeroAngle/FixedTime`. Nie przeniesione: polecenia skryptów kariery (`GetInfo`, `GetStat`,
-`Give`, `Buy`, `EmRace`) i kody `stat`, `burst`, `road` (oraz drugi `constr`), które przełączają flagi, których
-nikt nie czyta.
+tylko po `Set ZeroSpeed/ZeroAngle/FixedTime`. `stat` (0x4eae30) przełącza flagę, według której 0x4eaf03 rysuje
+punkty kontrolne: korytarze trasy między znacznikami i kule wokół głównych punktów (1,6 m, którą auto musi dotknąć,
+czerwona, oraz 4 m i 1,12 m); u nas włącza te same kule co G. Nie przeniesione: polecenia skryptów kariery (`GetInfo`
+i `GetStat` wypisują profil gracza: kasę, wynik, auta z ulepszeniami, otwarte wyścigi; `Give`, `Buy`, `EmRace`), bo
+nie ma jeszcze profili ani mistrzostw, oraz kody `burst`, `road` (i drugi `constr`), które przełączają flagi, których
+nikt nie czyta (`burst`: 0x4fd420 → 0x5725e8).
 
 ## Narzędzia
 

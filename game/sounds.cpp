@@ -138,6 +138,40 @@ void Sounds::tickCharacters(const rc::Characters& chars, const rc::Vec3& ear, co
     }
   }
 
+void Sounds::tickProps(const std::vector<Objects::Sound>& props, const rc::Vec3& ear, const rc::Vec3& right) {
+  if(propLib==nullptr) {
+    std::vector<uint8_t> sb;
+    try {
+      sb = res.readFile("RCCarsDB/stone.sb");
+      }
+    catch(const std::exception& e) {
+      Log::e("prop sounds: ",e.what());
+      }
+    propLib = std::make_unique<rc::SoundLibrary>([this](const std::string& f){ return res.pack().read(f); },sb);
+    }
+  std::map<std::string,int> seen;
+  for(auto& p:props) {
+    if(p.model==nullptr)
+      continue;
+    const auto key = std::make_pair(*p.model,seen[*p.model]++);
+    auto it = propChannels.find(key);
+    if(it==propChannels.end()) {
+      if(!p.hit)
+        continue;
+      auto def = propLib->bank().ofModel(*p.model);
+      if(def==nullptr)
+        continue;
+      it = propChannels.emplace(key,rc::BankChannel(mix,*propLib,def->name)).first;
+      }
+    auto&          ch = it->second;
+    const rc::Vec3 to = p.at-ear;
+    const float    d  = to.length();
+    ch.setPlace(d,d>1e-3f ? rc::Vec3::dot(to,right)/d : 0.f);
+    if(p.hit)
+      ch.play(0);
+    }
+  }
+
 void Sounds::tickTraffic(const rc::Traffic& traffic, const rc::Vec3& ear, const rc::Vec3& right) {
   if(lib==nullptr)
     return;

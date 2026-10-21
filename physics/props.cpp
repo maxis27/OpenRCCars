@@ -106,6 +106,7 @@ Prop::Prop(PhysicsWorld& world, const PropGeometry& g, const PropParams& prm, co
   ci.m_angularDamping  = 0.2f;
   rigid = std::make_unique<btRigidBody>(ci);
   rigid->setUserIndex(PhysicsWorld::PropTag);
+  rigid->setUserPointer(this);
   const float r = std::min({half.x,half.y,half.z});
   rigid->setCcdMotionThreshold(r*S*0.5f);
   rigid->setCcdSweptSphereRadius(r*S*0.8f);
@@ -165,6 +166,39 @@ void Prop::blow(float dt) {
     }
   // Bullet runs Scale times larger
   rigid->applyCentralForce(toBt(force)*S);
+  }
+
+std::vector<const Prop*> Prop::touched(PhysicsWorld& world) {
+  std::vector<const Prop*> ret;
+  auto& disp = *world.bullet().getDispatcher();
+  for(int i=0; i<disp.getNumManifolds(); ++i) {
+    const btPersistentManifold* m = disp.getManifoldByIndexInternal(i);
+    const btCollisionObject*    a = m->getBody0();
+    const btCollisionObject*    b = m->getBody1();
+    bool contact = false;
+    for(int c=0; c<m->getNumContacts() && !contact; ++c)
+      contact = m->getContactPoint(c).getDistance()<=0.01f*S;
+    if(!contact)
+      continue;
+    const int ta = a->getUserIndex(), tb = b->getUserIndex();
+    if(ta!=PhysicsWorld::PropTag && tb!=PhysicsWorld::PropTag)
+      continue;
+    auto by = [](int tag) {
+      return tag==PhysicsWorld::CarTag || tag==PhysicsWorld::TrafficTag || tag==PhysicsWorld::PropTag;
+      };
+    // props leaning on each other at rest (or a tumbleweed resting against one) say nothing
+    if(ta==PhysicsWorld::PropTag && tb==PhysicsWorld::PropTag) {
+      auto* ra = btRigidBody::upcast(a);
+      auto* rb = btRigidBody::upcast(b);
+      if(ra==nullptr || rb==nullptr || (ra->getLinearVelocity()-rb->getLinearVelocity()).length()<0.2f*S)
+        continue;
+      }
+    if(ta==PhysicsWorld::PropTag && by(tb))
+      ret.push_back(static_cast<const Prop*>(a->getUserPointer()));
+    if(tb==PhysicsWorld::PropTag && by(ta))
+      ret.push_back(static_cast<const Prop*>(b->getUserPointer()));
+    }
+  return ret;
   }
 
 Mat4 Prop::pose() const {

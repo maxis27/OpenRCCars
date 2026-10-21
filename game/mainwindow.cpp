@@ -539,6 +539,8 @@ void MainWindow::tick(float dt) {
     if(objects)
       objects->update(dt);
     physics->step(dt);
+    if(objects)
+      objects->afterStep(*physics);
     if(flying)
       vehicle->hold(flightPose);  // the step's gravity and bumps undone
     // the people and animals and the road cars, after the step: a person holding the car puts it in the hand
@@ -906,6 +908,8 @@ void MainWindow::tickSounds(float dt) {
   sounds->tickAmbient(ear,right,dt,level->collision().highestWater(ear,10.f));
   if(characters)
     sounds->tickCharacters(*characters,ear,right);
+  if(objects)
+    sounds->tickProps(objects->sounds(),ear,right);
   for(auto& g:effects->gunSounds())
     sounds->playAt(g.kind==rc::fx::Gunfire::Sound::Burst ? "burst" : "bullet",g.at,ear,right);
   if(traffic)

@@ -59,6 +59,9 @@ class Prop {
     // of 1 m/s^2 its own way, which turns with a 1D noise (0x49d8a0, a table of 256), and, 3 m or more from where
     // it was placed (across the ground), a pull back of 0 .. 1 m/s^2 (full from 5 m)
     void        blow(float dt);
+    // the props a car, a road car or another prop (one of the two moving) touches now: they sound their channel
+    // (RCCars.exe sets prop+0x274 in the contact handlers 0x533ee0, 0x534240, 0x5348d0; 0x50cb00 plays it)
+    static std::vector<const Prop*> touched(PhysicsWorld& world);
 
   private:
     // to the start, at rest

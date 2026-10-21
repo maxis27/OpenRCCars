@@ -21,6 +21,13 @@ const SoundBank::Channel* SoundBank::find(std::string_view channel) const {
   return nullptr;
   }
 
+const SoundBank::Channel* SoundBank::ofModel(std::string_view model) const {
+  for(auto& c:channels)
+    if(!c.model.empty() && c.model==model)
+      return &c;
+  return nullptr;
+  }
+
 static uint32_t descFlags(const Chunk& c) {
   // 0x08 element: 24 bytes, the flags are the 5th dword
   return c.size()>=20 ? c.u32(16) : 0;
@@ -56,14 +63,24 @@ static SoundBank::Channel readChannel(const Chunk& node) {
   return ch;
   }
 
-static void walk(const Range& range, SoundBank& bank) {
+static void walk(const Range& range, SoundBank& bank, const std::string& model) {
   for(auto& c:range) {
     if(c.type!=0x92)
       continue;
-    if(c.is("SNCH"))
+    if(c.is("SNCH")) {
       bank.channels.push_back(readChannel(c));
+      bank.channels.back().model = model;
+      }
+    else if(c.is("MODL")) {
+      // the models of people.sb, AIChars.sb, stone.sb
+      std::string name;
+      for(auto& ch:c.children())
+        if(ch.id==0x03 && ch.type!=0x92)
+          name = std::string(ch.str());
+      walk(c.children(),bank,name);
+      }
     else if(!c.is("MESH"))
-      walk(c.children(),bank);  // DESC, FOLD, and the models (MODL) of people.sb / AIChars.sb
+      walk(c.children(),bank,model);  // DESC, FOLD
     }
   }
 
@@ -93,7 +110,7 @@ SoundBank SoundBank::load(const std::vector<uint8_t>& sb, const std::vector<uint
   SoundBank bank;
   for(auto& c:Range(sb.data(),0,sb.size()))
     if(c.type==0x92 && c.is("DESC"))
-      walk(c.children(),bank);
+      walk(c.children(),bank,std::string());
 
   std::map<std::string,float> volumes;
   try {

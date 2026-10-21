@@ -21,7 +21,12 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 - **auto**: model z `Car.sb` (Overkill, Buggy, Hummer) stoi na pozycji startowej gracza (`INST 'Player'`), osadzony
   na ziemi; nadwozie i koła są osobnymi częściami (pod obrót i skręt kół); kamera za autem;
   kamera za autem działa jak w oryginale (`Settings/Camera.ini`: odległość, opóźnienie wysokości i kąta, odsuwanie
-  przy prędkości i turbo, unoszenie, gdy teren zasłania auto), nie schodzi pod wodę, a karoseria, szyby i chromy mają odbicia z mapy otoczenia jak w oryginale
+  przy prędkości i turbo, unoszenie, gdy teren zasłania auto), nie schodzi pod wodę, a karoseria, szyby i chromy mają odbicia z mapy otoczenia jak w oryginale.
+  Ulepszenia widać na aucie jak w `RCCars.exe` (0x50bf90): spośród węzłów `UPGRADES*` tylko `booster_<doładowanie+1>`
+  i `compressor_<rezonator+1>`, opony `tire2*`/`tire3*` z teksturą `tire<2|3>_<opony+1>`, a przy doładowaniu powyżej 0
+  koła poszerzone o 0,95 / 1,07 / 1,25 / 1,35 według poziomu opon (0x50be40); gracz ma poziom z klawisza U, przeciwnicy
+  `AI<n>Boost/Reson/Tires` z `ailayouts.ini`. Dalej od kamery auto rysuje się modelami `Car<n>LOD1` (od 7,96 m) i
+  `Car<n>LOD2` (od 8,87 m), odległości z `Settings/LOD.ini` (0x4f98e0, 0x501c10)
 - **kolizje trasy** z węzła `COLL`: siatka komórek nad trasą, w każdej lista ścian siatek renderu, które ją przecinają;
   z tego powstaje siatka kolizji (trójkąty w przestrzeni świata) z raycastem po komórkach (DDA). Auto staje na
   ziemi wyznaczonej raycastem. Kod `constr` (w trybie `-dev`) pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
@@ -68,7 +73,12 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   okrążenia metaliczne jak w oryginale, czas okrążenia miga pod czasem tylko po jego ukończeniu. Spoza
   oryginału są tylko kule zaliczania punktów (1,6 m) obrysowane na trasie do debugowania (klawisz G w trybie `-dev`, domyślnie wyłączone): następna główna zielona, kolejna żółta,
   zaliczone w tym okrążeniu szare, zaliczona przed chwilą miga na zielono, pośrednia, na którą wskazuje strzałka,
-  niebieska. Każde zaliczenie trafia też do logu
+  niebieska. Każde zaliczenie trafia też do logu.
+  W strefie `car_reset_volume_*` kokpit pokazuje „Słaby sygnał” (`msg_low_signal`), a auto traci sterowanie i hamuje
+  (0x509690, 0x4f6c87). Konsola czatu wyścigu (pole `chatRace` z `dlgMAIN.ini`: 5 linii po 5 s, czcionka `Smash20` z
+  polskimi literami) pokazuje komunikaty z `Language/Game/<język>.tbl`: okrążenia i meta przeciwników, utonięcia,
+  strefy resetu, trafienia z broni, kopnięcia i rzuty przez ludzi, pchanie aut z ulicy; przeciwnicy dostają je też
+  z `Settings/AIEmu.ini`, gdy przejeżdżają obok ludzi, psów i aut (szansa `ProbCheck`)
 - **przeciwnicy**: jak w oryginale, dopóki nikt ich nie potrąci, nie jeżdżą z fizyką, tylko odtwarzają przejazdy nagrane na każdej trasie
   (`CarProfiles/<trasa>/*.dat`). Skład wyścigu (do pięciu kierowców, auto, nagranie) jest w `Scripts/ailayouts.ini`;
   na łatwym startują trzej, na normalnym czterej, na trudnym wszyscy (klawisz O, domyślnie normalny). Nagranie to
@@ -99,7 +109,11 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 - **obiekty na trasach** (węzły `INST`): rekwizyty ze `stone.sb` (puszki, butelki, piłki, wiadra, pachołki, czajniki,
   baloniki, łuski, toczące się kłębki) stoją tam, gdzie kładzie je trasa (od 8 do 17 na trasie), i są bryłami
   sztywnymi: auto je potrąca, przewraca i odbija jak oryginał (koła na nich nie stają). Masa, sprężystość, tarcie,
-  kształt (kula, walec albo otoczka wypukła modelu) i środek masy pochodzą ze skryptu `SCRI` każdego modelu
+  kształt (kula, walec albo otoczka wypukła modelu) i środek masy pochodzą ze skryptu `SCRI` każdego modelu.
+  Kłębki (`fWindBlow`) toczy wiatr jak w `RCCars.exe` (0x50d3f0): pchnięcie 1 m/s² w stronę, która powoli obraca się
+  według szumu 1D, i powrót w stronę miejsca startu, gdy odtoczą się dalej niż 3 m. Potrącony rekwizyt (przez auto,
+  inny rekwizyt albo auto z ulicy) gra dźwięk z kanału w swoim modelu w `stone.sb` (`ball`, `pepsi`, `klubok` ...;
+  0x50cb00)
 - **ruch uliczny** (`Roadcar.sb`) jak w `RCCars.exe`: na beach_2 i beach_3 po drodze jeżdżą w obie strony hummer,
   dwa kampery i trzy pikapy (w kilku malowaniach), na urban_1 hummer, a na beach_4 pływający BTR, który obraca
   wieżę do aut przed sobą i strzela do nich seriami. Auta ruszają od startu wyścigu co kilka sekund po nagranych
@@ -871,17 +885,17 @@ lib/Tempest     silnik (submoduł git)
 
 ## Dalsze kroki
 
-1. ~~Model auta postawiony na starcie~~ (zrobione; LOD-y i ulepszenia `UPGRADES*` jeszcze niewyświetlane)
+1. ~~Model auta postawiony na starcie~~ (zrobione, z LOD-ami `Car<n>LOD1/2` i ulepszeniami `UPGRADES*`)
 2. ~~Kolizje trasy z węzła `COLL`~~ (zrobione: siatka kolizji, raycast, nakładka debug)
 3. ~~Fizyka jazdy: model auta z `RCCars.exe` (sprężyny, opony z poślizgiem, kule kół i nadwozia z `cdt*.ini`) na
    Bullecie~~ (zrobione; szybkość opadania kół przyjęta, nie odczytana)
    - ~~nawierzchnie i woda~~ (zrobione: głęboki piasek i woda spowalniają, w głębokiej wodzie auto tonie i wraca do
      ostatniego punktu kontrolnego, strefy `car_reset_volume_*`); ~~kurz i bryzgi spod kół, ślady opon, kilwater,
      spaliny, brudzenie auta~~ (zrobione)
-4. Węzły `INST` (instancje obiektów): ~~rekwizyty~~ (zrobione: bryły sztywne z parametrami ze skryptów; brakuje
-   wiatru dla kłębków i dźwięków uderzeń `SNCH`); ~~postacie i zwierzęta~~ (zrobione, ze śladami stóp;
-   brakuje rozgniecenia kraba; ~~efekt strzału strażnika~~ zrobiony); ~~ruch uliczny~~ (zrobione; brakuje tekstów
-   z `RCCars.tbl` przy potrąceniu). Do tego `HHID` (widoczność/sektory)
+4. ~~Węzły `INST` (instancje obiektów)~~: ~~rekwizyty~~ (zrobione: bryły sztywne z parametrami ze skryptów, wiatr
+   dla kłębków, dźwięki uderzeń `SNCH`); ~~postacie i zwierzęta~~ (zrobione, ze śladami stóp i efektem strzału
+   strażnika; rozgniecenia kraba oryginał nie ma); ~~ruch uliczny~~ (zrobione, z tekstami z `RCCars.tbl`). `HHID`
+   to tylko odcinanie niewidocznych siatek, niepotrzebne
 5. ~~Dźwięk~~ (zrobione według `RCCars.exe`: kanały `SNCH` z `RCCars.sb` i `Sound\*.wav` z archiwum we własnym
    mikserze, silnik gracza i rywali, punkty kontrolne, turbo, hamulec, lot i lądowanie, toczenie się po
    nawierzchniach, uderzenia i otarcia, buksowanie, fale przy brzegu `water_splash_N`, wodospady `WATER_FALL_N`,

@@ -6,6 +6,7 @@
 #include <cctype>
 #include <cmath>
 #include <filesystem>
+#include <utility>
 
 #include "resources.h"
 #include "sounds.h"

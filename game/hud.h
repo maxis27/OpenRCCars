@@ -12,6 +12,7 @@
 #include <string_view>
 #include <vector>
 
+#include "canvas.h"
 #include "formats/texttable.h"
 #include "physics/opponents.h"
 #include "physics/race.h"
@@ -30,7 +31,7 @@ class Resources;
 // Not from the original: only the checkpoints' spheres outlined in the 3D view (G, the radius within which a main one
 // counts): the next main one green, the one after it yellow, the ones passed in this lap grey, and the
 // sub-checkpoint the arrow shows thin blue.
-class Hud {
+class Hud : public Canvas {
   public:
     // what the race does not know
     struct Info {
@@ -70,62 +71,12 @@ class Hud {
     void draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frame, int w, int h, const rc::Race& race,
               const Info& info);
 
-    // "3:07.25"
-    static std::string formatTime(float seconds);
-
   private:
-    struct Vertex {
-      float pos[2];
-      float uv[2];
-      float color[4];
-      float depth = 0;  // used by the depth-tested pipeline only
-      };
-    struct Image {
-      Tempest::Texture2d tex;
-      int                w = 0, h = 0;
-      bool               loaded = false;
-      };
-    struct Rect {
-      float x0, y0, x1, y1;   // texture pixels
-      };
-    struct Glyph {
-      float u0 = 0, u1 = 0;   // texture pixels
-      float v0 = 0, v1 = 0;
-      uint8_t page = 0;       // 0: Font::img, 1: Font::extra
-      };
-    struct Font {
-      Image                  img;
-      Image                  extra;   // Smash<size>b.csi: the Polish letters, on the same grid
-
-      std::array<Glyph,256>  glyphs = {};
-      std::array<bool,256>   has    = {};
-      float                  cell   = 0;
-      bool                   hard   = true;  // all-or-nothing opacity (Smash): edges smoothed when enlarged
-      };
-    struct Draw {
-      const Tempest::Texture2d* tex = nullptr;
-      size_t                    first = 0, count = 0;
-      bool                      depth = false;  // hidden behind the scene (sprites in the 3D view)
-      float                     sharpen = 0;    // >0: the opacity's edge narrowed this many times (text)
-      };
     enum class Message { None, Go, BestLap, Finish };
-    using Color = std::array<float,4>;
 
-    Image  loadImage(Resources& res, std::string_view file, std::vector<uint8_t>* rgba = nullptr);
-    // `extra`: also the file of the font's Polish letters (Smash<size>b), if the language has one
-    void   loadFont(Resources& res, std::string_view name, Font& f, bool extra = false);
-    void   loadGlyphs(Resources& res, std::string_view name, Font& f, uint8_t page);
     void   chatConsole();
     void   loadNumbers(Resources& res);
 
-    // layout: 800x600 units -> pixels, centred on wide screens; `right` keeps the distance from the right edge
-    float  px(float x, bool right = false) const { return right ? float(scrW)-(800.f-x)*scale : offsetX+x*scale; }
-    // keeps the distance from the left edge, for what the original puts in the left corners
-    float  pl(float x) const { return x*scale; }
-    float  py(float y) const { return y*scale; }
-
-    // a quadrilateral given by its four corners on the screen, in order
-    void   poly(const Tempest::Texture2d& tex, const std::array<std::array<float,2>,4>& p, const Color& c);
     // a world-space line of the given thickness in pixels, cut at the camera's near plane
     void   line3d(const rc::Mat4& viewProj, const rc::Vec3& a, const rc::Vec3& b, float width, const Color& c);
     void   gates(const rc::Race& race, const rc::Mat4& viewProj);
@@ -134,25 +85,11 @@ class Hud {
     void   gauge(bool right, float value, float reach, const std::string& number, std::string_view label);
     void   trackMap(const rc::Race& race, const Info& info);
     void   checkpointArrow(const rc::Race& race, const rc::Mat4& viewProj);
-    void   quad(const Tempest::Texture2d& tex, int tw, int th, const Rect& src, float x, float y, float w, float h,
-                const Color& c, float angle = 0, float squash = 1, const Color* bottom = nullptr);
-    // a sprite standing in the 3D view at the given depth (0..1), hidden where the scene is nearer
-    void   quadAt(const Tempest::Texture2d& tex, float x, float y, float w, float h, float depth, const Color& c);
-    void   sprite(const Image& img, const Rect& src, float cx, float cy, float size, const Color& c);
-    // `bottom`: the colour at the bottom of the letters, fading from `c` at their top
-    float  text(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align = -1,
-                const Color* bottom = nullptr, float gap = 0);
-    float  textWidth(const Font& f, std::string_view s, float size, float gap = 0) const;
     // the gauges' numbers: white to grey, outlined
     // the cockpit's numbers (time, lap, gauges) in cock_num, 1:1; `y` is the top of its 64 high cells
     void   numberText(std::string_view s, float x, float y, int align);
     // text with a dark shadow under it
 
-    Tempest::Device&                 device;
-    Resources&                       resources;
-    Tempest::RenderPipeline          pso;
-    Tempest::RenderPipeline          psoDepth;  // the same, tested against the scene's depth
-    std::string                      lang;
     Image                            msg321, msgGo, msgBest, msgWrong, msgPause, msgHits, msgLow, lapLabel;
     // cp_ar_<2 green, 3 red: the lap's end>_f<1..3>, 256x256: arrows pointing down at the next checkpoint
     const Tempest::Texture2d*        cpArrow[2][3] = {};
@@ -171,12 +108,6 @@ class Hud {
     // the track's map: world (x,z) -> map texels u+iv = k*(x+iz)+offset
     const Tempest::Texture2d*        map       = nullptr;
     std::array<float,2>              mapK      = {}, mapOffset = {};
-    const Tempest::Texture2d*        white = nullptr;
-
-    std::vector<Vertex>              verts;
-    float                            sharpen = 0;   // for the quads being added: see Draw::sharpen
-    std::vector<Draw>                draws;
-    Tempest::VertexBuffer<Vertex>    vbo[2];
 
     float                            clock      = 0;
     struct ChatLine {
@@ -190,6 +121,4 @@ class Hud {
     bool                             hitGreat   = false;
     float                            lapAt      = -100; // when the last lap was finished: its time blinks
     float                            flashAt    = -100; // when the last main checkpoint was passed
-    int                              scrW = 0, scrH = 0;
-    float                            scale = 1, offsetX = 0;
   };

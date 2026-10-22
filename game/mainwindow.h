@@ -18,6 +18,7 @@
 #include "chasecamera.h"
 #include "effects.h"
 #include "hud.h"
+#include "menu.h"
 #include "physics/aiemu.h"
 #include "physics/characters.h"
 #include "physics/traffic.h"
@@ -37,7 +38,8 @@
 
 class MainWindow : public Tempest::Window {
   public:
-    // `dev`: the -dev switch, RCCars.exe's developer mode (0x147d204); our debug keys work only with it
+    // `dev`: the -dev switch, RCCars.exe's developer mode (0x147d204); our debug keys work only with it.
+    // `level`: straight into a race of that track, without the menus; empty: the main menu
     MainWindow(Tempest::Device& device, Resources& res, const std::string& level, bool dev = false);
     ~MainWindow() override;
 
@@ -48,8 +50,21 @@ class MainWindow : public Tempest::Window {
     void resizeEvent    (Tempest::SizeEvent&  e) override;
     void keyDownEvent   (Tempest::KeyEvent&   e) override;
     void keyUpEvent     (Tempest::KeyEvent&   e) override;
+    void mouseDownEvent (Tempest::MouseEvent& e) override;
+    void mouseUpEvent   (Tempest::MouseEvent& e) override;
+    void mouseMoveEvent (Tempest::MouseEvent& e) override;
+    void mouseDragEvent (Tempest::MouseEvent& e) override;
 
     void resetSwapchain();
+    // the menus: what the player chose, and the front end drawn instead of the race
+    void menuCommand(Menu::Command c);
+    // the race of the menu's Setup, from the loading screen
+    void startRace();
+    void renderMenu();
+    // one frame of the loading screen
+    void presentLoading(size_t track, float progress);
+    // the turning car of the quick race in the rectangle Menu::carPreview gives
+    void drawCarPreview(Tempest::Encoder<Tempest::CommandBuffer>& enc, const Menu::Preview& p);
     void tick(float dt);
     void loadLevel(const std::string& name);
     void loadCar(size_t id);
@@ -129,6 +144,10 @@ class MainWindow : public Tempest::Window {
     bool                    paused   = false;
     rc::Vec3                lastCarPos;     // for the car's velocity
     std::unique_ptr<Hud>    hud;
+    std::unique_ptr<Menu>   menu;
+    bool                    raceRequested = false;  // "Wyścig": the loading screen at the next frame
+    std::array<std::unique_ptr<CarModel>,3> previewCars; // the quick race's car, by car
+    std::array<int32_t,3>   previewUpgrade = {-1,-1,-1};
     std::unique_ptr<DirectionArrow> arrow;
     std::unique_ptr<Effects>        effects;    // dust and spray of the cars
     std::unique_ptr<Sounds> sounds;

@@ -62,6 +62,8 @@ class BankChannel {
     // extra gain (dB) and pan of the whole channel
     void   setGain(float db);
     void   setPan(float pan);
+    // whether it stops while the mixer's effects are paused (Mixer::setPausable)
+    void   setPausable(bool p);
     // a positioned channel (definition()->far > 0): gain and pan for a sound at `distance` m, `side` -1 left .. 1 right;
     // as RCCars.exe (0x494c00): full volume up to `near`, down to -20 dB at `far`, silent beyond
     void   setPlace(float distance, float side);

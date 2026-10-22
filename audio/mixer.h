@@ -72,8 +72,10 @@ class Mixer {
 
     // all sound effects, dB
     void  setEffectsVolume(float db);
-    // pauses the effects (the music goes on)
+    // pauses the effects (the music goes on), but for the channels made not pausable
     void  setPaused(bool p);
+    // a channel that plays on while the effects are paused (the menus' sounds)
+    void  setPausable(int ch, bool p);
 
     // the music: one stream at a time, dB
     void  setMusic(std::unique_ptr<Stream> s);
@@ -103,6 +105,7 @@ class Mixer {
       float  gain     = 0;
       float  pan      = 0;
       float  lastL    = -1, lastR = -1;  // gains of the previous block, to ramp
+      bool   pausable = true;
       };
 
     static void start(Voice& v, std::shared_ptr<const Clip> clip, int tag, const Play& p);

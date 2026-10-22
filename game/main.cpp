@@ -15,10 +15,11 @@
 
 // usage: OpenRCCars [-g <game_dir>] [-l <track>] [-dev] [-dx12] [-validation]
 //   game_dir defaults to the current directory (run it from the RC Cars installation folder)
+//   -l: straight into a race on that track (beach_1 ...), without the menus
 //   -dev: the developer mode of RCCars.exe (same switch, 0x4883dd), with our own debug keys on top
 int main(int argc, const char** argv) {
   std::filesystem::path gameDir = std::filesystem::current_path();
-  std::string           track   = "beach_1";
+  std::string           track;
   bool                  dx12    = false;
   bool                  debug   = false;
   bool                  dev     = false;

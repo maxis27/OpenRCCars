@@ -68,6 +68,26 @@ void Sounds::play(const std::string& channel, const std::string& sound) {
   it->second.play(sound);
   }
 
+void Sounds::playInterface(const std::string& channel, int sound) {
+  if(interfaceLib==nullptr) {
+    std::vector<uint8_t> sb;
+    try {
+      sb = res.readFile("RCCarsDB/Interface.sb");
+      }
+    catch(const std::exception& e) {
+      Log::e("menu sounds: ",e.what());
+      }
+    interfaceLib = std::make_unique<rc::SoundLibrary>([this](const std::string& f){ return res.pack().read(f); },sb);
+    }
+  auto it = interfaceChannels.find(channel);
+  if(it==interfaceChannels.end()) {
+    it = interfaceChannels.emplace(channel,rc::BankChannel(mix,*interfaceLib,channel)).first;
+    it->second.setPausable(false);   // heard over a paused race
+    }
+  if(sound>=0 && size_t(sound)<it->second.size())
+    it->second.play(sound);
+  }
+
 void Sounds::playAt(const std::string& channel, const rc::Vec3& at, const rc::Vec3& ear, const rc::Vec3& right) {
   auto it = channels.find(channel);
   if(it==channels.end())

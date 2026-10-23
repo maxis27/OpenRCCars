@@ -138,6 +138,15 @@ struct SbMarker {
   float       number(std::string_view key, float def) const;
   };
 
+// FOLD: a folder of nodes, its name (0x03) and properties (0x04), e.g. "Checkpoints" with the default width,
+// height and expand of the route corridor
+struct SbFolder {
+  std::string name;
+  std::vector<std::pair<std::string,std::string>> props;
+
+  float       number(std::string_view key, float def) const;
+  };
+
 // EVOL: named volume (trigger), e.g. "water_box", "car_shortcut", "car_reset_volume_*".
 //   0x03 name, 0xd0 u32 shape, 0xd4 shape data (floats, world space), SCRI child: its script (car_reset_volume_*:
 //   Section Keys "Params" FilterTime(int) = <ms> End). All volumes in the tracks are shape 2, a vertical prism:
@@ -219,10 +228,12 @@ struct SbScene {
   std::vector<SbScript>    scripts;   // SCRI directly under MODL/FOLD/DESC
   std::vector<SbVolume>    volumes;
   std::vector<SbSequence>  sequences;
+  std::vector<SbFolder>    folders;
   SbCollisionGrid          collision; // empty for scenes without COLL (cars, props)
 
   const SbTexture*  texture(int32_t index, int32_t model) const;
   const SbMarker*   marker(std::string_view name) const;
+  const SbFolder*   folder(std::string_view name) const;
   const SbInstance* instance(std::string_view name) const;
   const SbScript*   script(int32_t model, std::string_view name = {}) const; // first script of the model if no name
   const SbVolume*   volume(std::string_view name) const;

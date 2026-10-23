@@ -29,8 +29,8 @@ class Race {
 
     // from the countdown again, the car standing at `start`; `again`: "Jeszcze raz", without the entry delay
     void   restart(const Mat4& start, bool again = false);
-    // `dt` seconds of game time with the car at `car` moving at `velocity` (m/s)
-    Event  update(float dt, const Vec3& car, const Vec3& velocity);
+    // `dt` seconds of game time with the car at `car` facing `heading` (its forward axis, world)
+    Event  update(float dt, const Vec3& car, const Vec3& heading);
 
     Phase  phase()     const { return state; }
     // the car must stand still: before the start
@@ -51,8 +51,9 @@ class Race {
     const std::vector<float>& lapTimes() const { return times; }
     // the fastest finished lap, 0 if none yet
     float  bestLap()   const;
-    // driving away from the point the arrow shows for a while (missed it, or turned round)
+    // facing against the way on for a while (missed a checkpoint, or turned round), see update()
     bool   wrongWay()  const { return wrong; }
+    static constexpr float WrongAfter = 6.f, WrongMax = 12.f, WrongNear = 8.f;
 
     const Checkpoints& checkpoints() const { return route; }
 
@@ -65,8 +66,7 @@ class Race {
     float              lapStart = 0;   // time() when the current lap began
     std::vector<float> times;
     bool               wrong    = false;
-    float              awayTime = 0;   // seconds driving away from that point
-    float              backTime = 0;   // seconds driving towards it again
+    float              wrongTime = 0;  // the wrong way timer
   };
 
 }

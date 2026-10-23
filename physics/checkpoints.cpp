@@ -11,41 +11,38 @@ static Vec3 flat(Vec3 v) {
   return v;
   }
 
-// sub-checkpoint number of `name` = "<prefix><number>", 0 if it is not one
-static int subNumber(const std::string& name, const std::string& prefix) {
-  if(name.size()<=prefix.size() || name.compare(0,prefix.size(),prefix)!=0)
-    return 0;
-  char* end = nullptr;
-  const long n = std::strtol(name.c_str()+prefix.size(),&end,10);
-  return (*end=='\0' && n>0) ? int(n) : 0;
-  }
-
 Checkpoints::Checkpoints(const SbScene& scene, const CollisionMesh& track) : coll(track) {
-  auto add = [this](const SbMarker& m, bool main) {
+  // the folder's properties stand in for those a marker lacks
+  float defWidth = DefaultWidth, defHeight = DefaultHeight, defExpand = DefaultExpand;
+  if(auto f = scene.folder("Checkpoints")) {
+    defWidth  = f->number("width", defWidth);
+    defHeight = f->number("height",defHeight);
+    defExpand = f->number("expand",defExpand);
+    }
+  auto add = [&](const SbMarker& m, bool main) {
     Point p;
     p.name     = m.name;
     p.position = m.position();
-    p.width    = m.number("width", DefaultWidth);
-    p.height   = m.number("height",DefaultHeight);
-    p.expand   = m.number("expand",DefaultExpand);
+    p.width    = m.number("width", defWidth);
+    p.height   = m.number("height",defHeight);
+    p.expand   = m.number("expand",defExpand);
     p.main     = main;
     points.push_back(p);
     };
-  for(int cp=1; ; ++cp) {
+  for(int cp=1; cp<=8; ++cp) {
     const std::string name = "cp_"+std::to_string(cp);
     auto m = scene.marker(name);
     if(m==nullptr)
       break;
     add(*m,true);
-    // cp_<n>_1, cp_<n>_2 .. by number: the numbering has gaps (country_1: cp_4_3, cp_4_5) and the file order
-    // does not always follow it (country_1: cp_5_4 before cp_5_2)
-    std::vector<std::pair<int,const SbMarker*>> sub;
-    for(auto& s:scene.markers)
-      if(int n = subNumber(s.name,name+"_"))
-        sub.emplace_back(n,&s);
-    std::sort(sub.begin(),sub.end(),[](auto& a, auto& b){ return a.first<b.first; });
-    for(auto& [n,s]:sub)
+    // cp_<n>_1, cp_<n>_2 .. by number, up to the first one missing (country_1 has cp_4_3 and cp_4_5: the game
+    // leaves cp_4_5 out); the file order does not always follow the numbers (country_1: cp_5_4 before cp_5_2)
+    for(int k=1; ; ++k) {
+      auto s = scene.marker(name+"_"+std::to_string(k));
+      if(s==nullptr)
+        break;
       add(*s,false);
+      }
     }
   if(points.empty())
     return;
@@ -65,6 +62,24 @@ Checkpoints::Checkpoints(const SbScene& scene, const CollisionMesh& track) : col
   distances.resize(n,0.f);
   for(size_t i=1; i<n; ++i)
     distances[i] = distances[i-1]+flat(points[i].position-points[i-1].position).length();
+  // the corridor (0x4e9980): the box of each piece takes the sizes of the point it starts from
+  for(size_t i=0; i+1<n; ++i) {
+    const Point& a = points[i];
+    Piece        c;
+    const Vec3   d = points[i+1].position-a.position;
+    c.origin = a.position;
+    c.length = d.length();
+    c.dir    = c.length>1e-6f ? d*(1.f/c.length) : Vec3{0,0,1};
+    c.up     = Vec3{0,1,0}-c.dir*c.dir.y;
+    c.up     = c.up.length()>1e-6f ? c.up*(1.f/c.up.length()) : Vec3{1,0,0};
+    c.side   = Vec3::cross(c.dir,c.up);
+    c.expand = a.expand;
+    c.width  = a.width;
+    c.height = a.height;
+    c.along  = corridorLength;
+    corridorLength += c.length;
+    pieces.push_back(c);
+    }
   for(auto& p:points) {
     p.ground = p.position.y;
     if(auto g = coll.groundHeight(p.position+Vec3{0,0.5f,0},0.5f+MaxDepth))
@@ -94,6 +109,10 @@ void Checkpoints::reset(const Mat4& start) {
   lapCount  = 0;
   passed    = false;
   hasLast   = false;
+  in        = In::Nowhere;
+  piece     = 0;
+  frac      = 0;
+  before    = true;
   }
 
 bool Checkpoints::passes(size_t i, const Vec3& from, const Vec3& to, float radius) const {
@@ -116,6 +135,7 @@ bool Checkpoints::update(const Vec3& car) {
   hasLast = true;
   if(target>=points.size())
     return false;
+  locate(car);
   // the arrow moves on past the sub-checkpoint it shows once the car crosses its line close by, or just comes near
   // it (round the outside of a hairpin). One at a time and in order: a later one passed early is a shortcut
   // (country_1 crosses cp_1_5 right behind the start)
@@ -160,4 +180,107 @@ Mat4 Checkpoints::poseAt(size_t i, float carBottom) const {
   if(auto g = coll.groundHeight(at+Vec3{0,1.f,0}))
     pose.m[1][3] = *g - carBottom;
   return pose;
+  }
+
+// RCCars.exe 0x4ebb40: inside the box of the piece, and how far along it (0..1)
+bool Checkpoints::inside(const Piece& p, const Vec3& car, float& f) const {
+  const Vec3  r = car-p.origin;
+  const float a = Vec3::dot(r,p.dir);
+  if(std::abs(Vec3::dot(r,p.up))>p.height || std::abs(Vec3::dot(r,p.side))>p.width)
+    return false;
+  if(a<-p.expand || a>=p.length+p.expand)
+    return false;
+  f = p.length>0 ? std::clamp(a,0.f,p.length)/p.length : 0.f;
+  return true;
+  }
+
+size_t Checkpoints::mainBefore(size_t i) const {
+  size_t r = 0;
+  for(size_t m:mains)
+    if(m<i)
+      r = m;
+  return r;
+  }
+
+float Checkpoints::alongTo(size_t i) const {
+  return i<pieces.size() ? pieces[i].along : corridorLength;
+  }
+
+// RCCars.exe 0x4eba30: the pieces from the last main checkpoint to the next one first, the last of them first;
+// then all the others from cp_1 on. Found nowhere, the car stays on the piece it was found on last (0x4eb670),
+// how far along it as it is now seen from it.
+void Checkpoints::locate(const Vec3& car) {
+  if(pieces.empty())
+    return;
+  const size_t from = mainBefore(target);
+  float        f    = 0;
+  bool         found = false;
+  for(size_t i=target; i-->from && !found; )
+    if(inside(pieces[i],car,f)) {
+      in = In::Ahead; piece = i; frac = f; found = true;
+      }
+  for(size_t i=0; i<pieces.size() && !found; ++i)
+    if((i<from || i>=target) && inside(pieces[i],car,f)) {
+      in = In::Elsewhere; piece = i; frac = f; found = true;
+      }
+  if(!found && in!=In::Nowhere) {
+    const Piece& p = pieces[piece];
+    frac = p.length>0 ? std::clamp(Vec3::dot(car-p.origin,p.dir)/p.length,0.f,1.f) : 0.f;
+    }
+  if(in==In::Elsewhere) {
+    // 0x4eb990: ahead of the car or behind it, whichever is nearer round the lap
+    float d = alongTo(target)-(pieces[piece].along+pieces[piece].length*frac);
+    if(std::abs(d)>0.5f*corridorLength)
+      d -= d>=0 ? corridorLength : -corridorLength;
+    before = d>=0;
+    }
+  }
+
+Vec3 Checkpoints::wayOn(const Vec3& car) const {
+  const size_t n = pieces.size();
+  if(n>0 && target<points.size()) {
+    if(in==In::Ahead) {
+      // a piece on once nine tenths of this one are behind; past the last one before the checkpoint: straight
+      const size_t i = piece+(frac>0.9f ? 1 : 0);
+      if(i<target)
+        return pieces[i].dir;
+      }
+    else if(in==In::Elsewhere) {
+      if(before)
+        return pieces[(piece+(frac>0.9f ? 1 : 0))%n].dir;
+      // past the next main checkpoint: back along the corridor, on the piece before within the first tenth of
+      // this one; right after the checkpoint itself straight to it
+      if(frac>=0.1f)
+        return pieces[piece].dir*-1.f;
+      if(piece!=target%n)
+        return pieces[(piece+n-1)%n].dir*-1.f;
+      }
+    }
+  return target<points.size() ? points[target].position-car : Vec3{0,0,1};
+  }
+
+float Checkpoints::wayLeft(const Vec3& car) const {
+  if(pieces.empty() || target>=points.size())
+    return 1.f;
+  const float to   = alongTo(target);
+  const float span = to-alongTo(mainBefore(target));
+  float       left = 0;
+  if(in==In::Ahead)
+    left = to-(pieces[piece].along+pieces[piece].length*frac);
+  else if(in==In::Elsewhere) {
+    float d = to-(pieces[piece].along+pieces[piece].length*frac);
+    if(std::abs(d)>0.5f*corridorLength)
+      d -= d>=0 ? corridorLength : -corridorLength;
+    left = std::abs(d);
+    }
+  else {
+    // not in the corridor yet (0x4eb670): a rough guess from the distance to the checkpoint
+    const float at = (to-(points[target].position-car).length())*0.75f;
+    left = (to-at)*1.7f;
+    }
+  if(left<0)
+    return 0;
+  if(left>span)
+    return 1;
+  return std::abs(span)<1e-6f ? 0.f : left/span;
   }

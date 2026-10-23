@@ -337,12 +337,13 @@ Hud::Info MainWindow::hudInfo() const {
   }
 
 float MainWindow::wayDirection() const {
-  // the point the arrow shows seen from the car, positive = on the left (+X)
-  const auto&    route = checkpoints->route();
-  const rc::Vec3 f     = carPose.vector({0,0,1});
-  if(route.empty() || std::abs(f.x)+std::abs(f.z)<=1e-3f)
+  // the way on seen from the car (RCCars.exe 0x4e8f00, 0x410150), positive = on the left (+X)
+  const rc::Vec3 f = carPose.vector({0,0,1});
+  if(checkpoints->empty() || std::abs(f.x)+std::abs(f.z)<=1e-3f)
     return 0;
-  const rc::Vec3 to = route[checkpoints->guide()].position-carPose.translation();
+  const rc::Vec3 to = checkpoints->wayOn(carPose.translation());
+  if(std::abs(to.x)+std::abs(to.z)<=1e-6f)
+    return 0;
   float a = std::atan2(to.x,to.z)-std::atan2(f.x,f.z);
   while(a> 3.14159265f) a -= 6.2831853f;
   while(a<-3.14159265f) a += 6.2831853f;
@@ -356,16 +357,9 @@ DirectionArrow::Input MainWindow::arrowInput() const {
   const auto& route = checkpoints->route();
   if(route.empty())
     return in;
-  // RCCars.exe 0x4eb670: the way still to go to the next main checkpoint over the way from the last one to it,
-  // along the route: to the point the arrow shows, then from point to point
   const rc::Vec3 at   = carPose.translation();
-  const size_t   next = checkpoints->next(), guide = checkpoints->guide();
-  const size_t   last = checkpoints->lastPassed();
-  const float    from = last+1<route.size() ? checkpoints->along(last) : 0.f;
-  const rc::Vec3 d    = route[guide].position-at;
-  const float    left = std::sqrt(d.x*d.x+d.z*d.z)+checkpoints->along(next)-checkpoints->along(guide);
-  const float    way  = checkpoints->along(next)-from;
-  in.left     = way>1e-3f ? left/way : 1.f;
+  const size_t   next = checkpoints->next();
+  in.left     = checkpoints->wayLeft(at);
   in.distance = (route[next].position-at).length();
   in.next     = next;
   return in;
@@ -753,7 +747,7 @@ void MainWindow::tick(float dt) {
     carPose = vehicle->pose();
     const rc::Vec3 at = carPose.translation();
     const size_t   was = checkpoints->next();
-    const auto     ev  = race->update(dt,at,(at-lastCarPos)*(1.f/std::max(dt,1e-4f)));
+    const auto     ev  = race->update(dt,at,carPose.vector({0,0,1}));
     if(ev==rc::Race::Event::Finish) {
       playerFinish = race->time();
       if(opponents && opponents->size()>0)

@@ -877,24 +877,26 @@ static int cmdRace(const fs::path& game, const fs::path& track, int laps) {
   std::printf("race %s: %d laps in %.2f s, best lap %.2f s, %zu events, wrong way for %d frames\n",
               finished ? "finished" : "NOT finished",race.laps(),race.time(),race.bestLap(),events,wrongFrames);
 
-  // 2. turn round right after the start: the warning must come, and go once heading for the checkpoint again
+  // 2. turn round right after the start: the warning must come after WrongAfter s (RCCars.exe), and go once
+  // heading for the checkpoint again
   race.restart(start);
   pos = start.translation()+lift;
   const rc::Vec3 back = (pos-route[1].position)*(1.f/(pos-route[1].position).length());
+  const float    turn = race.startTime()+10.f;
   float wrongAt = -1, rightAt = -1;
-  for(t=0; t<12.f; t+=dt) {
+  for(t=0; t<turn+10.f; t+=dt) {
     rc::Vec3 vel;
     if(!race.holdCar())
-      vel = (t<7.f) ? back*speed : back*-speed;
+      vel = (t<turn) ? back*speed : back*-speed;
     pos = pos+vel*dt;
-    race.update(dt,pos,vel);
+    race.update(dt,pos,t<turn ? back : back*-1.f);
     if(race.wrongWay() && wrongAt<0)
       wrongAt = t;
     if(!race.wrongWay() && wrongAt>=0 && rightAt<0)
       rightAt = t;
     }
-  std::printf("driving backwards from %.1f s: wrong way from %.2f s, cleared at %.2f s after turning at 7 s\n",
-              race.startTime(),wrongAt,rightAt);
+  std::printf("driving backwards from %.1f s: wrong way from %.2f s, cleared at %.2f s after turning at %.0f s\n",
+              race.startTime(),wrongAt,rightAt,turn);
 
   // 3. past the first main checkpoint 0.3 m outside its radius: not counted
   race.restart(start);
@@ -935,7 +937,7 @@ static int cmdRace(const fs::path& game, const fs::path& track, int laps) {
   }
   std::printf("beside the sub-checkpoints: %zu of 2 laps, the arrow went back %zu times\n",laps4,guideBack);
 
-  const bool ok = finished && wrongFrames==0 && wrongAt>0 && rightAt>7.f && !counted && laps4==2 && guideBack==0;
+  const bool ok = finished && wrongFrames==0 && wrongAt>=race.startTime()+rc::Race::WrongAfter && rightAt>turn && !counted && laps4==2 && guideBack==0;
   std::printf("%s\n",ok ? "ok" : "FAILED");
   return ok ? 0 : 3;
   }

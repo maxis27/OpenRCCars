@@ -14,16 +14,15 @@ void Race::restart(const Mat4& start, bool again) {
   startAt  = (again ? 0.f : EntryDelay)+CountTime;
   lapStart = 0;
   times.clear();
-  wrong    = false;
-  awayTime = 0;
-  backTime = 0;
+  wrong     = false;
+  wrongTime = 0;
   }
 
 float Race::bestLap() const {
   return times.empty() ? 0.f : *std::min_element(times.begin(),times.end());
   }
 
-Race::Event Race::update(float dt, const Vec3& car, const Vec3& velocity) {
+Race::Event Race::update(float dt, const Vec3& car, const Vec3& heading) {
   if(state==Phase::Finished)
     return Event::None;
 
@@ -40,27 +39,23 @@ Race::Event Race::update(float dt, const Vec3& car, const Vec3& velocity) {
     return Event::Go;
     }
 
-  // wrong way: moving away from the point the arrow shows for 1.5 s, cleared once heading for it again
+  // wrong way (RCCars.exe 0x4e8f00): the car heading against the way on (Checkpoints::wayOn) runs a timer up, by a
+  // second a second to at most WrongMax, heading along it runs the timer down three times as fast; past WrongAfter
+  // it is the wrong way, but not within WrongNear of the last main checkpoint passed (horizontally)
   if(!route.empty()) {
-    Vec3 v  = velocity;
-    Vec3 to = route.route()[route.guide()].position-car;
-    v.y = to.y = 0;
-    const float speed = v.length(), dist = to.length();
-    if(speed>1.f && dist>1e-3f) {
-      const float c = Vec3::dot(v,to)/(speed*dist);
-      if(c<-0.3f) {
-        awayTime += dt;
-        backTime  = 0;
-        }
-      else if(c>0.3f) {
-        backTime += dt;
-        awayTime  = 0;
-        }
+    const Vec3 to = route.wayOn(car);
+    if(Vec3::dot(heading,to)>=0) {
+      if(wrongTime>0)
+        wrongTime -= 3.f*dt;
       }
-    if(awayTime>1.5f)
-      wrong = true;
-    if(backTime>0.3f)
-      wrong = false;
+    else if(wrongTime<WrongMax)
+      wrongTime += dt;
+    wrong = wrongTime>WrongAfter;
+    if(wrong) {
+      Vec3 d = route.route()[route.lastPassed()].position-car;
+      d.y = 0;
+      wrong = d.length()>=WrongNear;
+      }
     }
 
   if(!route.update(car))

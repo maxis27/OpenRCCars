@@ -44,8 +44,8 @@ static float scriptValue(const Resources& res, const char* file, const std::stri
   return def;
   }
 
-MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, bool dev)
-  : Window(Maximized), device(device), resources(res), swapchain(device,hwnd()),
+MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, bool dev, bool inWindow)
+  : Window(inWindow ? Normal : FullScreen), device(device), resources(res), swapchain(device,hwnd()),
     library([&res](const std::string& path){ return res.readFile(path); }), devMode(dev) {
   setWindowTitle("OpenRCCars");
   resetSwapchain();

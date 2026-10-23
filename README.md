@@ -198,6 +198,9 @@ Gra startuje w menu głównym jak oryginał. Opcje: `-g <folder gry>` (domyślni
 `-l <trasa>` (od razu wyścig na tej trasie, bez menu),
 `-dev` (tryb deweloperski jak w oryginale, z naszymi klawiszami debugowania, patrz niżej),
 `-dx12` (backend DirectX 12, eksperymentalnie), `-validation` (warstwy walidacji Vulkana).
+Okno albo pełny ekran wybiera ustawienie oryginału „Uruchom w oknie” z `RCCars.crs` w folderze gry
+(`[Video] VIDEO_RunInWindow`): w oknie gra ma 800x600 jak menu oryginału, bez tego ustawienia (domyślnie) pełny
+ekran. Pełny ekran nie zmienia rozdzielczości monitora, choć oryginał przełącza go na 800x600.
 
 ### Linux
 

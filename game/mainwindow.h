@@ -40,7 +40,10 @@ class MainWindow : public Tempest::Window {
   public:
     // `dev`: the -dev switch, RCCars.exe's developer mode (0x147d204); our debug keys work only with it.
     // `level`: straight into a race of that track, without the menus; empty: the main menu
-    MainWindow(Tempest::Device& device, Resources& res, const std::string& level, bool dev = false);
+    // `inWindow`: a 800x600 window like the original's menu in a window, otherwise full screen (without changing
+    // the screen's resolution, unlike RCCars.exe 0x4a6840, which shows its menus in 800x600)
+    MainWindow(Tempest::Device& device, Resources& res, const std::string& level, bool dev = false,
+               bool inWindow = false);
     ~MainWindow() override;
 
   private:

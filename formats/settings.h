@@ -42,6 +42,21 @@ class SliderFile {
     std::map<std::string,Slider,std::less<>> keys;
   };
 
+// RCCars.crs in the game's folder: the player's settings ("CREAT Studio configuration", RCCars.exe 0x404770 ..).
+// A tree of "CSRC" records, each [u32 length][name]; a section then has [u16 children] and 6 zeros, its children
+// follow, a value [u16 type][u16 length][u16 capacity][u16 0], its data and [u32 0]. Types: 1 a 32-bit
+// integer, 2 a string, 3 a structure (the keys of the controls).
+class ConfigFile {
+  public:
+    static ConfigFile parse(const std::vector<uint8_t>& data);
+
+    // the integer `key` of `section` ("Video", "VIDEO_RunInWindow"), `def` if it is missing
+    int32_t integer(std::string_view section, std::string_view key, int32_t def = 0) const;
+
+  private:
+    std::map<std::string,int32_t,std::less<>> ints;   // "section/key"
+  };
+
 // Scripts\upgrades.ini:
 //   Section Keys "BOOSTERS"
 //    OverkillUpgrades (float[4]) = 0.80, 0.97, 1.11, 1.24

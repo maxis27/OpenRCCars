@@ -195,22 +195,29 @@ Menu::Box Menu::slotBox(int slot) const {
   }
 
 Menu::Box Menu::buttonBox(const Button& b) const {
+  // the race and back ones by the bottom edge
   if(b.kind==Button::Race)
-    return {RaceBox[0]*800.f,RaceBox[1]*600.f,RaceBox[2]*800.f,RaceBox[3]*600.f};
-  // on a wide screen the right ones stay on the plates of the stretched background, reaching the screen's edge
+    return {RaceBox[0]*800.f,RaceBox[1]*600.f+tall,RaceBox[2]*800.f,RaceBox[3]*600.f+tall};
+  // on a wide or high screen the right ones stay on the plates of the stretched background, reaching the screen's
+  // edge
   Box r = slotBox(b.slot);
   r.x0 *= stretch();
   r.x1  = 800.f+wide;
+  const float sy = b.slot>=8 ? tall : (r.y0+r.y1)*0.5f*(stretchY()-1.f);
+  r.y0 += sy;
+  r.y1 += sy;
   return r;
   }
 
 void Menu::layout(int w, int h) {
   // the whole window: the 800x600 screen as high as the window (as wide where it is narrower), the background
-  // stretched to the sides and the controls kept by the edges or the middle they belong to
+  // stretched to the sides (or up and down) and the controls kept by the edges or the middle they belong to
   scale   = std::min(float(h)/600.f,float(w)/800.f);
   offsetX = 0;
   wide    = std::max(0.f,float(w)/scale-800.f);
+  tall    = std::max(0.f,float(h)/scale-600.f);
   dx      = 0;
+  dy      = 0;
   }
 
 void Menu::open(Page p) {
@@ -468,7 +475,7 @@ void Menu::mouseMove(int x, int y) {
       playControl(0);
     }
   for(auto& p:pills) {
-    const bool in = p.box.contains(mouseX-wide*0.5f,mouseY);
+    const bool in = p.box.contains(mouseX-wide*0.5f,mouseY-tall);
     if(in && !p.hover)
       playControl(0);
     p.hover = in;
@@ -484,8 +491,8 @@ void Menu::mouseMove(int x, int y) {
   auto hoverEnum = [&](Enum& e) {
     Box l, r;
     arrowsOf(e,l,r);
-    const float mx = mouseX-contentShift();
-    const bool  hl = l.contains(mx,mouseY), hr = r.contains(mx,mouseY);
+    const float mx = mouseX-contentShift(), my = mouseY-tall*0.5f;
+    const bool  hl = l.contains(mx,my), hr = r.contains(mx,my);
     if((hl && !e.hoverL) || (hr && !e.hoverR))
       playControl(1);
     e.hoverL = hl;
@@ -531,7 +538,7 @@ void Menu::mouseDown(int x, int y) {
     const float side = 100.f+3.f;
     for(int k:{-2,-1,1,2}) {
       const float x0 = k<0 ? 223.f-3.f+float(k)*side : 223.f+199.f+3.f+float(k-1)*side;
-      if(Box{x0,303,x0+100,379}.contains(mouseX-contentShift(),mouseY)) {
+      if(Box{x0,303,x0+100,379}.contains(mouseX-contentShift(),mouseY-tall*0.5f)) {
         changeShot(k);
         return;
         }
@@ -580,7 +587,7 @@ std::optional<Menu::Preview> Menu::carPreview() const {
   // dlgRACESUM animCar
   Preview p;
   p.x = px(306+contentShift());
-  p.y = py(254);
+  p.y = py(254+tall*0.5f);
   p.w = 374.f*scale;
   p.h = 304.f*scale;
   p.yaw   = carYaw;
@@ -595,7 +602,7 @@ std::optional<Menu::Preview> Menu::carPreview() const {
 void Menu::image(const Tex& t, const Box& b, const Uv& uv, const Color& c) {
   if(!t)
     return;
-  quad(*t.tex,1,1,{uv.u0,uv.v0,uv.u1,uv.v1},px(b.x0+dx),py(b.y0),(b.x1-b.x0)*scale,(b.y1-b.y0)*scale,
+  quad(*t.tex,1,1,{uv.u0,uv.v0,uv.u1,uv.v1},px(b.x0+dx),py(b.y0+dy),(b.x1-b.x0)*scale,(b.y1-b.y0)*scale,
        {c[0],c[1],c[2],c[3]*fade});
   }
 
@@ -606,7 +613,7 @@ void Menu::imageOpaque(const Tex& t, const Box& b, const Uv& uv) {
   }
 
 void Menu::fill(const Box& b, const Color& c) {
-  quad(*white,1,1,{0,0,1,1},px(b.x0+dx),py(b.y0),(b.x1-b.x0)*scale,(b.y1-b.y0)*scale,{c[0],c[1],c[2],c[3]*fade});
+  quad(*white,1,1,{0,0,1,1},px(b.x0+dx),py(b.y0+dy),(b.x1-b.x0)*scale,(b.y1-b.y0)*scale,{c[0],c[1],c[2],c[3]*fade});
   }
 
 void Menu::label(const Font& f, std::string_view s, const Box& b, int ax, int ay, const Color& c, float k) {
@@ -617,7 +624,7 @@ void Menu::label(const Font& f, std::string_view s, const Box& b, int ax, int ay
   const float h  = f.cell*k;
   const float y  = ay==0 ? b.y0 : ay==1 ? (b.y0+b.y1)*0.5f-h*0.5f-h*0.06f : b.y1-h*0.78f-4.f;
   const float x  = ax==0 ? b.x0 : ax==1 ? (b.x0+b.x1)*0.5f : b.x1;
-  text(f,s,px(x+dx),py(y),h,{c[0],c[1],c[2],c[3]*fade},ax-1);
+  text(f,s,px(x+dx),py(y+dy),h,{c[0],c[1],c[2],c[3]*fade},ax-1);
   }
 
 void Menu::lines(const Font& f, std::string_view s, const Box& b, int ax, float step, const Color& c) {
@@ -645,8 +652,8 @@ void Menu::drawBackground() {
   // 0x4de1a0: the four Podl_ parts, first opaque (their colour where they are clear makes the dark centre), then
   // over it once more with their opacity
   // stretched to the width of the window
-  const float k = stretch();
-  const Box   boxes[4] = {{0,0,512*k,512},{512*k,0,800*k,512},{0,512,512*k,600},{512*k,512,800*k,600}};
+  const float k = stretch(), ky = stretchY();
+  const Box   boxes[4] = {{0,0,512*k,512*ky},{512*k,0,800*k,512*ky},{0,512*ky,512*k,600*ky},{512*k,512*ky,800*k,600*ky}};
   const Uv  uvs[4]   = {{0,0,1,1},{0,0,1,1},{0,0,1,0.34f},{0,0,1,0.34f}};
   for(size_t i=0; i<4; ++i)
     imageOpaque(podl[i],boxes[i],uvs[i]);
@@ -892,9 +899,11 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
     // over the race: the scene darkened
     quad(*white,1,1,{0,0,1,1},0,0,float(w),float(h),{0,0,0,0.5f});
     dx = wide*0.5f;
+    dy = tall;
     for(auto& p:pills)
       drawPill(p);
     dx = 0;
+    dy = 0;
     drawCursor();
     flush(enc,frame);
     return;
@@ -910,13 +919,16 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
     if(logo)
       image(logo,{800-100,0,800,100},{0,0,1,1},{1,1,1,1});
     dx = contentShift();
+    dy = tall*0.5f;
     drawMain();
     }
   if(current==Page::QuickRace) {
     dx = contentShift();
+    dy = tall*0.5f;
     drawQuickRace();
     }
   dx   = 0;
+  dy   = 0;
   fade = 1;
   for(auto& b:right)
     drawButton(b);
@@ -928,11 +940,11 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
 void Menu::drawLoading(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, size_t track, float progress) {
   begin(w,h);
   layout(w,h);
-  const float k = stretch();
+  const float k = stretch(), ky = stretchY();
   // 0x570888: Desktop, the map, two lines, four shots, the progress, the name and "Wczytywanie..."
   if(desktop.loaded) {
     sharpen = -1;
-    quad(desktop.tex,desktop.w,desktop.h,{0,0,float(desktop.w),float(desktop.h)},px(0),py(0),800*k*scale,600*scale,
+    quad(desktop.tex,desktop.w,desktop.h,{0,0,float(desktop.w),float(desktop.h)},px(0),py(0),800*k*scale,600*ky*scale,
          {1,1,1,1});
     sharpen = 0;
     }
@@ -940,6 +952,7 @@ void Menu::drawLoading(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h,
   if(!prefix.empty()) {
     // the map in the middle, the shots by the sides
     dx = wide*0.5f;
+    dy = tall*0.5f;
     if(auto t = tex(prefix+"_L"))
       image(t,{0.2f*800,0,0.84f*800,0.8533f*600},{0,0,1,1},{1,1,1,1});
     const Box shots[4] = {{0.0025f*800,0.05f*600,0.3225f*800,0.4767f*600},{0.6775f*800,0.05f*600,0.9975f*800,0.4767f*600},
@@ -952,10 +965,14 @@ void Menu::drawLoading(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h,
     dx = 0;
     }
   const Color white = {1,1,1,1};
+  dy = 0;
   underline(0.05375f*800*k,0.9337f*800*k,0.09f*600,white);
+  dy = tall*0.5f;
   underline(0.05375f*800*k,0.9337f*800*k,0.7583f*600,white);
   if(track<TrackCount)
     label(font26,str(T_TrackName+uint32_t(track)),{0,0,800*k,0.7467f*600},1,2,white);
+  // the progress by the bottom
+  dy = tall;
   label(font26,str(T_Loading),{0,0,800*k,0.9033f*600},1,2,white);
 
   // the progress (class PGS, 0x4b89e0): the grey bar with round ends, the red one from the left as far as the
@@ -976,5 +993,6 @@ void Menu::drawLoading(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h,
       }
     image(progressor,{xp-32,b.y0,xp+32,b.y1},{0,0.75f,1,1},white);
     }
+  dy = 0;
   flush(enc,frame);
   }

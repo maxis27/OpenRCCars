@@ -159,6 +159,8 @@ class Menu : public Canvas {
     void   layout(int w, int h);
     // how many times the background is stretched sideways
     float  stretch() const { return (800.f+wide)/800.f; }
+    // and up and down, on a window narrower than 4:3
+    float  stretchY() const { return (600.f+tall)/600.f; }
     // where the screen's own controls go on a wide screen: under the middle of the background's circle
     float  contentShift() const { return wide*0.4f; }
 
@@ -223,5 +225,7 @@ class Menu : public Canvas {
     float                   time = 0;
     float                   fade = 1;   // the opacity of what is drawn (the screen's controls changing)
     float                   wide = 0;   // how much wider than 800 units the window is
+    float                   tall = 0;   // how much higher than 600 units it is (narrower than 4:3)
     float                   dx   = 0;   // moves what is drawn right, in units
+    float                   dy   = 0;   // and down
   };

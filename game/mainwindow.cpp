@@ -44,8 +44,8 @@ static float scriptValue(const Resources& res, const char* file, const std::stri
   return def;
   }
 
-MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, bool dev)
-  : Window(Maximized), device(device), resources(res), swapchain(device,hwnd()),
+MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, bool dev, bool inWindow)
+  : Window(inWindow ? Normal : FullScreen), device(device), resources(res), swapchain(device,hwnd()),
     library([&res](const std::string& path){ return res.readFile(path); }), devMode(dev) {
   setWindowTitle("OpenRCCars");
   resetSwapchain();
@@ -54,6 +54,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   arrow    = std::make_unique<DirectionArrow>(device,res);
   effects  = std::make_unique<Effects>(device,res);
   sounds   = std::make_unique<Sounds>(res);
+  menu     = std::make_unique<Menu>(device,res,*sounds);
   characterView = std::make_unique<CharacterView>(device);
   trafficView   = std::make_unique<TrafficView>(device,res);
   chase    = ChaseCamera(ChaseCamera::Settings::load([&res](const std::string& f){ return res.pack().read(f); }));
@@ -78,8 +79,18 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   if(devMode)
     for(const char* c:{"DT0","DT1","DT2","DT3","DT4","DT5","DTX","CONSTR","C1","F","E1","E2","I","STAT"})
       devCodes.push_back({c});
+  setCursorShape(CursorShape::Hidden);   // the menus draw the game's own
   loadCar(0);
-  loadLevel(name);
+  if(name.empty()) {
+    menu->open(Menu::Page::Main);
+    }
+  else {
+    // -l: straight into the race, the menu's choice following it
+    const size_t t = Menu::trackIndex(name);
+    if(t<Menu::TrackCount)
+      menu->setup().track = t;
+    loadLevel(name);
+    }
   sounds->startMusic();
   lastTick = Application::tickCount();
   }
@@ -310,7 +321,7 @@ Hud::Info MainWindow::hudInfo() const {
   info.turbo  = vehicle->boostLevel();
   info.turboMax = vehicle->params().boostTank/100.f;
   info.speedMax = vehicle->params().boostTopSpeed*3.6f;
-  info.paused = paused;
+  info.paused = paused && !menu->active();   // "Pauza" for P, not under the race's menu
   info.lowSignal = resetVolumes.lowSignal();
   info.carPos     = carPose.translation();
   info.carForward = carPose.vector({0,0,1});
@@ -400,8 +411,22 @@ void MainWindow::resizeEvent(SizeEvent&) {
 
 void MainWindow::keyDownEvent(KeyEvent& e) {
   keys[e.key] = true;
-  if(e.key==Event::K_ESCAPE)
+  if(devMode && e.key==Event::K_F11)
     Tempest::SystemApi::exit();
+  if(menu->active()) {
+    menu->keyDown(e.key);
+    return;
+    }
+  // Esc: the menu over the race (dlgINRACE), the race stopped meanwhile
+  if(e.key==Event::K_ESCAPE) {
+    if(level!=nullptr) {
+      menu->open(Menu::Page::InRace);
+      paused = true;
+      }
+    else
+      menu->open(Menu::Page::Main);
+    return;
+    }
   // a key that goes on with a code already begun belongs to the code, not to our keys ("E1" does not switch the car)
   if(devCodeKey(e.key))
     return;
@@ -412,19 +437,18 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
       setFlying(!flying);
     return;
     }
-  if(devMode && e.key==Event::K_F11)
-    Tempest::SystemApi::exit();
-  // F1..F10 - switch track (in the developer mode F9 flies, Shift+F9 is urban_1)
-  if(e.key>=Event::K_F1 && e.key<=Event::K_F10) {
+  // our quick switches of the developer mode, the menus' choices without them:
+  // F1..F10 - switch track (F9 flies, Shift+F9 is urban_1)
+  if(devMode && e.key>=Event::K_F1 && e.key<=Event::K_F10) {
     const size_t id = size_t(e.key-Event::K_F1);
     if(id<std::size(Tracks))
       loadLevel(Tracks[id]);
     }
   // 1..3 - switch car
-  if(e.key>=Event::K_1 && e.key<=Event::K_3)
+  if(devMode && e.key>=Event::K_1 && e.key<=Event::K_3)
     loadCar(size_t(e.key-Event::K_1));
   // U - next upgrade level (boosters, resonators and tires together)
-  if(e.key==Event::K_U) {
+  if(devMode && e.key==Event::K_U) {
     upgrade = (upgrade+1)%4;
     device.waitIdle();
     fitCar();
@@ -448,7 +472,7 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
   // Enter: the race again from the countdown ("Jeszcze raz"), L: 3, 5 or 7 laps (and the race again)
   if(e.key==Event::K_Return && level)
     setupPhysics(true,true);
-  if(e.key==Event::K_L && level) {
+  if(devMode && e.key==Event::K_L && level) {
     laps = (laps>=7) ? 3 : laps+2;
     race->setLaps(laps);
     setupPhysics(true,true);
@@ -469,7 +493,7 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
       opponents->playerMoved();
     }
   // O: the opponents off, easy, normal, hard (and the race again)
-  if(e.key==Event::K_O && level) {
+  if(devMode && e.key==Event::K_O && level) {
     aiLevel = rc::Opponents::Level((int(aiLevel)+1)%4);
     setupOpponents();
     setupPhysics(true,true);
@@ -481,6 +505,171 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
 
 void MainWindow::keyUpEvent(KeyEvent& e) {
   keys[e.key] = false;
+  }
+
+void MainWindow::mouseDownEvent(MouseEvent& e) {
+  if(menu->active())
+    menu->mouseDown(e.x,e.y);
+  }
+
+void MainWindow::mouseUpEvent(MouseEvent& e) {
+  if(menu->active())
+    menu->mouseUp(e.x,e.y);
+  }
+
+void MainWindow::mouseMoveEvent(MouseEvent& e) {
+  if(menu->active())
+    menu->mouseMove(e.x,e.y);
+  }
+
+void MainWindow::mouseDragEvent(MouseEvent& e) {
+  mouseMoveEvent(e);
+  }
+
+void MainWindow::menuCommand(Menu::Command c) {
+  switch(c) {
+    case Menu::Command::None:
+      return;
+    case Menu::Command::Race:
+      raceRequested = true;
+      return;
+    case Menu::Command::Quit:
+      Tempest::SystemApi::exit();
+      return;
+    case Menu::Command::Resume:
+      menu->close();
+      paused = false;
+      return;
+    case Menu::Command::BackOnTrack:
+      menu->close();
+      paused = false;
+      if(level) {
+        setFlying(false);
+        respawnCar();
+        }
+      return;
+    case Menu::Command::RaceAgain:
+      menu->close();
+      if(level)
+        setupPhysics(true,true);
+      paused = false;
+      return;
+    case Menu::Command::Abort:
+      // back to the main menu; the track stays loaded under it, silent
+      sounds->stopAll();
+      if(carSound)
+        carSound->stop();
+      for(auto& s:aiSounds)
+        s.stop();
+      paused = false;
+      menu->open(Menu::Page::Main);
+      return;
+    }
+  }
+
+void MainWindow::presentLoading(size_t track, float progress) {
+  frameId = uint8_t((frameId+1)%MaxFramesInFlight);
+  auto& sync = fence[frameId];
+  auto& cmd  = commands[frameId];
+  sync.wait();
+  {
+    auto enc = cmd.startEncoding(device);
+    enc.setFramebuffer({{swapchain[swapchain.currentImage()],Vec4(0,0,0,1),Tempest::Preserve}});
+    menu->drawLoading(enc,frameId,int(w()),int(h()),track,progress);
+  }
+  sync = device.submit(cmd);
+  device.present(swapchain);
+  }
+
+void MainWindow::startRace() {
+  const Menu::Setup st    = menu->setup();
+  const std::string track = Menu::trackName(st.track);
+  menu->close();
+  presentLoading(st.track,0.f);
+  laps    = st.laps;
+  aiLevel = st.skill<=0 ? rc::Opponents::Level::Easy :
+            st.skill==1 ? rc::Opponents::Level::Normal : rc::Opponents::Level::Hard;
+  const bool sameCar = car!=nullptr && carId==st.car && upgrade==st.upgrade;
+  upgrade = st.upgrade;
+  if(level!=nullptr && level->name()==track) {
+    // the track already there: only the field, the car and the race again
+    if(!sameCar) {
+      device.waitIdle();
+      carId = st.car;
+      fitCar();
+      if(carSound)
+        carSound->stop();
+      carSound = std::make_unique<rc::CarSound>(sounds->mixer(),sounds->library(),int(carId));
+      }
+    presentLoading(st.track,0.5f);
+    race->setLaps(laps);
+    setupOpponents();
+    setupPhysics(true);
+    }
+  else {
+    if(!sameCar) {
+      device.waitIdle();
+      carId = st.car;
+      fitCar();
+      if(carSound)
+        carSound->stop();
+      carSound = std::make_unique<rc::CarSound>(sounds->mixer(),sounds->library(),int(carId));
+      }
+    presentLoading(st.track,0.2f);
+    try {
+      loadLevel(track);
+      }
+    catch(const std::exception& e) {
+      Log::e("race: ",e.what());
+      }
+    }
+  presentLoading(st.track,1.f);
+  if(level==nullptr || level->name()!=track) {
+    menu->open(Menu::Page::Main);
+    return;
+    }
+  paused   = false;
+  lastTick = Application::tickCount();
+  }
+
+void MainWindow::drawCarPreview(Encoder<CommandBuffer>& enc, const Menu::Preview& p) {
+  const size_t id = std::min<size_t>(menu->setup().car,2);
+  if(previewCars[id]==nullptr || previewUpgrade[id]!=menu->setup().upgrade) {
+    ModelMesh::CarLook look;
+    look.boost = look.resonator = look.tires = menu->setup().upgrade;
+    device.waitIdle();
+    previewCars[id]    = std::make_unique<CarModel>(device,resources,carScene,id,look);
+    previewUpgrade[id] = menu->setup().upgrade;
+    }
+  if(p.alpha<=0)
+    return;
+  // the original turns the car in a little scene of its own (AnimPreview, 0x4a9e70): here a camera above the
+  // front, the car filling the rectangle
+  auto&          mesh   = previewCars[id]->full();
+  const rc::Vec3 lo     = mesh.bboxMin(), hi = mesh.bboxMax();
+  const rc::Vec3 centre = (lo+hi)*0.5f;
+  const float    radius = (hi-lo).length()*0.5f;
+  Camera cam;
+  cam.fov      = 30.f;
+  cam.pitch    = -25.f;
+  cam.yaw      = 0;
+  const float dist = radius/std::sin(cam.fov*0.5f*3.14159265f/180.f)*0.9f;
+  cam.position = rc::Vec3{0,0,0}-cam.forward()*dist;
+  const float    sw = float(std::max<uint32_t>(1,w())), sh = float(std::max<uint32_t>(1,h()));
+  rc::Mat4 fit;   // the view's -1..1 onto the rectangle
+  fit.m[0][0] = p.w/sw; fit.m[0][3] = (p.x+p.w*0.5f)*2.f/sw-1.f;
+  fit.m[1][1] = p.h/sh; fit.m[1][3] = (p.y+p.h*0.42f)*2.f/sh-1.f;
+  const rc::Mat4 viewProj = fit*cam.viewProj(p.w/std::max(1.f,p.h));
+  const rc::Mat4 world    = rc::Mat4::rotate(1,p.yaw)*rc::Mat4::translate(rc::Vec3{0,0,0}-centre);
+
+  LevelMesh::Push push;
+  viewProj.toColumnMajor(push.viewProj);
+  const rc::Vec3 eye = cam.position;
+  push.cameraPos[0] = eye.x; push.cameraPos[1] = eye.y; push.cameraPos[2] = eye.z; push.cameraPos[3] = 0;
+  push.sunDir[0] = 0.4f; push.sunDir[1] = 0.8f; push.sunDir[2] = 0.3f; push.sunDir[3] = 1.0f;
+  push.time = 0;
+  mesh.setDirt(0);
+  mesh.draw(enc,viewProj,push,world);
   }
 
 void MainWindow::tick(float dt) {
@@ -952,11 +1141,44 @@ void MainWindow::tickSounds(float dt) {
     }
   }
 
+void MainWindow::renderMenu() {
+  frameId = uint8_t((frameId+1)%MaxFramesInFlight);
+  auto& sync = fence[frameId];
+  auto& cmd  = commands[frameId];
+  sync.wait();
+  {
+    auto enc = cmd.startEncoding(device);
+    enc.setFramebuffer({{swapchain[swapchain.currentImage()],Vec4(0,0,0,1),Tempest::Preserve}},
+                       {zbuffer,1.f,Tempest::Discard});
+    const auto preview = menu->carPreview();
+    menu->draw(enc,frameId,int(w()),int(h()),[&](){
+      if(preview)
+        drawCarPreview(enc,*preview);
+      });
+  }
+  sync = device.submit(cmd);
+  device.present(swapchain);
+  }
+
 void MainWindow::render() {
   try {
+    if(raceRequested) {
+      raceRequested = false;
+      startRace();
+      }
     const uint64_t now = Application::tickCount();
     const float    dt  = float(now-lastTick)/1000.f;
     lastTick = now;
+    // the main menu and the quick race instead of the race; the race's menu over the stopped race
+    const bool front = menu->active() && menu->page()!=Menu::Page::InRace;
+    menu->tick(std::min(dt,0.1f));
+    menuCommand(menu->take());
+    if(front) {
+      sounds->tick();
+      sounds->setPaused(false);
+      renderMenu();
+      return;
+      }
     if(!paused && (zeroCam!=ZeroCam::Detached || frameStep))
       time  += zeroCam==ZeroCam::Detached ? (fixedTime>0 ? fixedTime/1000.f : lastDt) : std::min(dt,0.1f);
     tick(std::min(dt,0.1f));
@@ -1033,6 +1255,8 @@ void MainWindow::render() {
           arrow->draw(enc,int(w()),int(h()));
           }
         }
+      if(menu->active())
+        menu->draw(enc,frameId,int(w()),int(h()),{});
     }
 
     sync = device.submit(cmd);

@@ -32,6 +32,10 @@ class Sounds {
 
     // a sound of a channel of RCCars.sb, e.g. ("Checkpoint","cp_start"); each channel plays one sound at a time
     void play(const std::string& channel, const std::string& sound);
+    // sound `sound` of a channel of RCCarsDB/Interface.sb, the menus' ("Control sounds": 0 ButtonFocus,
+    // 1 ArrowFocus, 2 ArrowPress, 3 ButtonPress, 4 RaceFocus, 5 RacePress ...; "Dialog sounds": 0 ChangeScreen,
+    // 1 ChangeScreenLeft), as RCCars.exe 0x4ddb80 plays them
+    void playInterface(const std::string& channel, int sound);
     // the first sound of a positioned channel (e.g. "burst", "bullet") at `at`, heard from `ear`
     void playAt(const std::string& channel, const rc::Vec3& at, const rc::Vec3& ear, const rc::Vec3& right);
     // stops every sound effect (not the music)
@@ -74,7 +78,8 @@ class Sounds {
     std::map<std::string,rc::BankChannel>        channels;
     rc::MusicList                                music;
     rc::AmbientSounds                            ambient;
-    std::unique_ptr<rc::SoundLibrary>            peopleLib, animalLib, propLib;
+    std::unique_ptr<rc::SoundLibrary>            peopleLib, animalLib, propLib, interfaceLib;
+    std::map<std::string,rc::BankChannel>        interfaceChannels;
     std::map<std::pair<std::string,int>,rc::BankChannel> propChannels; // as actorChannels
     // by model and the actor's number among those of its model; the mixer keeps its channels, so they are reused
     std::map<std::pair<std::string,int>,rc::BankChannel> actorChannels;

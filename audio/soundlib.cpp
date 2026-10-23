@@ -119,6 +119,11 @@ void BankChannel::setPan(float pan) {
     mixer->setPan(id,pan);
   }
 
+void BankChannel::setPausable(bool p) {
+  if(mixer)
+    mixer->setPausable(id,p);
+  }
+
 void BankChannel::setPlace(float distance, float side) {
   if(mixer==nullptr || def==nullptr || def->far<=0)
     return;

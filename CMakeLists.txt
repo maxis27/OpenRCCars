@@ -125,6 +125,8 @@ add_library(rcengine STATIC
   game/camera.h            game/camera.cpp
   game/chasecamera.h       game/chasecamera.cpp
   game/resources.h         game/resources.cpp
+  game/canvas.h            game/canvas.cpp
+  game/menu.h              game/menu.cpp
   game/hud.h               game/hud.cpp
   game/arrow.h             game/arrow.cpp
   game/effects.h           game/effects.cpp

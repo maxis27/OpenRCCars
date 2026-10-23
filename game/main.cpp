@@ -8,17 +8,24 @@
 
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <memory>
+
+#include "formats/settings.h"
 
 #include "mainwindow.h"
 #include "resources.h"
 
 // usage: OpenRCCars [-g <game_dir>] [-l <track>] [-dev] [-dx12] [-validation]
 //   game_dir defaults to the current directory (run it from the RC Cars installation folder)
+//   -l: straight into a race on that track (beach_1 ...), without the menus
 //   -dev: the developer mode of RCCars.exe (same switch, 0x4883dd), with our own debug keys on top
+// Full screen or a window as the game's RCCars.crs says ([Video] VIDEO_RunInWindow, the original's
+// "Uruchom w oknie"): full screen without one, as RCCars.exe defaults to (0x4e2660)
 int main(int argc, const char** argv) {
   std::filesystem::path gameDir = std::filesystem::current_path();
-  std::string           track   = "beach_1";
+  std::string           track;
   bool                  dx12    = false;
   bool                  debug   = false;
   bool                  dev     = false;
@@ -57,8 +64,13 @@ int main(int argc, const char** argv) {
       }
     if(dev)
       Tempest::Log::i("-dev mode on");
+    bool inWindow = false;
+    if(std::ifstream f{gameDir/"RCCars.crs",std::ios::binary}) {
+      const std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)),std::istreambuf_iterator<char>());
+      inWindow = rc::ConfigFile::parse(data).integer("Video","VIDEO_RunInWindow",0)!=0;
+      }
     Resources  resources(device,gameDir);
-    MainWindow wnd(device,resources,track,dev);
+    MainWindow wnd(device,resources,track,dev,inWindow);
     return app.exec();
     }
   catch(const std::exception& e) {

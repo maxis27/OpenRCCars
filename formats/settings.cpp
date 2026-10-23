@@ -134,6 +134,58 @@ float SliderFile::real(std::string_view key, float def) const {
   return s->fmin + (s->fmax-s->fmin)*k;
   }
 
+ConfigFile ConfigFile::parse(const std::vector<uint8_t>& data) {
+  ConfigFile ret;
+  size_t at = 0;
+  auto u16 = [&](size_t o) { return o+2<=data.size() ? uint32_t(data[o] | data[o+1]<<8) : 0u; };
+  auto u32 = [&](size_t o) { uint32_t v = 0; if(o+4<=data.size()) std::memcpy(&v,data.data()+o,4); return v; };
+  auto str = [&](size_t o, size_t n) {
+    std::string s;
+    for(size_t i=o; i<o+n && i<data.size() && data[i]!=0; ++i)
+      s.push_back(char(data[i]));
+    return s;
+    };
+  // the root: "CSRC", a version, the application's name and the file's description, then the sections
+  if(data.size()<12 || std::memcmp(data.data(),"CSRC",4)!=0)
+    return ret;
+  at = 12+u32(8);
+  at += 4+u32(at);
+  uint32_t count = u32(at);
+  at += 8;
+
+  std::vector<std::pair<std::string,uint32_t>> stack;   // the open sections and how many children are left
+  stack.push_back({"",count});
+  while(at+12<=data.size() && !stack.empty()) {
+    if(stack.back().second==0) {
+      stack.pop_back();
+      continue;
+      }
+    --stack.back().second;
+    if(std::memcmp(data.data()+at,"CSRC",4)!=0)
+      break;
+    const uint32_t len  = u32(at+4);
+    const std::string name = str(at+8,len);
+    at += 8+len;
+    const uint32_t type = u16(at), size = u16(at+2), cap = u16(at+4);
+    if(size==0 && cap==0) {
+      // a section
+      std::string path = stack.back().first.empty() ? name : stack.back().first+"/"+name;
+      at += 8;
+      stack.push_back({path,type});
+      continue;
+      }
+    if(type==1 && size==4)
+      ret.ints[(stack.back().first.empty() ? "" : stack.back().first+"/")+name] = int32_t(u32(at+8));
+    at += 8+size+4;
+    }
+  return ret;
+  }
+
+int32_t ConfigFile::integer(std::string_view section, std::string_view key, int32_t def) const {
+  auto it = ints.find(std::string(section)+"/"+std::string(key));
+  return it==ints.end() ? def : it->second;
+  }
+
 KeySections KeySections::parse(std::string_view text) {
   KeySections ret;
   std::map<std::string,std::vector<float>,std::less<>>* cur = nullptr;

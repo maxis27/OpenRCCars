@@ -31,6 +31,11 @@ vec4 bicubic(vec2 uv) {
   }
 
 void main() {
+  if(push.sharpen<0.0) {
+    // opaque: the picture's colour without its opacity (the menu's background, RCCars.exe 0x471610 mode 0)
+    outColor = vec4(texture(tex, inUv).rgb*inColor.rgb, inColor.a);
+    return;
+    }
   if(push.sharpen>0.0) {
     // the font: its clear texels are black, so undo their darkening of the edge, then narrow the edge to about
     // a pixel around the smooth outline

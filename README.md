@@ -81,7 +81,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   z `Settings/AIEmu.ini`, gdy przejeżdżają obok ludzi, psów i aut (szansa `ProbCheck`)
 - **przeciwnicy**: jak w oryginale, dopóki nikt ich nie potrąci, nie jeżdżą z fizyką, tylko odtwarzają przejazdy nagrane na każdej trasie
   (`CarProfiles/<trasa>/*.dat`). Skład wyścigu (do pięciu kierowców, auto, nagranie) jest w `Scripts/ailayouts.ini`;
-  na łatwym startują trzej, na normalnym czterej, na trudnym wszyscy (klawisz O, domyślnie normalny). Nagranie to
+  na łatwym startują trzej, na normalnym czterej, na trudnym wszyscy (w szybkim wyścigu albo klawiszem O w trybie dev, domyślnie normalny). Nagranie to
   jedno okrążenie od startu, którego koniec schodzi się z początkiem pętli; kolejne okrążenia kierowca jedzie z
   odmian tego nagrania (`over1`, `over1_2`, `over1_3` …) po kolei. Tempo odtwarzania jest takie jak w `RCCars.exe`:
   współczynnik trasy (`CoeffCommonOpponents`, 0,85–0,97) razy poziom trudności (`Scripts/aiCommonCoeffs.ini`:
@@ -194,9 +194,13 @@ Uruchomienie:
 build\bin\RelWithDebInfo\OpenRCCars.exe -g "D:\SteamLibrary\steamapps\common\RCCars"
 ```
 
-Opcje: `-g <folder gry>` (domyślnie bieżący katalog), `-l <trasa>` (domyślnie `beach_1`),
+Gra startuje w menu głównym jak oryginał. Opcje: `-g <folder gry>` (domyślnie bieżący katalog),
+`-l <trasa>` (od razu wyścig na tej trasie, bez menu),
 `-dev` (tryb deweloperski jak w oryginale, z naszymi klawiszami debugowania, patrz niżej),
 `-dx12` (backend DirectX 12, eksperymentalnie), `-validation` (warstwy walidacji Vulkana).
+Okno albo pełny ekran wybiera ustawienie oryginału „Uruchom w oknie” z `RCCars.crs` w folderze gry
+(`[Video] VIDEO_RunInWindow`): w oknie gra ma 800x600 jak menu oryginału, bez tego ustawienia (domyślnie) pełny
+ekran. Pełny ekran nie zmienia rozdzielczości monitora, choć oryginał przełącza go na 800x600.
 
 ### Linux
 
@@ -226,18 +230,14 @@ Jazda (kamera za autem):
 | B | zablokuj koła (tylne, do poślizgu) |
 | R | powrót do ostatniego głównego punktu kontrolnego (przed pierwszym: na start) |
 | Enter | wyścig od nowa, od odliczania („Jeszcze raz”) |
-| L | liczba okrążeń: 3 / 5 / 7 (i wyścig od nowa) |
 | P, Pause | pauza |
-| O | przeciwnicy: brak / łatwy / normalny / trudny (i wyścig od nowa) |
-| U | następny poziom ulepszeń (0–3: dopalacze, rezonatory, opony razem) |
-| 1 / 2 / 3 | auto: Overkill / Buggy / Hummer |
+| Esc | menu wyścigu: Przerwij (do menu głównego), Wróć na tor, Zastosuj (dalej), Jeszcze raz? |
 
-Pozostałe:
-
-| Klawisz | Akcja |
-|---|---|
-| F1–F10 | trasy: beach_1–4, country_1–4, urban_1–2 (w trybie dev urban_1 to Shift+F9) |
-| Esc | wyjście |
+Menu (mysz): w menu głównym wybór trasy obrazkami (też ← / →), „Szybki wyścig” to tor, liczba okrążeń,
+umiejętności przeciwników i auto; zielony „Wyścig” rusza (też Enter), „Wyjdź” zamyka grę. Przyciski części,
+których jeszcze nie ma (mistrzostwa, opcje, autorzy …), są szare. Oryginał pokazuje menu zawsze w 800x600
+(RCCars.exe 0x4a6840); u nas menu wypełnia całe okno: tło jest rozciągnięte na szerokość (w oknie węższym niż 4:3 na
+wysokość), przyciski po prawej trzymają się krawędzi i łuków tła, a obrazki, napisy i auto zachowują proporcje.
 
 Tryb deweloperski (`-dev`, jak `RCCars.exe -dev`):
 
@@ -251,6 +251,11 @@ Tryb deweloperski (`-dev`, jak `RCCars.exe -dev`):
 | End | (lot) wypoziomuj |
 | Shift | (lot) dwa razy szybciej |
 | F11 | natychmiastowe wyjście (oryginał: `WM_CLOSE`) |
+| F1–F10 | trasy: beach_1–4, country_1–4, urban_1–2 (urban_1 to Shift+F9) |
+| 1 / 2 / 3 | auto: Overkill / Buggy / Hummer |
+| U | następny poziom ulepszeń (0–3: dopalacze, rezonatory, opony razem) |
+| L | liczba okrążeń: 3 / 5 / 7 (i wyścig od nowa) |
+| O | przeciwnicy: brak / łatwy / normalny / trudny (i wyścig od nowa) |
 | kody `dt0`–`dt5` / `dtx` | (wpisywane w grze) brud auta na stałym poziomie / znowu normalnie |
 | kod `constr` | nakładka kolizji (turkusowa woda, fioletowy głęboki piasek) |
 | kod `E1` | kamera „ZERO”: lata klawiszami jak auto przy F9, gra toczy się dalej, auto stoi bez kierowcy |

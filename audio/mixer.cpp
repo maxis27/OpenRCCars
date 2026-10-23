@@ -178,6 +178,12 @@ void Mixer::setPan(int ch, float pan) {
     channels[size_t(ch)].pan = std::clamp(pan,-1.f,1.f);
   }
 
+void Mixer::setPausable(int ch, bool p) {
+  std::lock_guard<std::mutex> guard(sync);
+  if(ch>=0 && size_t(ch)<channels.size())
+    channels[size_t(ch)].pausable = p;
+  }
+
 void Mixer::setEffectsVolume(float db) {
   std::lock_guard<std::mutex> guard(sync);
   effects = db;
@@ -291,8 +297,8 @@ void Mixer::mixChannel(Channel& c, float* out, size_t frames) {
 void Mixer::render(float* out, size_t frames) {
   std::fill(out,out+frames*2,0.f);
   std::lock_guard<std::mutex> guard(sync);
-  if(!paused)
-    for(auto& c:channels)
+  for(auto& c:channels)
+    if(!paused || !c.pausable)
       mixChannel(c,out,frames);
   if(music!=nullptr && !musicEnd) {
     const size_t n = music->mix(out,frames,dbToGain(musicDb));

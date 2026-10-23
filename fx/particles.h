@@ -21,6 +21,7 @@ struct Billboard {
   float   rgba[4] = {1,1,1,1};
   Texture texture = Dust;
   bool    pixels  = false;      // the same size on the screen at any distance
+  float   depthBias = -1;       // m nearer the camera its depth is tested (the emitter's offset), < 0: Effects' own
   };
 
 // rand() of the original: 0..32767

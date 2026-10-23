@@ -8,7 +8,8 @@
 //   env RCSHOT_DRIVE=<seconds> drives the car (physics) with full throttle first, RCSHOT_STEER=<-1..1> steering
 //   (positive = left) for the last half of that time, RCSHOT_JUMP=<seconds> jumps at that moment,
 //   RCSHOT_BOOST=1 holds the boost, RCSHOT_START="x z yaw" puts the car somewhere else first.
-//   env RCSHOT_TIME=<seconds> is the moment of the water animation (default: the drive time, else 0).
+//   env RCSHOT_TIME=<seconds> is the moment of the water animation and of the moving scenery (beach_4's submarine
+//   and radar; default: the drive time, else 0).
 //   env RCSHOT_FOG=0 draws without the track's fog (Settings\fog_<track>.ini).
 //   env RCSHOT_OBJECTS=0 hides the objects placed on the track (props, characters, road cars).
 //   env RCSHOT_ACTOR=<instance name> looks at a person or animal from RCSHOT_ACTOR_DIST m (default 2.5) after
@@ -329,7 +330,7 @@ int main(int argc, const char** argv) {
       fxTime = time;
       const rc::Vec3 at = carPose.translation();
       Log::i("effects: ",time," s, ",bursts," bursts at the car (",at.x," ",at.y," ",at.z,"), ",hits," hits, ",
-             fx->footprintCount()," footprints");
+             fx->footprintCount()," footprints, ",fx->smokeCount()," puffs of smoke");
       if(chars)
         for(auto* a:chars->actors())
           if(a->kind==rc::Characters::Kind::Person) {
@@ -381,7 +382,8 @@ int main(int argc, const char** argv) {
       auto enc = cmd.startEncoding(device);
       enc.setFramebuffer({{color,Vec4(0.62f,0.72f,0.82f,1.f),Tempest::Preserve}},{depth,1.f,Tempest::Preserve});
       const bool sky = std::getenv("RCSHOT_NOSKY")==nullptr;
-      level.mesh().draw(enc,push,LevelMesh::Pass::Opaque,sky);
+      const auto poses = level.animated().poses(push.time);
+      level.mesh().draw(enc,push,LevelMesh::Pass::Opaque,viewProj,poses,sky);
       if(objects)
         objects->draw(enc,viewProj,push);
       if(car) {
@@ -397,7 +399,7 @@ int main(int argc, const char** argv) {
         fx->drawTracks(enc,0,viewProj,cam.position);
       if(traffic)
         trafficView.draw(enc,0,*traffic,viewProj,push,&level.collision());
-      level.mesh().draw(enc,push,LevelMesh::Pass::Translucent,sky);
+      level.mesh().draw(enc,push,LevelMesh::Pass::Translucent,viewProj,poses,sky);
       if(fx)
         fx->draw(enc,0,int(w),int(h),viewProj,cam.position);
       if(std::getenv("RCSHOT_COLL")!=nullptr)

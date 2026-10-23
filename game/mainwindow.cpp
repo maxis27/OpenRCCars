@@ -1266,8 +1266,9 @@ void MainWindow::render() {
       auto enc = cmd.startEncoding(device);
       enc.setFramebuffer({{swapchain[swapchain.currentImage()],Vec4(0.62f,0.72f,0.82f,1.f),Tempest::Preserve}},
                          {zbuffer,1.f,Tempest::Preserve});
+      const auto poses = level ? level->animated().poses(time) : std::vector<rc::Mat4>();
       if(level)
-        level->mesh().draw(enc,push,LevelMesh::Pass::Opaque);
+        level->mesh().draw(enc,push,LevelMesh::Pass::Opaque,viewProj,poses);
       if(objects)
         objects->draw(enc,viewProj,push);
       if(characters)
@@ -1301,7 +1302,7 @@ void MainWindow::render() {
       if(vehicle)
         effects->drawTracks(enc,frameId,viewProj,camera.position);
       if(level)
-        level->mesh().draw(enc,push,LevelMesh::Pass::Translucent);
+        level->mesh().draw(enc,push,LevelMesh::Pass::Translucent,viewProj,poses);
       if(vehicle)
         effects->draw(enc,frameId,int(w()),int(h()),viewProj,camera.position);
       if(level && showCollision)

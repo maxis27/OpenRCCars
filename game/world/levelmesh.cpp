@@ -150,10 +150,36 @@ struct BatchKey {
   int32_t model = -1;
   int32_t base = -1, light = -1, mask = -1, base2 = -1;
   bool    modulate = false; // SbMesh::renderFlags 0x40000000
+  int32_t group  = 0;       // AnimatedObjects group
+  int32_t detail = 0;       // detail texture 1..6
   bool operator<(const BatchKey& o) const {
-    return std::tie(model,base,light,mask,base2,modulate) < std::tie(o.model,o.base,o.light,o.mask,o.base2,o.modulate);
+    return std::tie(model,base,light,mask,base2,modulate,group,detail) <
+           std::tie(o.model,o.base,o.light,o.mask,o.base2,o.modulate,o.group,o.detail);
     }
   };
+
+// Which detail texture (1..6, 0 none) a texture gets. RCCars.exe keeps it at +0x40 of its textures and draws a
+// face with the smaller nonzero one of its two base textures (0x480ef0); where that number comes from was not
+// found. The GLTX groups (SbTexture::groups) set bits 21..27 on just the textures one would give a detail texture,
+// and the six textures look like what those bits stand for: detailer is rock (stone), detailer2 sand,
+// detailer3 plaster (asphalt, concrete), detailer4 gravel (paths), detailer5 wood; bit 27 (floor) gets the sixth,
+// which does not exist. This mapping is a guess from the pictures.
+int32_t detailLayer(const rc::SbTexture* t) {
+  if(t==nullptr)
+    return 0;
+  const uint32_t g = t->groups;
+  if(g & (1u<<23)) return 1;
+  if(g & ((1u<<22)|(1u<<24))) return 2;
+  if(g & (1u<<25)) return 3;
+  if(g & (1u<<26)) return 4;
+  if(g & (1u<<21)) return 5;
+  if(g & (1u<<27)) return 6;
+  return 0;
+  }
+
+float sliderOr(const rc::SliderFile& f, const char* key, float def) {
+  return f.find(key) ? float(f.raw(key)) : def;
+  }
 
 }
 
@@ -215,8 +241,24 @@ WaterBlock WaterBlock::from(const rc::WaterWaves& w, const rc::CoastFoam& foam) 
   return b;
   }
 
+LevelMesh::Detail LevelMesh::Detail::load(rc::PackFile& pack) {
+  Detail d;
+  if(pack.find("Settings\\Detail.ini")==nullptr)
+    return d;
+  auto data = pack.read("Settings\\Detail.ini");
+  auto f    = rc::SliderFile::parse(std::string_view(reinterpret_cast<const char*>(data.data()),data.size()));
+  for(int i=0; i<6; ++i) {
+    const std::string n = i==0 ? "" : std::to_string(i+1);
+    d.density[i] = sliderOr(f,("Density"+n).c_str(),d.density[i]);
+    d.lodBias[i] = sliderOr(f,("LODBias"+n).c_str(),d.lodBias[i]);
+    d.scale[i]   = sliderOr(f,("Scale"+n).c_str(),  d.scale[i]);
+    }
+  d.distObj = sliderOr(f,"DistObj",d.distObj);
+  return d;
+  }
+
 LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, const rc::CollisionMesh* ground,
-                     std::string_view track)
+                     std::string_view track, const std::vector<int32_t>* groups)
   :pso(device) {
   bbox[0] = { 1e9f, 1e9f, 1e9f};
   bbox[1] = {-1e9f,-1e9f,-1e9f};
@@ -287,8 +329,26 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
     if(seaNames[i]=="more1")
       foamSea = int32_t(i);
 
+  // the detail textures
+  const Detail detail = Detail::load(res.pack());
+  for(int i=0; i<6; ++i) {
+    auto t = res.texture(i==0 ? std::string("detailer") : "detailer"+std::to_string(i+1));
+    detailTex[i] = t!=nullptr ? &t->tex : nullptr;
+    WaterBlock b;
+    b.detail[0] = detail.scale[i]*0.1f;
+    b.detail[1] = detail.density[i]/256.f;
+    b.detail[2] = detail.lodBias[i]*0.04f-2.f;
+    detailUbo[i] = device.ubo(b);
+    }
+  detailDist = detail.distObj*0.1f;
+
   // 1. bucket triangles by texture layers
-  std::map<BatchKey,std::vector<Vertex>> buckets;
+  struct Bucket {
+    std::vector<Vertex>       verts;
+    std::vector<Batch::Range> ranges;  // detail buckets: per mesh
+    size_t                    mesh = size_t(-1);
+    };
+  std::map<BatchKey,Bucket> buckets;
   for(size_t mi=0; mi<scene.meshes.size(); ++mi) {
     auto& m = scene.meshes[mi];
     if(m.positions.empty())
@@ -311,6 +371,7 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
         }
       BatchKey key;
       key.model = m.model;
+      key.group = groups!=nullptr && mi<groups->size() ? (*groups)[mi] : 0;
       key.base  = base->texture;
       key.light = light ? light->texture : -1;
       key.modulate = (m.renderFlags & 0x40000000)!=0;
@@ -361,7 +422,24 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
         subdivideWater(dst,ca,bc,c,level-1);
         subdivideWater(dst,ab,bc,ca,level-1);
         };
-      auto& out = buckets[key];
+      if(sea<0 && !water && !key.modulate) {
+        const int32_t d1 = detailLayer(scene.texture(key.base,key.model));
+        const int32_t d2 = mask && base2 ? detailLayer(scene.texture(key.base2,key.model)) : 0;
+        key.detail = (d1>0 && d2>0) ? std::min(d1,d2) : std::max(d1,d2);
+        if(key.detail>0 && detailTex[key.detail-1]==nullptr)
+          key.detail = 0;
+        }
+      auto& bucket = buckets[key];
+      auto& out    = bucket.verts;
+      if(key.detail>0 && bucket.mesh!=mi) {
+        bucket.mesh = mi;
+        Batch::Range r;
+        r.first = out.size();
+        r.lo    = { 1e9f, 1e9f, 1e9f};
+        r.hi    = {-1e9f,-1e9f,-1e9f};
+        bucket.ranges.push_back(r);
+        }
+      const size_t before = out.size();
 
       auto uv = [&](const rc::SbFace::Layer* l, size_t corner, float* dst) {
         dst[0] = dst[1] = 0;
@@ -409,15 +487,30 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
         out.push_back(vert(i));
         out.push_back(vert(i+1));
         }
+      if(key.detail>0) {
+        auto& r = bucket.ranges.back();
+        for(size_t i=before; i<out.size(); ++i) {
+          const rc::Vec3 p = {out[i].pos[0],out[i].pos[1],out[i].pos[2]};
+          r.lo = {std::min(r.lo.x,p.x),std::min(r.lo.y,p.y),std::min(r.lo.z,p.z)};
+          r.hi = {std::max(r.hi.x,p.x),std::max(r.hi.y,p.y),std::max(r.hi.z,p.z)};
+          }
+        r.count = out.size()-r.first;
+        }
       }
     }
 
   // 2. resolve textures, build one vertex buffer
   std::vector<Vertex> all;
-  for(auto& [key,verts]:buckets) {
+  for(auto& [key,bucket]:buckets) {
+    auto& verts = bucket.verts;
     Batch b;
     b.first  = all.size();
     b.count  = verts.size();
+    b.group  = key.group;
+    b.detail = key.detail;
+    b.ranges = std::move(bucket.ranges);
+    for(auto& r:b.ranges)
+      r.first += b.first;
     b.tex[0] = sceneTexture(res,scene,key.base,key.model,&b.mode);
     if(auto t = scene.texture(key.base,key.model); t!=nullptr && rc::PackFile::normalize(t->name).rfind("sky",0)==0) {
       b.sky   = true;
@@ -613,7 +706,20 @@ const Texture2d* LevelMesh::sceneTexture(Resources& res, const rc::SbScene& scen
   }
 
 void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass, bool drawSky) const {
+  static const std::vector<rc::Mat4> none;
+  draw(enc,frame,pass,rc::Mat4(),none,drawSky);
+  }
+
+void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass,
+                     const rc::Mat4& viewProj, const std::vector<rc::Mat4>& poses, bool drawSky) const {
   Push push = frame;
+  const rc::Vec3 eye = {frame.cameraPos[0],frame.cameraPos[1],frame.cameraPos[2]};
+  // RCCars.exe 0x480e50: the distance from the camera to the mesh's box
+  auto near = [&](const Batch::Range& r) {
+    const rc::Vec3 d = {std::max({r.lo.x-eye.x,0.f,eye.x-r.hi.x}),std::max({r.lo.y-eye.y,0.f,eye.y-r.hi.y}),
+                        std::max({r.lo.z-eye.z,0.f,eye.z-r.hi.z})};
+    return d.length()<=detailDist;
+    };
   const RenderPipeline* current = nullptr;
   for(auto& b:batches) {
     if(b.sky && !drawSky)
@@ -626,16 +732,41 @@ void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass, 
       enc.setPipeline(p);
       current = &p;
       }
-    push.flags  = b.flags | (tess ? uint32_t(F_Tess) : 0u);
+    if(b.group>0 && size_t(b.group)<poses.size())
+      (viewProj*poses[size_t(b.group)]).toColumnMajor(push.viewProj);
+    else
+      std::copy(std::begin(frame.viewProj),std::end(frame.viewProj),push.viewProj);
     push.envMap = b.envMap;
-    enc.setPushData(push);
     enc.setBinding(0,*b.tex[0]);
     enc.setBinding(1,*b.tex[1]);
     enc.setBinding(2,*b.tex[2]);
     enc.setBinding(3,*b.tex[3]);
-    enc.setBinding(4,b.water>=0 ? waterUbo[size_t(b.water)] : pso.noWater);
-    enc.setBinding(5,*env);
-    enc.draw(vbo,b.first,b.count);
+    auto drawRange = [&](size_t first, size_t count, bool detail) {
+      push.flags = b.flags | (tess ? uint32_t(F_Tess) : 0u) | (detail ? uint32_t(F_Detail) : 0u);
+      enc.setPushData(push);
+      enc.setBinding(4,detail ? detailUbo[b.detail-1] : b.water>=0 ? waterUbo[size_t(b.water)] : pso.noWater);
+      enc.setBinding(5,detail ? *detailTex[b.detail-1] : *env);
+      enc.draw(vbo,first,count);
+      };
+    if(b.detail<=0 || b.ranges.empty()) {
+      drawRange(b.first,b.count,false);
+      continue;
+      }
+    // the meshes near the camera with the detail texture, the others without; neighbours alike in one draw
+    size_t first = b.ranges[0].first, count = 0;
+    bool   on    = near(b.ranges[0]);
+    for(auto& r:b.ranges) {
+      const bool n = near(r);
+      if(n!=on && count>0) {
+        drawRange(first,count,on);
+        first = r.first;
+        count = 0;
+        }
+      on     = n;
+      count += r.count;
+      }
+    if(count>0)
+      drawRange(first,count,on);
     }
   }
 

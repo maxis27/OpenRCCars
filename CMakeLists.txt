@@ -100,6 +100,7 @@ add_library(rcfx STATIC
   fx/worldfx.h    fx/worldfx.cpp
   fx/groundspots.h fx/groundspots.cpp
   fx/carlight.h   fx/carlight.cpp
+  fx/animobjects.h fx/animobjects.cpp
   )
 target_link_libraries(rcfx PUBLIC rcformats)
 

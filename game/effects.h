@@ -37,7 +37,8 @@ class Effects {
     // how dirty the player's car is: 0 clean .. 2 (CarEffects::dirt)
     float dirt() const;
     // the track's own effects (fx/worldfx.h): splashes at its water_splash_N markers, waves breaking at its
-    // water_wave_N markers on `sea` (the main sea's waves, null: none), the guards' gunfire
+    // water_wave_N markers on `sea` (the main sea's waves, null: none), the guards' gunfire, the smoke out of its
+    // coolers (*KOOLER* nodes)
     void setTrack(const rc::SbScene& scene, const rc::WaterWaves* sea);
     // after the physics; `gas`/`brake`: the player's keys
     void tick(float dt, const rc::Vehicle& player, const rc::Opponents* opponents, const rc::CollisionMesh& track,
@@ -51,6 +52,8 @@ class Effects {
                    const std::vector<rc::fx::Footprints::Walker>& walkers);
     // people's footprints on the ground now
     size_t footprintCount() const { return footprints.size(); }
+    // puffs of the coolers' smoke now
+    size_t smokeCount() const { return hatch.size(); }
     // the gunfire's sounds and the cars it hit since the last call
     std::vector<rc::fx::Gunfire::Sound> gunSounds() { return gunfire.sounds(); }
     std::vector<rc::fx::Gunfire::Hit>   gunHits()   { return gunfire.hits(); }
@@ -97,6 +100,7 @@ class Effects {
     rc::fx::ShoreWaves                  shore;
     rc::fx::Gunfire                     gunfire;
     rc::fx::Footprints                  footprints;
+    rc::fx::HatchSmoke                  hatch;
 
     // `tracks`: the tyre tracks, otherwise the wake and the foam
     void drawMarks(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frame, const rc::Mat4& viewProj,

@@ -12,6 +12,7 @@ const uint F_TESS     = 64u; // drawn with water.tesc/.tese, which move the vert
 const uint F_DIRT     = 128u; // a car's paint: texMask/texBase2 are its dirt textures, `time` how dirty (0..2)
 const uint F_MODULATE = 256u; // blended as twice the source times the destination: 0.5 leaves the ground as it is
 const uint F_CARLIGHT = 512u; // a car's light (fx/carlight.h): carPos.w ambient, sunDir.w direct, held at 1
+const uint F_DETAIL   = 1024u; // a detail texture in texEnv (binding 5), its settings in water.detail
 
 layout(push_constant, std430) uniform Push {
   mat4  viewProj;
@@ -32,6 +33,7 @@ layout(binding = 4, std140) uniform Water {
   vec4 edge;          // 1/magnetRadius, alphaRadius, distAlphaClampMin, distAlphaClampMax
   vec4 color;         // colorMin, colorMax (0..1), 1 = set, foam heightOn
   vec4 foam;          // foam alphaMin, alphaMax, scrollVel
+  vec4 detail;        // F_DETAIL: scale, density (0..1), mip bias
   } water;
 
 // phase of wave 2, which runs in to its center; the shore foam follows it

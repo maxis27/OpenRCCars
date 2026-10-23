@@ -35,6 +35,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
+#include <optional>
+#include <algorithm>
 #include <memory>
 #include <string>
 
@@ -51,6 +54,8 @@
 #include "game/world/carshadow.h"
 #include "game/world/sunview.h"
 #include "game/world/carmodel.h"
+#include "game/world/antennaview.h"
+#include "physics/antenna.h"
 #include "fx/carlight.h"
 #include "physics/traffic.h"
 #include "formats/fog.h"
@@ -97,10 +102,18 @@ int main(int argc, const char** argv) {
     rc::Mat4                 carPose;
     rc::SbScene              carSb;
     std::vector<rc::Mat4>    parts;
+    std::unique_ptr<AntennaView> antennaView;
+    std::optional<rc::Antenna>   antenna;     // the full model's springy antenna (RCSHOT_ANTENNA=0: as modelled)
+    size_t                       antennaCar = 0;
+    std::function<void(const rc::Mat4&,float)> antennaStep;
     if(carName==nullptr || std::string(carName)!="none") {
       carSb   = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
       ModelMesh::CarLook look;
       std::string        model = carName ? carName : "Car1";
+      antennaCar  = size_t(std::clamp(std::atoi(model.c_str()+3)-1,0,2));
+      antennaView = std::make_unique<AntennaView>(device,res,carSb);
+      const char* ant = std::getenv("RCSHOT_ANTENNA");
+      look.antenna = !antennaView->has(antennaCar) || std::getenv("RCSHOT_LOD")!=nullptr || (ant!=nullptr && std::string(ant)=="0");
       if(const char* u = std::getenv("RCSHOT_UPGRADE"))
         look.boost = look.resonator = look.tires = std::atoi(u);
       if(const char* l = std::getenv("RCSHOT_LOD")) {
@@ -109,6 +122,17 @@ int main(int argc, const char** argv) {
         }
       car     = std::make_unique<ModelMesh>(device,res,carSb,model,look);
       carPose = level.carStart(car->bboxMin().y);
+      const auto antennaSettings = rc::Antenna::Settings::load(res.pack(),antennaCar);
+      if(!look.antenna) antennaStep = [&,antennaSettings](const rc::Mat4& pose, float dt) {
+        if(!antenna || (antenna->mountPoint()-pose.point(antennaView->mount(antennaCar))).length()>1.f) {
+          antenna.emplace(antennaSettings,pose,antennaView->mount(antennaCar),antennaView->rest(antennaCar));
+          return;
+          }
+        std::optional<float> ceiling;
+        if(auto hit = level.collision().raycast(antenna->mountPoint(),{0,1,0},antenna->reach()))
+          ceiling = hit->distance;
+        antenna->step(dt,pose,ceiling);
+        };
       if(const char* start = std::getenv("RCSHOT_START")) {
         // "x z yaw [y]": somewhere else on the track, standing on the ground (the highest, or the first under y:
         // in a tunnel)
@@ -139,6 +163,7 @@ int main(int argc, const char** argv) {
           if(veh.hit()!=rc::Vehicle::Hit::None)
             Log::i(veh.hit()==rc::Vehicle::Hit::Great ? "great hit" : "hit"," at ",t," s, ",veh.boostTank()," turbo");
           world.step(1.f/60.f);
+          antennaStep(veh.pose(),1.f/60.f);
           chaseCar.pose     = veh.pose();
           chaseCar.centre   = veh.centre();
           chaseCar.velocity = veh.velocity();
@@ -403,6 +428,15 @@ int main(int argc, const char** argv) {
           carSpots.draw(enc,0,carSpotList,viewProj,push,level.collision());
           }
         car->draw(enc,viewProj,push,carPose,parts.empty() ? nullptr : &parts);
+        if(antennaStep) {
+          // parked: a second to settle where it stands
+          if(!antenna)
+            for(int i=0; i<=60; ++i)
+              antennaStep(carPose,1.f/60.f);
+          antennaView->clear();
+          antennaView->add(antennaCar,antenna->joints(),car->lighting());
+          antennaView->draw(enc,0,push);
+          }
         }
       if(chars)
         charView.draw(enc,0,res,*chars,push);

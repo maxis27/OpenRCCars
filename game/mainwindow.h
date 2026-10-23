@@ -31,6 +31,7 @@
 #include "sounds.h"
 #include "world/characters.h"
 #include "world/traffic.h"
+#include "world/carshadow.h"
 #include "world/carmodel.h"
 #include "world/modelmesh.h"
 #include "world/level.h"
@@ -130,6 +131,9 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<CharacterView>    characterView;
     std::unique_ptr<rc::Traffic>      traffic;    // road cars: bodies in `physics`
     std::unique_ptr<TrafficView>      trafficView;
+    std::unique_ptr<CarShadow>        carShadow;
+    std::unique_ptr<SpotView>         carSpots;
+    std::vector<SpotView::Spot>       carSpotList;
     std::unique_ptr<rc::Vehicle>      vehicle;
     std::unique_ptr<rc::Checkpoints>  checkpoints;
     std::unique_ptr<rc::Race>         race;

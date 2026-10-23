@@ -57,6 +57,8 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   menu     = std::make_unique<Menu>(device,res,*sounds);
   characterView = std::make_unique<CharacterView>(device);
   trafficView   = std::make_unique<TrafficView>(device,res);
+  carShadow     = std::make_unique<CarShadow>(res);
+  carSpots      = std::make_unique<SpotView>(device);
   chase    = ChaseCamera(ChaseCamera::Settings::load([&res](const std::string& f){ return res.pack().read(f); }));
   lodDistances = CarModel::Distances::load(res.pack());
   try {
@@ -1212,6 +1214,10 @@ void MainWindow::render() {
         characterView->draw(enc,frameId,resources,*characters,push);
       if(traffic)
         trafficView->draw(enc,frameId,*traffic,viewProj,push,level ? &level->collision() : nullptr);
+      if(car && level) {
+        carSpotList.assign(1,carShadow->spot(carId,carPose));
+        carSpots->draw(enc,frameId,carSpotList,viewProj,push,level->collision());
+        }
       if(car) {
         auto&      mesh  = car->at((carPose.translation()-camera.position).length(),lodDistances);
         const auto parts = carPartPoses(mesh);

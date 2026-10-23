@@ -139,6 +139,8 @@ add_library(rcengine STATIC
   game/world/objects.h     game/world/objects.cpp
   game/world/characters.h  game/world/characters.cpp
   game/world/traffic.h     game/world/traffic.cpp
+  game/world/spots.h       game/world/spots.cpp
+  game/world/carshadow.h   game/world/carshadow.cpp
   )
 target_include_directories(rcengine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} lib/Tempest/Engine/include)
 target_link_libraries(rcengine PUBLIC rcformats rcphysics rcaudio rcfx Tempest Shaders)

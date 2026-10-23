@@ -28,7 +28,12 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   `AI<n>Boost/Reson/Tires` z `ailayouts.ini`. Dalej od kamery auto rysuje się modelami `Car<n>LOD1` (od 7,96 m) i
   `Car<n>LOD2` (od 8,87 m), odległości z `Settings/LOD.ini` (0x4f98e0, 0x501c10). Pod autem gracza leży cień z
   `Settings/carRender.ini` (tekstury `shadows1..3`), a auta ciemnieją w cieniu i w tunelach według lightmapy pod
-  kołami (`car_lmshd.ini`, światło z `carLight.ini`), jak w oryginale
+  kołami (`car_lmshd.ini`, światło z `carLight.ini`), jak w oryginale. Antena auta (gracza i rywali) sprężynuje jak
+  w `RCCars.exe`: łańcuch z `Antenna_Car<n>.ini` gnie się przy ruszaniu, hamowaniu i skrętach, a pod niskim sufitem
+  kładzie się do tyłu
+- **świat**: słońce na znaczniku `SUN_AF` z flarą obiektywu (`LENS_FLARE.ini`), tekstury detali z bliska
+  (`Detail.ini`), wynurzająca się łódź podwodna i obracający się radar na beach_4 (`submarine.ini`), dym z chłodnic
+  (`hatch_smoke.ini`)
 - **kolizje trasy** z węzła `COLL`: siatka komórek nad trasą, w każdej lista ścian siatek renderu, które ją przecinają;
   z tego powstaje siatka kolizji (trójkąty w przestrzeni świata) z raycastem po komórkach (DDA). Auto staje na
   ziemi wyznaczonej raycastem. Kod `constr` (w trybie `-dev`) pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
@@ -925,6 +930,47 @@ lib/Tempest     silnik (submoduł git)
   Gdy promień tylko po wodzie (morze, strumienie, kałuże) z 10 m nad kamerą w dół na 20 m trafi wodę (0x535130),
   dźwięk idzie pod kamerę: na tę wodę albo na kamerę, jeśli jest pod nią. Trasy bez morza (country_1/2/4, urban)
   nie mają tego dźwięku, także nad strumieniami.
+- **Słońce i flara obiektywu** (klasa `SUN$` 0x478cd0, `VIDEO_Sun`; `fx/lensflare.*`, `game/world/sunview.*`):
+  słońce stoi na znaczniku `SUN_AF` (trasy miejskie go nie mają). Tarcza `sun_disc` w kolorze `ColorR/G/BSun`,
+  mieszana alfą (flagi 0xa0000003), na głębokości słońca, więc zasłania ją to, co stoi przed nim; szerokość
+  `SizeSun` × szerokość ekranu 4:3 o tej wysokości. Co `TimeShootRay` s promień od kamery do słońca (0x456260) mówi,
+  czy je widać, i flara narasta lub gaśnie przez `FadeTime`. Jej pięć plam leży na prostej od punktu 0,1 m
+  (płaszczyzna widoku, 0x500760) + `CamOffset` przed kamerą ku słońcu, w odległościach `Dist1..4` (dwie pierwsze
+  ujemne, za tym punktem), piąta (`shine`) na słońcu; dodawane (SrcAlpha, One; flagi 0xa0200005) przed wszystkim.
+  Przezroczystość: 255 × (1 − odsunięcie słońca od środka ekranu / (pół ekranu + pół tarczy)), mniejsza z osi,
+  razy narastanie. Założone: tarcza kwadratowa na każdym ekranie (oryginał rozciąga ją przy innym niż 4:3) i bez mgły.
+- **Tekstury detali** (`Settings/Detail.ini`, 0x480a70; `VIDEO_Detailer` domyślnie włączone): sześć tekstur
+  `detailer`, `detailer2..6` kładzionych na siatki, których pudełko jest bliżej kamery niż `DistObj` × 0,1 m
+  (3 m): kolor × 2 × mix(0,5, detal, `Density`/256), detal powtórzony `Scale` × 0,1 razy na teksturę bazową,
+  z przesunięciem mipmapy `LODBias` × 0,04 − 2. Gra trzyma numer detalu przy teksturze (+0x40) i dla ściany z
+  dwiema teksturami bierze mniejszy niezerowy (0x480ef0); skąd ten numer, nie znalazłem. **Zgadnięte:** bity 21..27
+  grup GLTX (`SbTexture::groups`) mają dokładnie te tekstury, którym pasowałby detal: bit 23 → skała (`detailer`),
+  22 i 24 → piasek, 25 → tynk/asfalt, 26 → żwir, 21 → drewno, 27 → szósty, którego nie ma w danych.
+- **Ruchome dekoracje** (`AnimObj`, 0x52b7e0/0x52c110, ruch 0x52b860/0x52c180; `fx/animobjects.*`): każdy węzeł
+  z „SUBMARINE” w nazwie (łódź `SUBMARINE_NC` na beach_4) dostaje przesunięcie w górę `Y0 + DY·cos(T·t)`
+  (`Settings/submarine.ini`: −0,96 m, 1,44 m, 0,17 rad/s), czyli wynurza się i zanurza co 37 s. Pod węzłem
+  „radar_ZRK” część przed dzieckiem „center” kręci się wokół pionu przez środek jego pudełka, 60°/s.
+- **Dym z chłodnic** (`HATCH_SMOKE`, `VIDEO_HatchSmokeEff`, 0x52b750/0x530c60; `fx/worldfx.*`): każdy węzeł
+  z „KOOLER” w nazwie (dwa na beach_4) dymi ze środka swojego pudełka, `ShiftY` wyżej, `Intensity` kłębów na sekundę,
+  ale tylko gdy jest na ekranie. Kłąb startuje `ShiftXZ` m w losową stronę, żyje `TimePart ± TimePartDisp`, wznosi się
+  z `SpeedY` hamując o `SpeedDecay` na klatkę, obraca się i rośnie `DynamicScale` razy przez `DynamicScaleTime`
+  najdłuższego życia (do 10 m). `ZOffset` (0,49) traktujemy jako przesunięcie głębokości sprite'a (założone).
+- **Antena** (0x4ff2d0 ustawia, 0x4fe9d0 porusza, łańcuch punktów 0x44cc10; `physics/antenna.*`,
+  `game/world/antennaview.*`): gra chowa węzeł `ANTENNA` pełnego modelu auta i rysuje `Car<n>Antenna` z `Car.sb`,
+  siatkę `Antennaa` ze skórą na stawach `jnt3_1..3`. Łańcuch ma `nPoints` (4) punkty co `chainLength`/(n−1); dwa
+  pierwsze siedzą na aucie (punkt z pudełka `ANTENNA`: największe x i z, najmniejsze y; i jedno ogniwo wyżej wzdłuż
+  osi Y auta). Kroki po 3 ms z pozą auta interpolowaną; na wolne punkty działa ciężar masa × 10, opór powietrza
+  √(volume/l)·l·sin(kąt do prędkości)·`windFriction`, na czubek pchnięcie −100·(1 + sin a) wzdłuż osi Z auta,
+  zginanie ku poprzedniemu ogniwu siłą kąt × `stiffness`/l w poprzek ogniwa (suwaki /100, powyżej 1000 → 10, więc
+  sztywność 10), tłumienie ruchu względem ramki poprzedniego punktu `damping`/l; długości ogniw trzyma układ
+  trójdiagonalny mnożników Lagrange'a, potem v += a·dt/2, p += v·dt i powrót na długości. Symulacja idzie z x i z
+  auta podzielonymi przez 2 (antena czuje połowę ruchu na boki). Pierwsza ramka to ćwierć obrotu wokół z dla
+  wszystkich aut, więc antena Buggy (modelowana wygięta do tyłu) startuje prosto w górę. Tylko auto gracza szuka
+  sufitu: promień w górę z podstawy na najwyższą wysokość z `CacheData/car_antenna_Car<n>_H2F.data` + 0,1 m; gdy
+  coś jest bliżej, ta tablica daje kąt a, przy którym czubek mieści się pod spodem (bez sufitu: ostatni kąt
+  tablicy). **Niepewne:** wysokości z tablicy są mniejsze, niż wychodzi z naszej symulacji (Buggy: 0,19 m przy
+  łańcuchu 0,35 m bez pchnięcia), więc albo tablica liczy coś innego (górę obrysu instancji, +0x220), albo była
+  liczona przy innych suwakach. Dźwięk `Antenna_scratch` pominięty.
 - Rozpoznane, jeszcze nieprzeniesione: pluski w stałych miejscach tras (markery `water_splash_N` na beach_1,
   beach_3, country_3; 0x5272f0), fale `Water_Wave_New` i `BURST_MNG`.
 

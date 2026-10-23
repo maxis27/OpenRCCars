@@ -73,6 +73,7 @@ class LevelMesh {
       F_Tess     = 64, // drawn with ScenePipelines::water: the tessellation moves the vertices
       F_Dirt     = 128, // ModelMesh: the car's dirt over its paint, `time` = how dirty
       F_Modulate = 256, // multiplied onto what is under it (SbMesh::renderFlags 0x40000000)
+      F_CarLight = 512, // ModelMesh::setLight: ambient carPos.w + direct sunDir.w towards sunDir.xyz, held at 1
       };
 
     struct Push {

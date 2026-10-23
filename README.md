@@ -26,7 +26,9 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   i `compressor_<rezonator+1>`, opony `tire2*`/`tire3*` z teksturą `tire<2|3>_<opony+1>`, a przy doładowaniu powyżej 0
   koła poszerzone o 0,95 / 1,07 / 1,25 / 1,35 według poziomu opon (0x50be40); gracz ma poziom z klawisza U, przeciwnicy
   `AI<n>Boost/Reson/Tires` z `ailayouts.ini`. Dalej od kamery auto rysuje się modelami `Car<n>LOD1` (od 7,96 m) i
-  `Car<n>LOD2` (od 8,87 m), odległości z `Settings/LOD.ini` (0x4f98e0, 0x501c10)
+  `Car<n>LOD2` (od 8,87 m), odległości z `Settings/LOD.ini` (0x4f98e0, 0x501c10). Pod autem gracza leży cień z
+  `Settings/carRender.ini` (tekstury `shadows1..3`), a auta ciemnieją w cieniu i w tunelach według lightmapy pod
+  kołami (`car_lmshd.ini`, światło z `carLight.ini`), jak w oryginale
 - **kolizje trasy** z węzła `COLL`: siatka komórek nad trasą, w każdej lista ścian siatek renderu, które ją przecinają;
   z tego powstaje siatka kolizji (trójkąty w przestrzeni świata) z raycastem po komórkach (DDA). Auto staje na
   ziemi wyznaczonej raycastem. Kod `constr` (w trybie `-dev`) pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
@@ -313,6 +315,7 @@ rcinfo <folder_gry> ai RCCarsDB/beach_1.sb [poziom 1-3] [okrążenia]  # przeciw
 rcinfo <folder_gry> fx                            # ustawienia efektów, ile cząsteczek, śladów i kilwatera daje auto na każdej nawierzchni
 rcinfo <folder_gry> ram RCCarsDB/beach_1.sb [przeciwnik] [s] [side]  # gracz wjeżdża w przeciwnika: wypadnięcie z nagrania, powrót, „Łup!”
 rcinfo <folder_gry> drown RCCarsDB/beach_1.sb [auto 1-3]  # strefy powrotu, pudło kolizji, czas tonięcia na kilku głębokościach (też przeciwnika)
+rcinfo <folder_gry> shade RCCarsDB/beach_2.sb     # lightmapa wzdłuż trasy i jasność aut, jaką daje
 rcinfo <folder_gry> fog beach_1                   # mgła trasy: gęstość, kolor, ile koloru zostaje w danej odległości
 rcinfo <folder_gry> traffic beach_2 [s]           # ruch uliczny: odjazdy, wysokość kół nad drogą, światła, cienie, potrącenie gracza
 rcinfo <folder_gry> shots beach_4 [auto 1-3] [s]  # strażnicy i BTR strzelają do auta: serie, trafienia, odrzut, powrót
@@ -327,6 +330,8 @@ RCSHOT_DRIVE=2 RCSHOT_JUMP=1.6 rcshot ...                       # skok w 1,6 s, 
 RCSHOT_DRIVE=3 RCSHOT_BOOST=1 rcshot ...                        # z dopalaczem
 RCSHOT_DRIVE=1 RCSHOT_JUMP=0.8 RCSHOT_VIEW=90,0.6 rcshot ...   # z bliska, z lewego boku auta (0 = z tyłu), z 0,6 m
 RCSHOT_START="-8 -41 90" RCSHOT_DRIVE=1.6 rcshot ...            # auto najpierw w punkcie x z, obrócone o yaw (tu: do morza)
+RCSHOT_START="69.6 -6.4 0 4.5" RCSHOT_VIEW=270,0.6,0.4 rcshot <gra> beach_2 ...  # na ziemi pod y = 4,5 (w tunelu), kamera z prawej, wyżej
+RCSHOT_NOSHADOW=1 rcshot ...  /  RCSHOT_SHADE=1 rcshot ...      # bez cienia pod autem / jasność auta 1 zamiast lightmapy
 RCSHOT_TIME=2.5 rcshot ...                                       # chwila animacji wody (fale, piana)
 RCSHOT_OBJECTS=0 rcshot ...                                      # bez rekwizytów
 RCSHOT_FX=2 rcshot ...                                           # najpierw 2 s efektów trasy (rozbryzgi, fale, strzały)
@@ -849,6 +854,25 @@ lib/Tempest     silnik (submoduł git)
   chromy) `EnvMapGRE1` 255/255, `*GRE2*` (lampy, zderzaki) `EnvMapGRE2` 137/255; reszta z flagą (np. rekwizyty ze
   `stone.sb`) całą mapę. `EnvMapUpgrades` (156) dotyczy ulepszeń, których jeszcze nie pokazujemy. U nas to jeden
   przebieg `shader/level.frag` (`environment()`), który dodaje mapę do koloru; takie siatki oryginał rysuje bez mgły.
+- **Cień auta** (`RCCars.exe` 0x5072f0, przy `VIDEO_CarShadow`): tylko auta graczy, przeciwnicy w oryginale cienia
+  nie mają. Jedna plama kolejki świateł (rodzaj 3, z teksturą, 0x44c640) położona na trasie jak cienie kół ruchu
+  ulicznego i przyciemniająca to, co pod nią (`Zero, InvSrcColor`, tryb 4 z 0x45c6e0): promień `ShadowSize<n>`/100 m
+  (0,36 / 0,29 / 0,42), środek `ShadowShift<n>`/100 − 0,5 m przed środkiem auta (0 / 0 / 0,01), tekstura `shadows2`
+  Overkill, `shadows3` Buggy, `shadows1` Hummer; tekstura obrócona tak, że jej oś v biegnie wzdłuż auta.
+  `ShadowDensity`, `FilterSpeed`, `TextureSizePow2` i `FrameSkipNmb` są czytane, ale nic ich nie używa.
+- **Światło aut** (`carLight.ini`, 0x5077e0 dla każdego rysowanego LOD): najbliższy model (LOD 0) ma światło
+  Direct3D: otoczenie `AmbientI` (138) i jedno kierunkowe `DirectI` (128), oba razy jasność auta i obcięte do 255;
+  dalsze LOD-y rysują się bez światła, z samą teksturą. Światło pada z (0,0,1) obróconego o `AngleAzimuth` (0°) wokół
+  pionu i o `AngleElevation` (75°) w górę (0x40b4c0), czyli z (0; 0,966; 0,259). Klucze kolorów (`AmbientR` … `DirectB`)
+  nic nie czyta. Jasność (0x531ff0, `car_lmshd.ini`, co klatkę dla każdego auta): gdy kamera jest bliżej niż `maxdist`
+  (25 m) i włączone jest `VIDEO_Light` albo `VIDEO_EnvMap`, gra uśrednia teksel lightmapy (bez filtrowania, (r+g+b)/3,
+  0x4572c0: uv z pierwszych trzech rogów ściany) pod pierwszymi czterema kołami dotykającymi trasy, a gdy żadne nie
+  dotyka, tylko dla auta gracza, pod autem (promień 1,5 m w dół z 1 cm nad nim). Wartość × 255 przechodzi przez
+  `Splines/light_car.bspl` (liniowo, poza końcami stała: 112,6 → 158,9, 200,9 → 260,0) i / 255, więc 0,62 … 1,02.
+  Za pierwszym razem jasność od razu taka, potem goni cel z prędkością `alphavel`/100 (1,27) na sekundę, gdy różni się
+  o więcej niż `deltaalpha`/100 (0,05). Auto dalej od kamery ma 1. U nas przeciwnicy odtwarzający nagranie nie mają
+  styków kół, więc szukamy lightmapy pod ich kołami tak, jak są narysowane (wywnioskowane, nie z oryginału).
+  `rcinfo <gra> shade RCCarsDB/beach_2.sb` pokazuje lightmapę wzdłuż trasy i jasność, jaką daje.
 - **Paski bieżnika na trasach** (`wt_wetsand`, 151 siatek na wszystkich 10 trasach): to nie ślady aut, tylko
   część mapy. Słowo 4 nagłówka `0x08` węzła `MESH` (`SbMesh::renderFlags`) mówi, jak siatkę rysować (0x48e4b0,
   0x451310): `0x1000` przezroczystość z alfy tekstury, `0x2000` morza, `0x40000000` mnożenie przez to, co pod spodem

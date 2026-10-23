@@ -35,6 +35,7 @@
 #include "audio/carsound.h"
 #include "audio/mixer.h"
 #include "audio/soundlib.h"
+#include "fx/carlight.h"
 #include "fx/careffects.h"
 #include "fx/worldfx.h"
 #include "fx/groundspots.h"
@@ -705,6 +706,48 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
 // way (the car's origin within 1.6 m of the marker). The car starts on the straight line from the previous point,
 // 12 m out and then closer, and then on the route's axis through it, so that a rock or a wall between two points far
 // apart does not fail it. Where it never counts, the run reports how close the car got.
+// "rcinfo <game> shade RCCarsDB/beach_2.sb": the lightmap along the route (every 0.5 m of the corridor's middle) and
+// the car brightness it gives (rc::fx::CarLight)
+static int cmdShade(const fs::path& game, const fs::path& track, rc::PackFile& pack) {
+  auto scene = rc::SbScene::load(readFile(game/track));
+  rc::CollisionMesh coll(scene);
+  rc::Checkpoints   cps(scene,coll);
+  const auto light = rc::fx::CarLight::load(pack);
+  rc::fx::LightmapProbe probe(scene,coll,[&pack](const std::string& f){ return pack.read(f); });
+  std::printf("light: ambient %.3f direct %.3f towards %.3f %.3f %.3f, alphavel %.2f deltaalpha %.2f maxdist %.0f\n",
+              light.ambient,light.direct,light.toLight.x,light.toLight.y,light.toLight.z,light.alphaVel,
+              light.deltaAlpha,light.maxDist);
+  size_t n = 0, none = 0;
+  float  lo = 2, hi = -1, sum = 0, kLo = 9, kHi = -9, dark = 0;
+  rc::Vec3 darkAt;
+  for(auto& p:cps.corridor()) {
+    for(float s=0; s<p.length; s+=0.5f) {
+      const rc::Vec3 at = p.origin+p.dir*s;
+      auto l = probe.below(at+rc::Vec3{0,1.f,0},3.f);
+      ++n;
+      if(!l) {
+        ++none;
+        continue;
+        }
+      rc::fx::CarShade sh;
+      sh.update(light,0,true,l);
+      lo  = std::min(lo,*l);
+      hi  = std::max(hi,*l);
+      sum += *l;
+      kLo = std::min(kLo,sh.value());
+      kHi = std::max(kHi,sh.value());
+      if(1-sh.value()>dark) {
+        dark   = 1-sh.value();
+        darkAt = at;
+        }
+      }
+    }
+  std::printf("%zu points, %zu without a lightmap; lightmap %.3f .. %.3f (mean %.3f), brightness %.3f .. %.3f, "
+              "darkest at %.1f %.1f %.1f\n",n,none,lo,hi,(n>none ? sum/float(n-none) : 0.f),kLo,kHi,
+              darkAt.x,darkAt.y,darkAt.z);
+  return n>none ? 0 : 3;
+  }
+
 static int cmdGates(const fs::path& game, const fs::path& track, rc::PackFile& pack, int car) {
   auto scene = rc::SbScene::load(readFile(game/track));
   auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
@@ -1740,6 +1783,8 @@ int main(int argc, char** argv) {
       return cmdShots(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1,argc>5 ? float(std::atof(argv[5])) : 10.f);
     if(cmd=="drown" && argc>3)
       return cmdDrown(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1);
+    if(cmd=="shade" && argc>3)
+      return cmdShade(game,argv[3],pack);
     if(cmd=="gates" && argc>3)
       return cmdGates(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1);
     if(cmd=="sound" && argc>4)

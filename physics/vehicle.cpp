@@ -534,6 +534,13 @@ float Vehicle::rearSlip() const {
   return s;
   }
 
+bool Vehicle::wheelGround(size_t i, Vec3& at) const {
+  if(i>=wheels.size() || !wheels[i].contact)
+    return false;
+  at = wheels[i].point;
+  return true;
+  }
+
 float Vehicle::wheelSlip(size_t i, float* rim) const {
   if(i>=wheels.size()) {
     if(rim!=nullptr)

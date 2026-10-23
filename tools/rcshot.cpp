@@ -16,7 +16,8 @@
 //   RCSHOT_ACTOR_SIDE degrees round it (default 30).
 //   env RCSHOT_FX=<seconds> runs the track's effects (splashes, breaking waves, the guards' gunfire at the parked car)
 //   that long, seen from the final camera, and draws them; the water's time goes on from RCSHOT_TIME.
-//   env RCSHOT_NOSHADOW=1 leaves out the shadow under the car
+//   env RCSHOT_NOSHADOW=1 leaves out the shadow under the car, RCSHOT_SHADE=<k> lights it with that brightness
+//   instead of the lightmap's under it
 //   env RCSHOT_TRAFFIC=<seconds> lets the road traffic run that long after the start of the race and, with
 //   RCSHOT_TRAFFIC_CAR=<n>, looks at the n-th car on the road from RCSHOT_ACTOR_DIST m (default 8),
 //   RCSHOT_ACTOR_SIDE degrees round it (default 30) and RCSHOT_ACTOR_RISE times that distance up (default 0.35).
@@ -47,6 +48,8 @@
 #include "game/world/characters.h"
 #include "game/world/traffic.h"
 #include "game/world/carshadow.h"
+#include "game/world/carmodel.h"
+#include "fx/carlight.h"
 #include "physics/traffic.h"
 #include "formats/fog.h"
 
@@ -105,11 +108,12 @@ int main(int argc, const char** argv) {
       car     = std::make_unique<ModelMesh>(device,res,carSb,model,look);
       carPose = level.carStart(car->bboxMin().y);
       if(const char* start = std::getenv("RCSHOT_START")) {
-        // "x z yaw": somewhere else on the track, standing on the ground
-        float x = 0, z = 0, yaw = 0;
-        std::sscanf(start,"%f %f %f",&x,&z,&yaw);
+        // "x z yaw [y]": somewhere else on the track, standing on the ground (the highest, or the first under y:
+        // in a tunnel)
+        float x = 0, z = 0, yaw = 0, y = 1000.f;
+        std::sscanf(start,"%f %f %f %f",&x,&z,&yaw,&y);
         carPose = rc::Mat4::translate({x,0,z})*rc::Mat4::rotate(1,yaw);
-        if(auto g = level.groundHeight({x,1000.f,z}))
+        if(auto g = level.groundHeight({x,y,z}))
           carPose.m[1][3] = *g - car->bboxMin().y;
         }
       if(const char* drive = std::getenv("RCSHOT_DRIVE")) {
@@ -358,6 +362,18 @@ int main(int argc, const char** argv) {
     push.time = waterTime()+fxTime;
 
     CarShadow                   carShadow(res);
+    if(car) {
+      // the car's light as it is under it, at once (RCSHOT_SHADE=<k> sets the brightness instead)
+      const auto        light = rc::fx::CarLight::load(res.pack());
+      rc::fx::LightmapProbe probe(level.scene(),level.collision(),[&res](const std::string& f){ return res.pack().read(f); });
+      rc::fx::CarShade  shade;
+      shade.update(light,0,true,probe.below(carPose.translation()+rc::Vec3{0,0.01f,0},1.5f));
+      float k = shade.value();
+      if(const char* s = std::getenv("RCSHOT_SHADE"))
+        k = float(std::atof(s));
+      Log::i("car brightness ",k);
+      lightCar(*car,std::getenv("RCSHOT_LOD")==nullptr,light,k);
+      }
     SpotView                    carSpots(device);
     std::vector<SpotView::Spot> carSpotList;
     CommandBuffer cmd;

@@ -211,6 +211,8 @@ class Vehicle {
     // how much wheel i spins against the ground (RCCars.exe 0x5019a0): the rad/s it turns faster or slower than it
     // rolls, over 20, up to 1. `rim` gets the rad/s it turns at, + forwards.
     float                      wheelSlip(size_t i, float* rim = nullptr) const;
+    // where wheel i touches the track (world), false in the air
+    bool                       wheelGround(size_t i, Vec3& at) const;
     // the more spinning of the two rear wheels (the original's 2 and 3), for the wheelspin sound and smoke
     float                      rearSlip() const;
 

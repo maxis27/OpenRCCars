@@ -99,6 +99,7 @@ add_library(rcfx STATIC
   fx/wake.h       fx/wake.cpp
   fx/worldfx.h    fx/worldfx.cpp
   fx/groundspots.h fx/groundspots.cpp
+  fx/carlight.h   fx/carlight.cpp
   )
 target_link_libraries(rcfx PUBLIC rcformats)
 

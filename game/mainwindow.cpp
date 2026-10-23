@@ -59,6 +59,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   trafficView   = std::make_unique<TrafficView>(device,res);
   carShadow     = std::make_unique<CarShadow>(res);
   carSpots      = std::make_unique<SpotView>(device);
+  carLight      = rc::fx::CarLight::load(res.pack());
   chase    = ChaseCamera(ChaseCamera::Settings::load([&res](const std::string& f){ return res.pack().read(f); }));
   lodDistances = CarModel::Distances::load(res.pack());
   try {
@@ -115,6 +116,10 @@ void MainWindow::loadLevel(const std::string& name) {
     checkpoints.reset();
     level   = std::move(next);
     checkpoints = std::make_unique<rc::Checkpoints>(level->scene(),level->collision());
+    lightProbe  = std::make_unique<rc::fx::LightmapProbe>(level->scene(),level->collision(),
+                                                         [this](const std::string& f){ return resources.pack().read(f); });
+    carShade.reset();
+    aiShades.clear();
     race        = std::make_unique<rc::Race>(*checkpoints,laps);
     resetVolumes = rc::ResetVolumes(level->scene());
     fog.setTarget(rc::FogParams::load(resources.pack(),name));
@@ -1157,6 +1162,60 @@ void MainWindow::renderMenu() {
   device.present(swapchain);
   }
 
+// RCCars.exe 0x531ff0 (rc::fx::CarLight): the lightmap under the first four wheels touching the track, for the
+// player's car the one under the car if none does. The opponents on their recordings have no wheel contacts of
+// ours: theirs are looked for under their wheels as drawn.
+void MainWindow::shadeCars(float dt) {
+  if(lightProbe==nullptr)
+    return;
+  constexpr size_t Wheels = 4;
+  auto near = [this](const rc::Mat4& pose) {
+    return (pose.translation()-camera.position).length()<carLight.maxDist;
+    };
+  auto average = [](float sum, int n) { return n>0 ? std::optional<float>(sum/float(n)) : std::nullopt; };
+  auto contacts = [this](const rc::Vehicle& v, float& sum, int& n) {
+    rc::Vec3 at;
+    for(size_t i=0; i<Wheels; ++i)
+      if(v.wheelGround(i,at))
+        if(auto l = lightProbe->below(at+rc::Vec3{0,0.05f,0},0.1f)) {
+          sum += *l;
+          ++n;
+          }
+    };
+  if(vehicle) {
+    float sum = 0;
+    int   n   = 0;
+    contacts(*vehicle,sum,n);
+    auto light = average(sum,n);
+    if(!light)
+      light = lightProbe->below(carPose.translation()+rc::Vec3{0,0.01f,0},1.5f);
+    carShade.update(carLight,dt,near(carPose),light);
+    }
+  if(opponents) {
+    aiShades.resize(opponents->size());
+    for(size_t i=0; i<opponents->size(); ++i) {
+      auto&      o    = (*opponents)[i];
+      const auto pose = o.pose();
+      float      sum  = 0;
+      int        n    = 0;
+      if(auto* v = o.vehicle()) {
+        contacts(*v,sum,n);
+        }
+      else {
+        const auto& wheels = o.geometry().wheels;
+        for(size_t w=0; w<std::min(Wheels,wheels.size()); ++w) {
+          const rc::Vec3 hub = pose.point(o.wheelPose(w).translation());
+          if(auto l = lightProbe->below(hub,wheels[w].radius+0.1f)) {
+            sum += *l;
+            ++n;
+            }
+          }
+        }
+      aiShades[i].update(carLight,dt,near(pose),average(sum,n));
+      }
+    }
+  }
+
 void MainWindow::render() {
   try {
     if(raceRequested) {
@@ -1180,6 +1239,7 @@ void MainWindow::render() {
       time  += zeroCam==ZeroCam::Detached ? (fixedTime>0 ? fixedTime/1000.f : lastDt) : std::min(dt,0.1f);
     tick(std::min(dt,0.1f));
     hud->tick(std::min(dt,0.1f));
+    shadeCars(std::min(dt,0.1f));
 
     frameId = uint8_t((frameId+1)%MaxFramesInFlight);
     auto& sync = fence[frameId];
@@ -1222,6 +1282,7 @@ void MainWindow::render() {
         auto&      mesh  = car->at((carPose.translation()-camera.position).length(),lodDistances);
         const auto parts = carPartPoses(mesh);
         mesh.setDirt(forcedDirt>=0 ? float(forcedDirt) : effects->dirt());
+        lightCar(mesh,&mesh==&car->full(),carLight,carShade.value());
         mesh.draw(enc,viewProj,push,carPose,&parts);
         }
       if(opponents) {
@@ -1232,6 +1293,7 @@ void MainWindow::render() {
             continue;
           auto&       mesh  = m->second->at((o.pose().translation()-camera.position).length(),lodDistances);
           const auto  parts = opponentPartPoses(mesh,o);
+          lightCar(mesh,&mesh==&m->second->full(),carLight,i<aiShades.size() ? aiShades[i].value() : 1.f);
           mesh.draw(enc,viewProj,push,o.pose(),&parts);
           }
         }

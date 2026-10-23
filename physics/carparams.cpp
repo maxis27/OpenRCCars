@@ -115,6 +115,8 @@ CarParams CarParams::load(PackFile& pack, int32_t car, int32_t upgrade) {
   // coeffDeepSand 7, coeffWater 20 (Hummer 7): 0..1 per wheel
   p.deepSandDrag = mapped(tir,"coeffDeepSand",0,1,0.06f);
   p.waterDrag    = mapped(tir,"coeffWater",   0,1,0.19f);
+  // SpeedAngMaxREL 54/52/51 -> 10.7/10.3/10.1 rad/s
+  p.spinMax      = mapped(tir,"SpeedAngMaxREL",0,20,p.spinMax);
 
   // resistance<N>.ini: coeffFrictionBearings 6 (0..10 m/s^2), coeffAirResistance 33 (0..0.1 1/m)
   const auto res = sliders(pack,"Settings\\resistance"+n+".ini");

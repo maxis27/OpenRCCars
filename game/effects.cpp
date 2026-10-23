@@ -149,6 +149,8 @@ void Effects::tick(float dt, const rc::Vehicle& car, const rc::Opponents* ai, co
   state.gas   = gas;
   state.brake = brake;
   state.boost = car.boosting();
+  for(size_t i=0; i<state.wheels.size(); ++i)
+    state.wheels[i].slip = car.wheelSlip(i,&state.wheels[i].rimSpeed);
   state.sense(track);
   player->update(state,camera,dt,rnd);
 

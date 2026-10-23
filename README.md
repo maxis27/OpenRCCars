@@ -489,6 +489,13 @@ lib/Tempest     silnik (submoduł git)
     w wodzie dokłada `coeffWater·v²` przeciw ruchowi punktu, którym jej dotyka, od zera przy kole zanurzonym
     w 30% do całości przy 90%, a poza wodą w głębokim piasku `coeffDeepSand·v²`; koło w powietrzu nie hamuje.
     Liczy się to razem z resztą sił przy każdym kroku Eulera;
+  - obrót kół (0x4ef280, raz na klatkę po krokach): koło na ziemi toczy się z `v/r` (v: prędkość jego punktu wzdłuż
+    kierunku koła), w powietrzu 0; obrót goni to tempem 200 rad/s² na ziemi i 5 rad/s² w powietrzu. Gaz albo wsteczny
+    (powyżej 0,3) dokłada do `SpeedAngMaxREL` (`tires<N>.ini`, 0..20 rad/s; 10,7/10,3/10,1) tempem 70 rad/s²,
+    na ziemi tylko poniżej 4 m/s (całość w miejscu, nic przy 4 m/s), bez klawisza dodatek wraca do 0 tempem 35;
+    hamowanie zeruje jedno i drugie. Poślizg koła (0x5019a0) to |obrót − toczenie| / 20, najwyżej 1; z niego
+    kurz i dym buksowania oraz dźwięk `car_motor_ws`: tylne koło z poślizgiem ponad 0,45 przez 0,3 s, poniżej
+    5 km/h, bez hamowania, z gazem albo wstecznym (0x50b238). Koła rysujemy obrócone o ten obrót;
   - kroki (0x4f6ea0): klatka krótsza niż 0,02 s to jeden krok, dłuższa to kroki po 0,02 s, dopóki zostaje
     więcej niż 0,038 s, a reszta w dwóch połowach (przy 60 kl./s krok 1/60 s). U nas każdy z nich dzieli się
     jeszcze na równe części najwyżej po 1/120 s: przy krokach długości klatki nasze sprężyny co chwilę tracą
@@ -743,8 +750,8 @@ lib/Tempest     silnik (submoduł git)
   na wstecznym przednie (połowa) i tylne (ćwierć), na głębokim piasku wszystkie. Cząsteczka dostaje
   `dust_speed(m/s)` procent prędkości auta, zwalnia w poziomie (`SpeedAtt`), obraca się coraz szybciej i rośnie w
   ciągu sekundy do `DynamicScale` (tył) albo `DynamicScaleForw` (przód) razy (0x52e180). Przy buksowaniu
-  (`WheelSpinThresh`) kurz leci do tyłu z prędkością obwodu koła; nasz Bullet nie ma poślizgu kół, więc ta gałąź
-  czeka na nową fizykę.
+  (poślizg koła ponad `WheelSpinThresh`, z gazem albo hamulcem) kurz leci do tyłu z prędkością obrotu koła
+  × `WheelSpinSpeed`, a ilość to `dust_int(rad/s obrotu) × WheelSpinScale`.
 - **Bryzgi** (`WATER_SPRAY`, 0x527e20, 0x527f70, 0x528220, 0x528780): gdy lustro wody przecina koło, a auto jedzie
   szybciej niż 15 km/h; ilość to `wspr_int(km/h) × cięciwa / promień`. Krople lecą na zewnątrz i w górę pod kątem
   `AngleIncidence`, połowa w drugą stronę i trzy razy krócej, płyną z autem (`SpeedDecay`), drgają
@@ -777,8 +784,8 @@ lib/Tempest     silnik (submoduł git)
   gazie, × 1,5 na turbo (powyżej 5 km/h), a włączenie turbo powyżej 10 km/h daje na `ExplodeTime` s
   `2 × eg_int(50)` kłębów, trzy razy dłużej żyjących, prawie przezroczystych (`ExplodeAlpha`); kolor ciemnieje wtedy
   512/s do `ExplodeColor` i wraca 256/s. Kłąb dostaje `Speed` wzdłuż rury plus prędkość auta, zwalnia (`SpeedAtt`)
-  i rośnie bez końca o `DynamicScale` − 1 na sekundę (0x530330). Gałąź buksowania (`WheelSpin`) czeka na poślizg
-  kół w fizyce. Flagę, która odpala kłąb (0x577c), uznajemy za włączenie turbo (wywnioskowane).
+  i rośnie bez końca o `DynamicScale` − 1 na sekundę (0x530330). Buksujące tylne koło (poślizg ponad `WheelSpin`, z gazem
+  albo hamulcem) dymi `eg_int(2 × poślizg)` kłębów na sekundę. Flagę, która odpala kłąb (0x577c), uznajemy za włączenie turbo (wywnioskowane).
 - **Brud** (0x52e320, 0x531c20, 0x507dc0, 0x531450): każde koło, które kurzy, dokłada do licznika auta
   `ilość kurzu × 0,1` na sekundę (do 3000), każde koło w wodzie zmywa 350 na sekundę. Licznik wybiera między
   czystym autem a teksturami `dirt_car<auto>_1` i `_2` (auta 2 i 3 mają osobne `a`/`b` dla dwóch tekstur

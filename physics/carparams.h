@@ -88,6 +88,8 @@ struct CarParams {
   // braking with the wheels turned further than driftAngle lets the rear slide: its grip times driftGrip
   float   driftAngle  = 10.f;   // degrees, angleDriftOn (1..45)
   float   driftGrip   = 0.56f;  // coeffDriftRear (1..0.1)
+  // the wheels spin up to this with the gas or the reverse key held, rad/s faster than they roll (Vehicle::wheelSlip)
+  float   spinMax     = 10.7f;  // SpeedAngMaxREL (0..20 rad/s)
 
   // collision spheres (RCCars.exe, cdt<N>.ini, 0x4f8400), model space
   float   wheelRadius     = 0.071f; // CdtRadWheel (0.01..0.1 m)

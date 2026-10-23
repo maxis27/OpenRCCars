@@ -157,14 +157,11 @@ void CarSound::update(const Input& in, float dt) {
   cdtSurf     = event.surface!=SoundSurface::None && event.hit && event.impact>20.f;
   wasAirborne = in.airborne;
 
-  // wheelspin: gas held below 5 km/h, not braking, for 0.3 s. Our wheels never slip (btRaycastVehicle), so instead of
-  // RCCars.exe's slip of the rear wheels (0x5019a0) this takes the car not gaining speed while the wheels are down.
-  const float gain = dt>0 ? (in.speed-lastSpeed)/dt : 0.f;  // km/h per s
-  lastSpeed = in.speed;
-  if(!in.braking && in.speed<5.f && !in.airborne && (in.gas || in.back) && gain<3.f) {
+  // wheelspin (0x50b238): a rear wheel spinning, slower than 5 km/h and not braking, for more than 0.3 s; it sounds
+  // with the gas or the reverse key held
+  if(!in.braking && in.speed<=5.f && in.rearSlip>0.45f) {
     spinTime += dt;
-    if(spinTime>0.3f)
-      spinning = true;
+    spinning  = spinTime>0.3f && (in.gas || in.back);
     }
   else {
     spinTime = 0;

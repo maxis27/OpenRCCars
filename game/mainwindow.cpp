@@ -1084,6 +1084,7 @@ void MainWindow::tickSounds(float dt) {
   in.gas      = control && (keys[Event::K_W] || keys[Event::K_Up]);
   in.back     = control && (keys[Event::K_S] || keys[Event::K_Down]);
   in.braking  = (in.back && fwd*3.6f>1.f) || (control && keys[Event::K_B]);
+  in.rearSlip = vehicle->rearSlip();
   in.airborne = airborne>0.05f;
   in.racing   = racing;
   in.boost    = vehicle->boosting();

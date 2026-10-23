@@ -9,7 +9,7 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
 Zachowanie gry przenosimy z kodu oryginału: `RCCars.exe` jest zaszyfrowany zabezpieczeniem Steam, odszyfrowaliśmy
 go tylko do analizy. Adresy funkcji (np. 0x4f5e50) w kodzie i w dokumentacji odnoszą się do tego pliku.
 
-![Surf (beach_1)](docs/beach_1.jpg)
+![Surf (beach_1)](docs/images/beach_1.jpg)
 
 - [Co już działa](#co-już-działa)
 - [Budowanie](#budowanie)
@@ -70,31 +70,33 @@ plików w [docs/formaty.md](docs/formaty.md).
 <details>
 <summary>Zrzuty ekranu</summary>
 
-![Auto na starcie (beach_1)](docs/car_beach_1.jpg)
+![Auto na starcie (beach_1)](docs/images/car_beach_1.jpg)
 
-![Nakładka kolizji (beach_1, kod `constr`)](docs/collision_beach_1.jpg)
+![Nakładka kolizji (beach_1, kod `constr`)](docs/images/collision_beach_1.jpg)
 
-![Jazda: skręt w lewo (beach_1)](docs/driving_beach_1.jpg)
+![Jazda: skręt w lewo (beach_1)](docs/images/driving_beach_1.jpg)
 
-![Auto wjeżdża do morza: na plaży, przy brzegu, w wodzie (beach_1)](docs/water_beach_1.jpg)
+![Auto wjeżdża do morza: na plaży, przy brzegu, w wodzie (beach_1)](docs/images/water_beach_1.jpg)
 
-![Wyścig: odliczanie, jazda, zły kierunek, meta (beach_1)](docs/race_beach_1.jpg)
+![Wyścig: odliczanie, jazda, zły kierunek, meta (beach_1)](docs/images/race_beach_1.jpg)
 
-![Przeciwnicy: start, wyścig, meta (beach_1)](docs/opponents_beach_1.jpg)
+![Przeciwnicy: start, wyścig, meta (beach_1)](docs/images/opponents_beach_1.jpg)
 
-![Efekty: kurz za przeciwnikami na starcie, bryzgi spod kół w morzu (beach_1)](docs/effects_beach_1.jpg)
+![Efekty: kurz za przeciwnikami na starcie, bryzgi spod kół w morzu (beach_1)](docs/images/effects_beach_1.jpg)
 
-![Efekty trasy: rozbryzg przy wodospadzie (beach_1), fale przy brzegu (beach_1), strażnik strzela do auta (beach_4)](docs/worldfx.jpg)
+![Efekty trasy: rozbryzg przy wodospadzie (beach_1), fale przy brzegu (beach_1), strażnik strzela do auta (beach_4)](docs/images/worldfx.jpg)
 
-![Ślady opon na piasku, kilwater i piana w morzu, brud na karoserii: czysta, w połowie, najbrudniejsza (beach_1)](docs/effects2_beach_1.jpg)
+![Ślady opon na piasku, kilwater i piana w morzu, brud na karoserii: czysta, w połowie, najbrudniejsza (beach_1)](docs/images/effects2_beach_1.jpg)
 
-![Ślady stóp plażowicza wzdłuż brzegu, z góry (beach_1)](docs/footprints_beach_1.jpg)
+![Ślady stóp plażowicza wzdłuż brzegu, z góry (beach_1)](docs/images/footprints_beach_1.jpg)
 
-![Rekwizyty: pachołek (beach_2), butelki (urban_1), kłębek przy werandzie (country_3), czajnik (country_1)](docs/objects.jpg)
+![Rekwizyty: pachołek (beach_2), butelki (urban_1), kłębek przy werandzie (country_3), czajnik (country_1)](docs/images/objects.jpg)
 
-![Auto pcha piłkę plażową (beach_1)](docs/props_beach_1.jpg)
+![Auto pcha piłkę plażową (beach_1)](docs/images/props_beach_1.jpg)
 
-![Urban 1](docs/urban_1.jpg)
+![Zatoczka między skałami (beach_1)](docs/images/beach_1_cove.jpg)
+
+![Urban 1](docs/images/urban_1.jpg)
 
 </details>
 

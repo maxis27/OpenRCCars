@@ -44,11 +44,25 @@ class ModelMesh {
       bool                     modelledLit = false;
       };
 
-    // `origin`: model space point that becomes the origin (ObjectLibrary::Model::origin). `skin` > 0 paints a car
-    // with another of its liveries: Textures*/car_askin<car><1..4>.csi (and car_bskin..), the model using 1;
-    // skin 1 is the second one and so on (a guess: Scripts/ailayouts.ini gives the opponents skins 1 .. 3)
+    // how a car is fitted out (RCCars.exe 0x50bb60), -1 everywhere = as modelled
+    struct CarLook {
+      // another of the car's liveries: Textures*/car_askin<car><1..4>.csi (and car_bskin..), the model using 1;
+      // skin 1 is the second one and so on (0x49fc80: car_askin<car+1><skin+1>)
+      int32_t skin      = 0;
+      // upgrade levels 0..3 (Scripts/upgrades.ini BOOSTERS, RESONATORS, TIRES): the booster_<boost+1> and
+      // compressor_<resonator+1> add-ons (rc::CarAddOns, not on the LOD models), the tires' texture
+      // tire<2|3>_<tires+1>, and while the boost is upgraded the wheels widened by 0.95, 1.07, 1.25, 1.35 by tires
+      int32_t boost     = -1;
+      int32_t resonator = -1;
+      int32_t tires     = -1;
+      bool    lod       = false; // a Car<n>LOD<n> model
+      };
+
+    // `origin`: model space point that becomes the origin (ObjectLibrary::Model::origin)
     ModelMesh(Tempest::Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
-              const rc::Vec3& origin = {}, int skin = 0);
+              const rc::Vec3& origin = {});
+    ModelMesh(Tempest::Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
+              const CarLook& look);
     ModelMesh(Tempest::Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
               const rc::Vec3& origin, const Options& options);
 
@@ -70,7 +84,7 @@ class ModelMesh {
 
   private:
     ModelMesh(Tempest::Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
-              const rc::Vec3& origin, const Options& options, int skin);
+              const rc::Vec3& origin, const Options& options, const CarLook& look);
 
     struct Batch {
       size_t                    part  = 0;

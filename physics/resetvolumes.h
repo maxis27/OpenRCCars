@@ -30,6 +30,9 @@ class ResetVolumes {
     bool tick(const Vec3& at, float dt);
     // the car was put back somewhere else
     void reset() { inside = -1; timer = 0; }
+    // in one of them now: RCCars.exe (0x509690 flag car+0xe814) takes the keys away (0x4f6c87: no keys, Brake
+    // held) and the cockpit says "Słaby sygnał" (msg_low_signal.csi, 0x4b020d) until the car is put back
+    bool lowSignal() const { return inside>=0; }
 
   private:
     std::vector<Volume> list;

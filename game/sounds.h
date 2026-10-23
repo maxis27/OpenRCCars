@@ -14,6 +14,7 @@
 #include "audio/mixer.h"
 #include "audio/music.h"
 #include "audio/soundlib.h"
+#include "world/objects.h"
 
 class Resources;
 
@@ -50,6 +51,9 @@ class Sounds {
     // `ear`
     void tickCharacters(const rc::Characters& chars, const rc::Vec3& ear, const rc::Vec3& right);
 
+    // the props (RCCars.exe 0x50cb00): a knocked one plays the first sound of the channel in its model in stone.sb
+    // (Ball "ball", Cola "pepsi", Klubok "klubok" ...), heard from `ear`
+    void tickProps(const std::vector<Objects::Sound>& props, const rc::Vec3& ear, const rc::Vec3& right);
     // the road traffic (RCCars.exe 0x517530): each car's engine (channel Roadcar_slow, all the time) or horn and
     // siren (channel Roadcar, when rc::Traffic asks), heard from `ear`; the BTR's bursts are fx::Gunfire's
     void tickTraffic(const rc::Traffic& traffic, const rc::Vec3& ear, const rc::Vec3& right);
@@ -70,7 +74,8 @@ class Sounds {
     std::map<std::string,rc::BankChannel>        channels;
     rc::MusicList                                music;
     rc::AmbientSounds                            ambient;
-    std::unique_ptr<rc::SoundLibrary>            peopleLib, animalLib;
+    std::unique_ptr<rc::SoundLibrary>            peopleLib, animalLib, propLib;
+    std::map<std::pair<std::string,int>,rc::BankChannel> propChannels; // as actorChannels
     // by model and the actor's number among those of its model; the mixer keeps its channels, so they are reused
     std::map<std::pair<std::string,int>,rc::BankChannel> actorChannels;
     // per road car: its own sound and its gun

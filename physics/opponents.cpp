@@ -387,9 +387,9 @@ void Opponent::setTrack(const Vec3& mn, const Vec3& mx, const ResetVolumes& volu
   resets.reset();
   }
 
-bool Opponent::trackRules(float dt) {
+Opponent::Back Opponent::trackRules(float dt) {
   if(!hasTrack)
-    return false;
+    return Back::None;
   const Vec3  at    = pose().translation();
   const bool  out   = at.x<boxMin.x || at.x>boxMax.x || at.z<boxMin.z || at.z>boxMax.z || at.y<boxMin.y-0.1f;
   const float drown = Vehicle::drownRate(owner.track(),at,prm);
@@ -398,11 +398,15 @@ bool Opponent::trackRules(float dt) {
   if(shotTime>=0)
     shotTime += dt;
   // 0x4f5e50: stuck in the track
-  bool back = out || drownTimer>prm.drownTime || resets.tick(at,dt) || shotTime>Vehicle::ShotHold ||
-              (knocked() && driven->stuck());
-  for(size_t i=0; !back && knocked() && i<resets.volumes().size(); ++i)
-    back = resets.volumes()[i].volume->contains(at);
-  if(back)
+  Back back = out                             ? Back::OutOfBox :
+              drownTimer>prm.drownTime        ? Back::Drowned  :
+              resets.tick(at,dt)              ? Back::Volume   :
+              shotTime>Vehicle::ShotHold      ? Back::Shot     :
+              (knocked() && driven->stuck())  ? Back::Stuck    : Back::None;
+  for(size_t i=0; back==Back::None && knocked() && i<resets.volumes().size(); ++i)
+    if(resets.volumes()[i].volume->contains(at))
+      back = Back::Volume;
+  if(back!=Back::None)
     putBack();
   return back;
   }
@@ -652,7 +656,10 @@ Opponents::Opponents(PhysicsWorld& world, const Reader& read, const SbScene& car
       }
     const CarParams prm = params ? params(o.car+1) : CarParams{};
     auto car = std::make_unique<Opponent>(world,carGeometry(carScene,CarModels[o.car]),std::move(laps),route,band,prm);
-    car->car = o.car;
+    car->car   = o.car;
+    car->boost = o.boost;
+    car->reson = o.reson;
+    car->tires = o.tires;
     if(auto d = layout.drivers.find(o.driver); d!=layout.drivers.end()) {
       // the face picture names the driver: "MCJocker.tga"
       const std::string& f = d->second.face;
@@ -702,7 +709,9 @@ void Opponents::restart() {
 void Opponents::update(float dt, bool racing, const Vec3& playerPos, size_t playerLaps, bool playerDone,
                        float raceTime, int laps) {
   player.update(playerPos,playerLaps);
-  for(auto& c:cars) {
+  told.clear();
+  for(size_t i=0; i<cars.size(); ++i) {
+    auto& c = cars[i];
     if(!racing) {
       if(!c->knocked())
         c->place();
@@ -710,10 +719,19 @@ void Opponents::update(float dt, bool racing, const Vec3& playerPos, size_t play
       }
     const Vec3 to   = c->pose().translation()-playerPose.translation();
     const bool seen = to.length()<SeeDistance && Vec3::dot(to,playerPose.vector({0,0,1}))>0;
+    const size_t was = c->laps();
     c->update(dt,baseRate,c->progress()-player.progress(),!playerDone,seen);
-    c->trackRules(dt);
-    if(c->finishTime<0 && int(c->laps())>=laps)
+    const auto back = c->trackRules(dt);
+    if(back==Opponent::Back::Drowned)
+      told.push_back({News::Drowned,i});
+    if(back==Opponent::Back::Volume)
+      told.push_back({News::Volume,i});
+    if(c->finishTime<0 && int(c->laps())>=laps) {
       c->finishTime = raceTime;
+      told.push_back({News::Finished,i});
+      }
+    else if(c->finishTime<0 && c->laps()>was)
+      told.push_back({News::Lap,i,c->laps()});
     }
   }
 

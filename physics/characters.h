@@ -85,6 +85,7 @@ class Characters {
       Vec3 pos;
       Vec3 velocity;
       bool hit = false;   // set by update(): it ran into someone, which knocks it off its recording (0x4fd9d0)
+      bool roadCar = false; // set by Traffic::update: it touched a road car (0x534880)
       };
 
     // `pack` reads RCCars.pack (Profiles, Settings); a character that cannot be set up is left out (logged)
@@ -116,6 +117,9 @@ class Characters {
     // the player's car ran into someone in this update hard enough for car_cdt_obj: a person or a guard faster than
     // 10 km/h (0x534340, 0x5344f0), a dog faster than 15 km/h (0x5349d0)
     bool                        bumpedPlayer() const { return bumped; }
+    // someone kicked or threw the player's car in this update (0x511634, 0x510e6b: "<name> zadziera ze złym
+    // chłopcem" on the race's chat console)
+    bool                        kickedPlayer() const { return kicked; }
 
   private:
     struct Body;
@@ -173,6 +177,7 @@ class Characters {
     bool                                          grabbed     = false;
     bool                                          carried     = false;
     bool                                          bumped      = false;
+    bool                                          kicked      = false;
     float                                         carKmh      = 0;    // the player's speed before this step
     float                                         lastKmh     = 0;
     int                                           vultures    = 0;

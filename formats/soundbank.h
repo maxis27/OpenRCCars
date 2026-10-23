@@ -36,6 +36,7 @@ struct SoundBank {
     };
   struct Channel {
     std::string        name;
+    std::string        model;    // the MODL it lies in (stone.sb "Whiskey2" has "Whiskey3"), empty if none
     float              far  = 0; // m, 0 = not positioned
     float              near = 0;
     std::vector<Sound> sounds;
@@ -50,6 +51,8 @@ struct SoundBank {
   static SoundBank load(const std::vector<uint8_t>& sb, const std::vector<uint8_t>& sndDat = {});
 
   const Channel* find(std::string_view channel) const;
+  // the channel of a model, nullptr if it has none
+  const Channel* ofModel(std::string_view model) const;
   };
 
 }

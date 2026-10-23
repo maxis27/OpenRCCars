@@ -504,6 +504,7 @@ bool Characters::update(float dt, Vehicle* player, std::vector<Car>& cars) {
   grabbed  = false;
   carried  = false;
   bumped   = false;
+  kicked   = false;
   guns.clear();
   // the speed the car hit with: the step that brought it into contact has already stopped it
   const float nowKmh = player ? player->velocity().length()*3.6f : 0.f;
@@ -638,6 +639,7 @@ bool Characters::attack(State& s, float dt, Vehicle* player) {
         out.y = 0;
         out = horiz(out)>1e-4f ? out*(1.f/horiz(out)) : facing(s.yaw);
         player->addVelocity(out*KickOut+Vec3{0,KickUp,0}-player->velocity());
+        kicked    = true;
         s.actTime = 0;
         s.noHit   = 0.5f;
         }
@@ -663,6 +665,7 @@ bool Characters::attack(State& s, float dt, Vehicle* player) {
       s.holding = false;
       s.noHit   = 0.5f;
       player->addVelocity(facing(s.yaw)*ThrowForward+Vec3{0,ThrowUp,0}-player->velocity());
+      kicked    = true;
       }
     }
   carried = carried || s.holding;

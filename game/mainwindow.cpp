@@ -57,6 +57,14 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   characterView = std::make_unique<CharacterView>(device);
   trafficView   = std::make_unique<TrafficView>(device,res);
   chase    = ChaseCamera(ChaseCamera::Settings::load([&res](const std::string& f){ return res.pack().read(f); }));
+  lodDistances = CarModel::Distances::load(res.pack());
+  try {
+    const auto d = res.pack().read("Settings\\AIEmu.ini");
+    aiEmu.load(rc::SliderFile::parse(std::string_view(reinterpret_cast<const char*>(d.data()),d.size())));
+    }
+  catch(const std::exception& e) {
+    Log::e("Settings\\AIEmu.ini: ",e.what());
+    }
   // the developer mode runs debug.gm after Autoexec.gm (0x48b26a), when there is one
   for(const char* f:{"Autoexec.gm","debug.gm"}) {
     if(!devMode && f!=std::string("Autoexec.gm"))
@@ -65,10 +73,10 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
     zeroAngle = scriptValue(res,f,"ZeroAngle",zeroAngle);
     fixedTime = scriptValue(res,f,"FixedTime",fixedTime);
     }
-  // the codes registered with -dev (0x480568, 0x482728, 0x4e9cc0, 0x4fcb40, 0x5313a8); stat, burst, road and the
+  // the codes registered with -dev (0x480568, 0x482728, 0x4e9cc0, 0x4fcb40, 0x5313a8); burst, road and the
   // first constr only flip flags nothing reads, so they are left out
   if(devMode)
-    for(const char* c:{"DT0","DT1","DT2","DT3","DT4","DT5","DTX","CONSTR","C1","F","E1","E2","I"})
+    for(const char* c:{"DT0","DT1","DT2","DT3","DT4","DT5","DTX","CONSTR","C1","F","E1","E2","I","STAT"})
       devCodes.push_back({c});
   loadCar(0);
   loadLevel(name);
@@ -113,11 +121,26 @@ void MainWindow::loadLevel(const std::string& name) {
 void MainWindow::loadCar(size_t id) {
   device.waitIdle();
   carId = id;
-  car   = std::make_unique<ModelMesh>(device,resources,carScene,Cars[id]);
+  fitCar();
   if(carSound)
     carSound->stop();
   carSound = std::make_unique<rc::CarSound>(sounds->mixer(),sounds->library(),int(id));
   setupPhysics();
+  }
+
+void MainWindow::fitCar() {
+  ModelMesh::CarLook look;
+  look.boost = look.resonator = look.tires = upgrade;
+  car = std::make_unique<CarModel>(device,resources,carScene,carId,look);
+  }
+
+ModelMesh::CarLook MainWindow::aiLook(const rc::Opponent& o) {
+  ModelMesh::CarLook look;
+  look.skin      = o.skin;
+  look.boost     = o.boost;
+  look.resonator = o.reson;
+  look.tires     = o.tires;
+  return look;
   }
 
 void MainWindow::setupOpponents() {
@@ -138,9 +161,9 @@ void MainWindow::setupOpponents() {
   opponents->setTrack(level->scene());
   for(size_t i=0; i<opponents->size(); ++i) {
     auto& o   = (*opponents)[i];
-    auto& m   = aiMeshes[{o.car,o.skin}];
+    auto& m   = aiMeshes[{o.car,o.skin,o.boost,o.reson,o.tires}];
     if(m==nullptr)
-      m = std::make_unique<ModelMesh>(device,resources,carScene,Cars[o.car],rc::Vec3{},o.skin);
+      m = std::make_unique<CarModel>(device,resources,carScene,size_t(o.car),aiLook(o));
     }
   // the channels stay in the mixer, so they are made once and reused
   while(aiSounds.size()<opponents->size())
@@ -151,7 +174,7 @@ void MainWindow::setupOpponents() {
 void MainWindow::setupPhysics(bool restartRace, bool again) {
   if(level==nullptr || car==nullptr)
     return;
-  carPose = level->carStart(car->bboxMin().y);
+  carPose = level->carStart(car->full().bboxMin().y);
   vehicle.reset();
   if(physics==nullptr) {
     physics = std::make_unique<rc::PhysicsWorld>(level->collision());
@@ -201,6 +224,8 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
       traffic->restart();
     playerFinish = -1;
     paused       = false;
+    aiEmu.restart();
+    sinceBumper.clear();
     }
   lastCarPos = carPose.translation();
   resetVolumes.reset();
@@ -211,7 +236,7 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
 void MainWindow::respawnCar() {
   if(level==nullptr || vehicle==nullptr)
     return;
-  carPose = checkpoints->respawn(car->bboxMin().y);
+  carPose = checkpoints->respawn(car->full().bboxMin().y);
   vehicle->reset(carPose);
   effects->clear(true);
   sounds->play("Checkpoint","cp_reset");
@@ -286,6 +311,7 @@ Hud::Info MainWindow::hudInfo() const {
   info.turboMax = vehicle->params().boostTank/100.f;
   info.speedMax = vehicle->params().boostTopSpeed*3.6f;
   info.paused = paused;
+  info.lowSignal = resetVolumes.lowSignal();
   info.carPos     = carPose.translation();
   info.carForward = carPose.vector({0,0,1});
   if(opponents && opponents->size()>0) {
@@ -347,14 +373,14 @@ std::vector<rc::Mat4> MainWindow::partPoses(const ModelMesh& mesh, const rc::Car
   return ret;
   }
 
-std::vector<rc::Mat4> MainWindow::carPartPoses() const {
+std::vector<rc::Mat4> MainWindow::carPartPoses(const ModelMesh& mesh) const {
   if(vehicle==nullptr) {
     std::vector<rc::Mat4> ret;
-    for(auto& p:car->parts())
+    for(auto& p:mesh.parts())
       ret.push_back(rc::Mat4::translate(p.pivot));
     return ret;
     }
-  return partPoses(*car,vehicle->geometry(),vehicle->rigPose());
+  return partPoses(mesh,vehicle->geometry(),vehicle->rigPose());
   }
 
 std::vector<rc::Mat4> MainWindow::opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const {
@@ -400,6 +426,8 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
   // U - next upgrade level (boosters, resonators and tires together)
   if(e.key==Event::K_U) {
     upgrade = (upgrade+1)%4;
+    device.waitIdle();
+    fitCar();
     const rc::Mat4 at = carPose;
     setupPhysics(false);
     if(vehicle)
@@ -432,7 +460,7 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     const float    yaw = std::atan2(p.dir.x,p.dir.z)*180.f/3.14159265f;
     rc::Mat4       at  = rc::Mat4::translate(p.position)*rc::Mat4::rotate(1,yaw);
     if(auto g = level->collision().groundHeight(p.position+rc::Vec3{0,1.f,0}))
-      at.m[1][3] = *g-car->bboxMin().y;
+      at.m[1][3] = *g-car->full().bboxMin().y;
     carPose = at;
     flightPose = at;
     vehicle->reset(carPose);
@@ -474,8 +502,9 @@ void MainWindow::tick(float dt) {
   fog.tick(dt);
   if(vehicle!=nullptr) {
     rc::Vehicle::Input in;
-    if(race->holdCar() || shotTime>=0) {
-      in.handbrake = true;  // waiting for the start, or shot (RCCars.exe 0x4f6b20: no keys, Brake held)
+    if(race->holdCar() || shotTime>=0 || resetVolumes.lowSignal()) {
+      // waiting for the start, shot (RCCars.exe 0x4f6b20) or in a reset volume (0x4f6c87): no keys, Brake held
+      in.handbrake = true;
       }
     else if(zeroCam==ZeroCam::Off && !flying) {
       const bool up    = keys[Event::K_W] || keys[Event::K_Up];
@@ -507,7 +536,11 @@ void MainWindow::tick(float dt) {
     if(opponents)
       opponents->update(dt,!race->holdCar(),carPose.translation(),checkpoints->laps(),playerFinish>=0,race->time(),
                         race->laps());
+    if(objects)
+      objects->update(dt);
     physics->step(dt);
+    if(objects)
+      objects->afterStep(*physics);
     if(flying)
       vehicle->hold(flightPose);  // the step's gravity and bumps undone
     // the people and animals and the road cars, after the step: a person holding the car puts it in the hand
@@ -527,6 +560,7 @@ void MainWindow::tick(float dt) {
     for(size_t i=0; i<others.size(); ++i)
       if(others[i].hit)
         (*opponents)[i].knock();
+    tellNews(dt,others);
     carPose = vehicle->pose();
     const rc::Vec3 at = carPose.translation();
     const size_t   was = checkpoints->next();
@@ -537,6 +571,11 @@ void MainWindow::tick(float dt) {
         Log::i("finished ",opponents->place(playerFinish),". of ",opponents->size()+1," in ",Hud::formatTime(playerFinish));
       }
     hud->event(ev);
+    // 0x4eaa50: every lap but the last, with its number in words; 0x4eaad0: the finish
+    if(ev==rc::Race::Event::Lap || ev==rc::Race::Event::BestLap)
+      tell(20108,-1,hud->gameText(uint32_t(race->lapTimes().size()+3)));
+    if(ev==rc::Race::Event::Finish)
+      tell(20106,-1);
     // with "3" the original plays cp_start (Checkpoint channel) and prestart (Prestart channel) together
     if(ev==rc::Race::Event::Count) {
       sounds->play("Checkpoint","cp_start");
@@ -566,9 +605,12 @@ void MainWindow::tick(float dt) {
     // what the bullets hit (RCCars.exe 0x508560): the player's car is held and put back 2 s after the first hit
     // (0x508ae0), an opponent is knocked off its recording and put back alike
     for(auto& h:effects->gunHits()) {
+      if(h.target!=0 && opponents && h.target-1<opponents->size())
+        tell(20102,int(h.target-1));   // 0x5085e9: every hit, "<name> prowadzi"
       if(h.target==0) {
         vehicle->shotFrom(h.gun);
         shotSound = true;   // car_cdt_bullet on every hit (0x50859f)
+        tell(20102,-1);
         if(shotTime<0) {
           shotTime = 0;
           Log::i("shot at ",Hud::formatTime(race->time()));
@@ -595,6 +637,11 @@ void MainWindow::tick(float dt) {
                                             pos.z>grid.max.z || pos.y<grid.min.y-0.1f);
     const bool inVolume = resetVolumes.tick(pos,dt);
     if(!flying && (out || vehicle->drowned() || vehicle->stuck() || inVolume || shotTime>rc::Vehicle::ShotHold)) {
+      // 0x508ac5, 0x509727
+      if(!out && vehicle->drowned())
+        tell(20105,-1);
+      else if(!out && inVolume)
+        tell(20107,-1);
       respawnCar();
       }
     tickSounds(dt);
@@ -638,6 +685,67 @@ void MainWindow::setFlying(bool on) {
     resetVolumes.reset();
     chase.reset(chaseCar());
     Log::i("dev: the car drives (F9)");
+    }
+  }
+
+void MainWindow::tell(uint32_t id, int car, std::string_view what) {
+  // the player's name: the original's profile (Players\\<name>), ours is the table's word for a player
+  const std::string who = car<0 || opponents==nullptr || size_t(car)>=opponents->size()
+                        ? std::string(hud->gameText(40507)) : (*opponents)[size_t(car)].name;
+  hud->tell(id,who,what);
+  }
+
+void MainWindow::tellNews(float dt, const std::vector<rc::Characters::Car>& others) {
+  const bool racing = !race->holdCar();
+  // 0x511634 / 0x510e6b: kicked or thrown by someone
+  if(characters && characters->kickedPlayer())
+    tell(20103,-1);
+  // 0x5165a0: a road car's push, at most every 2 s per car (car+0x5704 counts up from the car's start)
+  sinceBumper.resize(others.size()+1,0.f);
+  for(auto& t:sinceBumper)
+    t += dt;
+  auto bumper = [&](size_t i, int car) {
+    if(sinceBumper[i]>2.f) {
+      tell(20104,car);
+      sinceBumper[i] = 0;
+      }
+    };
+  if(traffic && traffic->bumpedPlayer())
+    bumper(0,-1);
+  for(size_t i=0; i<others.size(); ++i)
+    if(others[i].roadCar)
+      bumper(i+1,int(i));
+  if(opponents==nullptr)
+    return;
+  // the opponents' laps, finish and returns to the track (Opponents::update)
+  for(auto& n:opponents->news()) {
+    switch(n.what) {
+      case rc::Opponents::News::Lap:      tell(20108,int(n.car),hud->gameText(uint32_t(n.laps+3))); break;
+      case rc::Opponents::News::Finished: tell(20106,int(n.car)); break;
+      case rc::Opponents::News::Drowned:  tell(20105,int(n.car)); break;
+      case rc::Opponents::News::Volume:   tell(20107,int(n.car)); break;
+      }
+    }
+  // what the opponents seem to run into (AiEmu)
+  std::vector<rc::AiEmu::Spot> spots;
+  if(characters)
+    for(size_t i=0; i<characters->actors().size(); ++i) {
+      const auto* a = characters->actors()[i];
+      if(a->kind==rc::Characters::Kind::Person || a->kind==rc::Characters::Kind::Dog)
+        spots.push_back({a->kind==rc::Characters::Kind::Dog ? rc::AiEmu::Trap::Dog : rc::AiEmu::Trap::Person,
+                         uint32_t(i),a->world.translation(),a->visible});
+      }
+  if(traffic)
+    for(size_t i=0; i<traffic->cars().size(); ++i) {
+      const auto* c = traffic->cars()[i];
+      spots.push_back({rc::AiEmu::Trap::RoadCar,uint32_t(i),c->pose.translation(),c->onRoad});
+      }
+  std::vector<rc::AiEmu::Car> cars;
+  for(size_t i=0; i<opponents->size(); ++i)
+    cars.push_back({(*opponents)[i].pose().translation(),racing && (*opponents)[i].finishTime<0});
+  for(auto& e:aiEmu.update(dt,race->time(),spots,cars)) {
+    const uint32_t id = e.kind==rc::AiEmu::Trap::Dog ? 20109 : e.kind==rc::AiEmu::Trap::Person ? 20103 : 20104;
+    tell(id,int(e.car));
     }
   }
 
@@ -728,6 +836,12 @@ void MainWindow::devCode(const std::string& code) {
     showCollision = !showCollision;
     return;
     }
+  if(code=="STAT") {
+    // 0x4eae30 flips the flag 0x4eaf03 draws the checkpoints by: the route's corridors and spheres round the main
+    // checkpoints (1.6 m, the one the car has to touch, red; 4 m and 1.12 m too); here the gates of G
+    showGates = !showGates;
+    return;
+    }
   if(code=="C1") {
     // 0x501a60: the view gets the race camera back
     zeroCam = ZeroCam::Off;
@@ -800,6 +914,8 @@ void MainWindow::tickSounds(float dt) {
   sounds->tickAmbient(ear,right,dt,level->collision().highestWater(ear,10.f));
   if(characters)
     sounds->tickCharacters(*characters,ear,right);
+  if(objects)
+    sounds->tickProps(objects->sounds(),ear,right);
   for(auto& g:effects->gunSounds())
     sounds->playAt(g.kind==rc::fx::Gunfire::Sound::Burst ? "burst" : "bullet",g.at,ear,right);
   if(traffic)
@@ -880,18 +996,20 @@ void MainWindow::render() {
       if(traffic)
         trafficView->draw(enc,frameId,*traffic,viewProj,push,level ? &level->collision() : nullptr);
       if(car) {
-        const auto parts = carPartPoses();
-        car->setDirt(forcedDirt>=0 ? float(forcedDirt) : effects->dirt());
-        car->draw(enc,viewProj,push,carPose,&parts);
+        auto&      mesh  = car->at((carPose.translation()-camera.position).length(),lodDistances);
+        const auto parts = carPartPoses(mesh);
+        mesh.setDirt(forcedDirt>=0 ? float(forcedDirt) : effects->dirt());
+        mesh.draw(enc,viewProj,push,carPose,&parts);
         }
       if(opponents) {
         for(size_t i=0; i<opponents->size(); ++i) {
           const auto& o = (*opponents)[i];
-          auto        m = aiMeshes.find({o.car,o.skin});
+          auto        m = aiMeshes.find({o.car,o.skin,o.boost,o.reson,o.tires});
           if(m==aiMeshes.end())
             continue;
-          const auto parts = opponentPartPoses(*m->second,o);
-          m->second->draw(enc,viewProj,push,o.pose(),&parts);
+          auto&       mesh  = m->second->at((o.pose().translation()-camera.position).length(),lodDistances);
+          const auto  parts = opponentPartPoses(mesh,o);
+          mesh.draw(enc,viewProj,push,o.pose(),&parts);
           }
         }
       effects->setFog(push.cameraPos[3],push.fogColor);

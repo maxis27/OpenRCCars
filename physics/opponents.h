@@ -100,10 +100,12 @@ class Opponent {
     void                 touched() { sinceTouch = 0; }
     // the track's collision box and reset volumes (Opponents::setTrack); none: the car is never put back
     void                 setTrack(const Vec3& boxMin, const Vec3& boxMax, const ResetVolumes& volumes);
+    // why trackRules() put the car back
+    enum class Back { None, OutOfBox, Drowned, Volume, Shot, Stuck };
     // RCCars.exe 0x508160 after every update() of the race: out of the collision box (sideways, or 0.1 m under
     // it), drowned (Vehicle::drownRate), longer than FilterTime in a reset volume, or knocked off and in any reset
-    // volume (0x4fe3f0): put back on the track. True if it was
-    bool                 trackRules(float dt);
+    // volume (0x4fe3f0): put back on the track. Says why, Back::None if it was not
+    Back                 trackRules(float dt);
     // back on the track at the last main checkpoint passed
     void                 putBack();
     // a bullet hit it (RCCars.exe 0x508560): knocked off its recording and pushed away from `gun`
@@ -139,6 +141,7 @@ class Opponent {
     std::string          name;
     int32_t              car = 0;           // 0 Overkill, 1 Buggy, 2 Hummer
     int32_t              skin = 0;          // AIPlayer<n> Skin
+    int32_t              boost = 0, reson = 0, tires = 0; // AIRace<n> AI<n>Boost, Reson, Tires: how it looks
     size_t               putBacks = 0;      // times put back on the track
     float                shotTime = -1;     // s since a bullet hit it, < 0 none
 
@@ -215,10 +218,19 @@ class Opponents {
     bool                 playerStart(Mat4& pose) const;
     // everyone back on the grid
     void                 restart();
+    // what happened to an opponent in an update(), for the race's chat console (RCCars.exe 0x4eaa50, 0x4eaad0,
+    // 0x508a10, 0x509690, 0x4fe3f0)
+    struct News {
+      enum What { Lap, Finished, Drowned, Volume } what = Lap;
+      size_t car  = 0;
+      size_t laps = 0;   // Lap: laps done
+      };
     // `dt` seconds; nothing moves before `racing`. `player` is the player at `playerPos` with `playerLaps` done,
     // `playerDone` once they have finished; `raceTime` the race clock and `laps` the race's length
     void                 update(float dt, bool racing, const Vec3& playerPos, size_t playerLaps, bool playerDone,
                                 float raceTime, int laps);
+    // what update() has seen
+    const std::vector<News>& news() const { return told; }
 
     size_t               size() const { return cars.size(); }
     Opponent&            operator[](size_t i) { return *cars[i]; }
@@ -257,6 +269,7 @@ class Opponents {
     CarProfile                             startProfile;   // PlayerPath
     RouteTracker                           player;
     std::vector<std::unique_ptr<Opponent>> cars;
+    std::vector<News>                      told;
   };
 
 }

@@ -33,6 +33,7 @@ add_library(rcformats STATIC
   formats/soundbank.h  formats/soundbank.cpp
   formats/skeleton.h   formats/skeleton.cpp
   formats/actorpath.h  formats/actorpath.cpp
+  formats/texttable.h  formats/texttable.cpp
   )
 target_include_directories(rcformats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -73,6 +74,7 @@ add_library(rcphysics STATIC
   physics/opponents.h   physics/opponents.cpp
   physics/characters.h  physics/characters.cpp
   physics/traffic.h     physics/traffic.cpp
+  physics/aiemu.h       physics/aiemu.cpp
   physics/btconvert.h
   )
 target_link_libraries(rcphysics PUBLIC rcformats PRIVATE bullet)
@@ -129,6 +131,7 @@ add_library(rcengine STATIC
   game/sounds.h            game/sounds.cpp
   game/world/levelmesh.h   game/world/levelmesh.cpp
   game/world/modelmesh.h     game/world/modelmesh.cpp
+  game/world/carmodel.h      game/world/carmodel.cpp
   game/world/level.h       game/world/level.cpp
   game/world/collisionview.h game/world/collisionview.cpp
   game/world/objects.h     game/world/objects.cpp

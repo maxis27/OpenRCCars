@@ -21,6 +21,7 @@ Objects::Objects(Device& device, Resources& res, rc::ObjectLibrary& library, con
     Item it;
     const rc::Mat4& at = p.instance->world;
     it.mesh   = mesh.get();
+    it.model  = &model.name;
     it.scale  = rc::Vec3{at.m[0][0],at.m[1][0],at.m[2][0]}.length();
     const rc::SbScript*  s   = model.scene->script(model.id);
     const rc::PropParams prm = rc::PropParams::parse(s ? s->text : std::string());
@@ -35,6 +36,29 @@ Objects::Objects(Device& device, Resources& res, rc::ObjectLibrary& library, con
   }
 
 Objects::~Objects() = default;
+
+void Objects::update(float dt) {
+  for(auto& it:items)
+    it.prop->blow(dt);
+  }
+
+void Objects::afterStep(rc::PhysicsWorld& world) {
+  for(auto& it:items)
+    it.hit = false;
+  const auto touched = rc::Prop::touched(world);
+  for(auto& it:items)
+    for(auto* p:touched)
+      if(p==it.prop.get())
+        it.hit = true;
+  }
+
+std::vector<Objects::Sound> Objects::sounds() const {
+  std::vector<Sound> ret;
+  ret.reserve(items.size());
+  for(auto& it:items)
+    ret.push_back({it.model,it.prop->pose().translation(),it.hit});
+  return ret;
+  }
 
 void Objects::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj, const LevelMesh::Push& frame) const {
   for(auto& it:items) {

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <numbers>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -110,6 +111,14 @@ constexpr float CpArrowShift   = 128.f/256.f;
 constexpr float CpArrowMinDist = 2.37f;
 constexpr float CpArrowMaxDist = 9.f;
 constexpr float CpArrowFrame   = 0.1f;
+// The race's chat console (RCCars.exe 0x4a5f00: the "chatRace" box of dlgMAIN, 0x4ad840): x 20, y 260, 400 x 170 of
+// 800x600, in Smash20 at its size, white, the newest line at the bottom, at most 5 lines and each for 5 s; a new
+// line pushes the others up in 0.25 s (0x4ae71d: 20/5 of its age). Lines longer than the box break between words
+// (0x4ae0f0).
+constexpr float ChatX     = 20,  ChatY = 260, ChatW = 400, ChatH = 170;
+constexpr size_t ChatLines = 5;
+constexpr float ChatLife  = 5.f, ChatSlide = 0.25f;
+constexpr float ChatSize  = 28.f;  // Smash20's cell: drawn 1:1
 constexpr float GateFlash  = 1.2f;                  // the checkpoint just passed flashes green
 constexpr float GateRange  = 150.f;                 // checkpoints farther away are not outlined
 
@@ -130,8 +139,22 @@ Hud::Hud(Device& device, Resources& res) : device(device), resources(res) {
   msgWrong = loadImage(res,"msg_wrong_way.csi");
   msgPause = loadImage(res,"msg_pause.csi");
   msgHits  = loadImage(res,"msg_hits.csi");
+  msgLow   = loadImage(res,"msg_low_signal.csi");
   lapLabel = loadImage(res,"lap.csi");
   loadFont(res,"Smash26",font);
+  loadFont(res,"Smash20",font20,true);
+  if(!lang.empty()) {
+    std::string file = lang;
+    for(auto& ch:file)
+      ch = char(std::tolower(uint8_t(ch)));
+    try {
+      const auto d = res.readFile(std::filesystem::path("Language")/"Game"/(file+".tbl"));
+      texts = rc::TextTable::parse(d.data(),d.size());
+      }
+    catch(const std::exception& e) {
+      Log::e("Language/Game/",file,".tbl: ",e.what(),": no race news on the chat console");
+      }
+    }
   loadNumbers(res);
   for(int i=0; i<6; ++i)
     place[i] = loadImage(res,"place"+std::to_string(i+1)+".csi");
@@ -192,14 +215,75 @@ Hud::Image Hud::loadImage(Resources& res, std::string_view file, std::vector<uin
   return ret;
   }
 
+void Hud::say(std::string line) {
+  Log::i("chat: ",line);
+  // the box's width at 800x600, the font at its own size (textWidth scales with the screen)
+  const float k = scale>0 ? 1.f/scale : 1.f;
+  while(!line.empty()) {
+    size_t cut = line.size();
+    while(cut>0 && textWidth(font20,std::string_view(line).substr(0,cut),ChatSize)*k>ChatW) {
+      const size_t sp = line.rfind(' ',cut-1);
+      cut = (sp==std::string::npos || sp==0) ? cut-1 : sp;
+      }
+    if(cut==0)
+      cut = 1;
+    chat.push_back({line.substr(0,cut),clock});
+    line.erase(0,cut);
+    while(!line.empty() && line.front()==' ')
+      line.erase(0,1);
+    }
+  if(chat.size()>ChatLines)
+    chat.erase(chat.begin(),chat.end()-ChatLines);
+  }
+
+void Hud::tell(uint32_t id, std::string_view who, std::string_view what) {
+  const std::string_view t = texts.get(id);
+  if(t.empty())
+    return;
+  std::string line;
+  int         arg = 0;
+  for(size_t i=0; i<t.size(); ++i) {
+    if(t[i]=='%' && i+1<t.size() && t[i+1]=='s') {
+      line += arg++==0 ? who : what;
+      ++i;
+      }
+    else
+      line += t[i];
+    }
+  say(std::move(line));
+  }
+
+void Hud::chatConsole() {
+  while(!chat.empty() && clock-chat.front().at>ChatLife)
+    chat.erase(chat.begin());
+  if(chat.empty())
+    return;
+  const float  line  = ChatH/float(ChatLines);
+  const float  slide = std::clamp((clock-chat.back().at)/ChatSlide,0.f,1.f);
+  const Color  c     = {1,1,1,1};
+  for(size_t i=0; i<chat.size(); ++i) {
+    const float fromBottom = float(chat.size()-i)-slide;  // the newest comes up from under the box
+    text(font20,chat[i].text,pl(ChatX),py(ChatY+ChatH-fromBottom*line-line),ChatSize,c,-1);
+    }
+  }
+
 // Smash<size>.csi: 256x256, a grid of 10 columns 25.6 px wide and rows 28 px high (the baselines step by exactly
 // 28 px, the last 4 px are unused) holding the characters of Smash<size>.dat in order (A..Z a..z 0..9 and
 // punctuation, no space). The letters are proportional: each glyph's width is measured from its opacity, and the
 // game sets them side by side with no gap (the 1 px shadow on their right separates them).
-void Hud::loadFont(Resources& res, std::string_view name, Font& f) {
+void Hud::loadFont(Resources& res, std::string_view name, Font& f, bool extra) {
+  loadGlyphs(res,name,f,0);
+  // Polish has the font's letters with diacritics in a file of their own, on the same grid
+  if(extra && f.img.loaded &&
+     std::filesystem::exists(res.gameDir()/"Language"/lang/(std::string(name)+"b.csi")))
+    loadGlyphs(res,std::string(name)+"b",f,1);
+  }
+
+void Hud::loadGlyphs(Resources& res, std::string_view name, Font& f, uint8_t page) {
   std::vector<uint8_t> rgba;
-  f.img = loadImage(res,std::string(name)+".csi",&rgba);
-  if(!f.img.loaded)
+  Image&               img = page==0 ? f.img : f.extra;
+  img = loadImage(res,std::string(name)+".csi",&rgba);
+  if(!img.loaded)
     return;
   std::vector<uint8_t> chars;
   try {
@@ -207,22 +291,23 @@ void Hud::loadFont(Resources& res, std::string_view name, Font& f) {
     }
   catch(const std::exception& e) {
     Log::e(e.what());
-    f.img.loaded = false;
+    img.loaded = false;
     return;
     }
   while(!chars.empty() && chars.back()=='\0')
     chars.pop_back();
   const size_t rows = std::max<size_t>(1,(chars.size()+9)/10);
-  const float  cw   = float(f.img.w)/10.f;
-  f.cell = std::floor(float(f.img.h)/float(rows));
+  const float  cw   = float(img.w)/10.f;
+  if(page==0)
+    f.cell = std::floor(float(img.h)/float(rows));
   for(size_t i=0; i<chars.size(); ++i) {
     const uint8_t ch = chars[i];
-    const int x0 = int(std::ceil(float(i%10)*cw)),     x1 = std::min(f.img.w,int(std::floor(float(i%10+1)*cw)));
-    const int y0 = int(std::ceil(float(i/10)*f.cell)), y1 = std::min(f.img.h,int(std::floor(float(i/10+1)*f.cell)));
+    const int x0 = int(std::ceil(float(i%10)*cw)),     x1 = std::min(img.w,int(std::floor(float(i%10+1)*cw)));
+    const int y0 = int(std::ceil(float(i/10)*f.cell)), y1 = std::min(img.h,int(std::floor(float(i/10+1)*f.cell)));
     int minX = x1, maxX = x0-1;
     for(int y=y0; y<y1; ++y)
       for(int x=x0; x<x1; ++x)
-        if(rgba[(size_t(y)*size_t(f.img.w)+size_t(x))*4+3]>40) {
+        if(rgba[(size_t(y)*size_t(img.w)+size_t(x))*4+3]>40) {
           minX = std::min(minX,x);
           maxX = std::max(maxX,x);
           }
@@ -233,9 +318,12 @@ void Hud::loadFont(Resources& res, std::string_view name, Font& f) {
     g.u1 = float(maxX+1);
     g.v0 = float(y0);
     g.v1 = float(y1);
+    g.page = page;
     f.glyphs[ch] = g;
     f.has[ch]    = true;
     }
+  if(page!=0)
+    return;
   // a space as wide as a third of a cell, drawn as nothing
   f.glyphs[' '] = Glyph{0,cw*0.35f,0,0};
   f.has[' ']    = true;
@@ -733,8 +821,9 @@ float Hud::text(const Font& f, std::string_view s, float x, float y, float size,
     if(!f.has[cc])
       continue;
     const Glyph& g = f.glyphs[cc];
+    const Image& img = g.page==0 ? f.img : f.extra;
     if(g.v1>g.v0)
-      quad(f.img.tex,f.img.w,f.img.h,{g.u0,g.v0,g.u1,g.v1},x,y,(g.u1-g.u0)*k,(g.v1-g.v0)*k,c,0,1,bottom);
+      quad(img.tex,img.w,img.h,{g.u0,g.v0,g.u1,g.v1},x,y,(g.u1-g.u0)*k,(g.v1-g.v0)*k,c,0,1,bottom);
     x += (g.u1-g.u0+gap)*k;
     }
   sharpen = 0;
@@ -801,6 +890,8 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     quad(*overtaking,128,128,{Bracket[2],Bracket[1],Bracket[0],Bracket[3]},px(BracketX+BracketDX)-bw*0.5f,by,bw,bh,
          white4);
     }
+  chatConsole();
+
   // one message in the middle at a time
   const float my = py(MessageY);
   if(info.paused) {
@@ -819,6 +910,10 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     }
   else if(phase==rc::Race::Phase::Finished) {
     sprite(msg321,{CountFinish[0],CountFinish[1],CountFinish[2],CountFinish[3]},px(400),my,1,white4);
+    }
+  else if(info.lowSignal && phase!=rc::Race::Phase::Finished) {
+    // RCCars.exe picks it first of the messages after the start (0x4b020d), steady while the car is in the volume
+    sprite(msgLow,{0,0,float(msgLow.w),float(msgLow.h)},px(400),my,1,white4);
     }
   else if(clock-hitAt<1.f) {
     // msg_hits.csi: "Łup!" in the top half, "Wielkie Łup!" in the bottom one. RCCars.exe ranks it over the wrong way

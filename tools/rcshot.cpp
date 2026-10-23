@@ -16,6 +16,8 @@
 //   RCSHOT_ACTOR_SIDE degrees round it (default 30).
 //   env RCSHOT_FX=<seconds> runs the track's effects (splashes, breaking waves, the guards' gunfire at the parked car)
 //   that long, seen from the final camera, and draws them; the water's time goes on from RCSHOT_TIME.
+//   env RCSHOT_NOSHADOW=1 leaves out the shadow under the car, RCSHOT_SHADE=<k> lights it with that brightness
+//   instead of the lightmap's under it
 //   env RCSHOT_TRAFFIC=<seconds> lets the road traffic run that long after the start of the race and, with
 //   RCSHOT_TRAFFIC_CAR=<n>, looks at the n-th car on the road from RCSHOT_ACTOR_DIST m (default 8),
 //   RCSHOT_ACTOR_SIDE degrees round it (default 30) and RCSHOT_ACTOR_RISE times that distance up (default 0.35).
@@ -45,6 +47,9 @@
 #include "physics/vehicle.h"
 #include "game/world/characters.h"
 #include "game/world/traffic.h"
+#include "game/world/carshadow.h"
+#include "game/world/carmodel.h"
+#include "fx/carlight.h"
 #include "physics/traffic.h"
 #include "formats/fog.h"
 
@@ -103,11 +108,12 @@ int main(int argc, const char** argv) {
       car     = std::make_unique<ModelMesh>(device,res,carSb,model,look);
       carPose = level.carStart(car->bboxMin().y);
       if(const char* start = std::getenv("RCSHOT_START")) {
-        // "x z yaw": somewhere else on the track, standing on the ground
-        float x = 0, z = 0, yaw = 0;
-        std::sscanf(start,"%f %f %f",&x,&z,&yaw);
+        // "x z yaw [y]": somewhere else on the track, standing on the ground (the highest, or the first under y:
+        // in a tunnel)
+        float x = 0, z = 0, yaw = 0, y = 1000.f;
+        std::sscanf(start,"%f %f %f %f",&x,&z,&yaw,&y);
         carPose = rc::Mat4::translate({x,0,z})*rc::Mat4::rotate(1,yaw);
-        if(auto g = level.groundHeight({x,1000.f,z}))
+        if(auto g = level.groundHeight({x,y,z}))
           carPose.m[1][3] = *g - car->bboxMin().y;
         }
       if(const char* drive = std::getenv("RCSHOT_DRIVE")) {
@@ -162,14 +168,17 @@ int main(int argc, const char** argv) {
         }
       chase.apply(chaseCar,&level.collision(),1.f/60.f,cam);
       level.keepAboveWater(cam,waterTime());
-      // RCSHOT_VIEW=<degrees>,<metres>: close to the car instead, from that side (0 behind, 90 its left)
+      // RCSHOT_VIEW=<degrees>,<metres>[,<height>]: close to the car instead, from that side (0 behind, 90 its left),
+      // the camera <height> times <metres> up (0.25)
       if(const char* v = std::getenv("RCSHOT_VIEW")) {
         const rc::Vec3 f = carPose.point({0,0,1})-carPose.translation();
         const float yaw  = float(std::atof(v))/57.29578f+std::atan2(f.x,f.z);
         const char* d    = std::strchr(v,',');
         const float dist = d ? float(std::atof(d+1)) : 0.8f;
+        const char* u    = d ? std::strchr(d+1,',') : nullptr;  // optional: the height, times `dist`
+        const float up   = u ? float(std::atof(u+1)) : 0.25f;
         const rc::Vec3 at = carPose.point({0,0.1f,0});
-        cam.position = at+rc::Vec3{-std::sin(yaw),0,-std::cos(yaw)}*dist+rc::Vec3{0,dist*0.25f,0};
+        cam.position = at+rc::Vec3{-std::sin(yaw),0,-std::cos(yaw)}*dist+rc::Vec3{0,dist*up,0};
         cam.lookAt(at);
         }
       }
@@ -352,6 +361,21 @@ int main(int argc, const char** argv) {
       }
     push.time = waterTime()+fxTime;
 
+    CarShadow                   carShadow(res);
+    if(car) {
+      // the car's light as it is under it, at once (RCSHOT_SHADE=<k> sets the brightness instead)
+      const auto        light = rc::fx::CarLight::load(res.pack());
+      rc::fx::LightmapProbe probe(level.scene(),level.collision(),[&res](const std::string& f){ return res.pack().read(f); });
+      rc::fx::CarShade  shade;
+      shade.update(light,0,true,probe.below(carPose.translation()+rc::Vec3{0,0.01f,0},1.5f));
+      float k = shade.value();
+      if(const char* s = std::getenv("RCSHOT_SHADE"))
+        k = float(std::atof(s));
+      Log::i("car brightness ",k);
+      lightCar(*car,std::getenv("RCSHOT_LOD")==nullptr,light,k);
+      }
+    SpotView                    carSpots(device);
+    std::vector<SpotView::Spot> carSpotList;
     CommandBuffer cmd;
     {
       auto enc = cmd.startEncoding(device);
@@ -360,8 +384,13 @@ int main(int argc, const char** argv) {
       level.mesh().draw(enc,push,LevelMesh::Pass::Opaque,sky);
       if(objects)
         objects->draw(enc,viewProj,push);
-      if(car)
+      if(car) {
+        if(std::getenv("RCSHOT_NOSHADOW")==nullptr) {
+          carSpotList.assign(1,carShadow.spot(size_t(std::max(0,std::atoi(car->name().c_str()+3)-1)),carPose));
+          carSpots.draw(enc,0,carSpotList,viewProj,push,level.collision());
+          }
         car->draw(enc,viewProj,push,carPose,parts.empty() ? nullptr : &parts);
+        }
       if(chars)
         charView.draw(enc,0,res,*chars,push);
       if(fx)

@@ -11,6 +11,7 @@ const uint F_WAVES    = 32u; // sea with WLOD waves (Water block): inUvMask.x is
 const uint F_TESS     = 64u; // drawn with water.tesc/.tese, which move the vertices instead of level.vert
 const uint F_DIRT     = 128u; // a car's paint: texMask/texBase2 are its dirt textures, `time` how dirty (0..2)
 const uint F_MODULATE = 256u; // blended as twice the source times the destination: 0.5 leaves the ground as it is
+const uint F_CARLIGHT = 512u; // a car's light (fx/carlight.h): carPos.w ambient, sunDir.w direct, held at 1
 
 layout(push_constant, std430) uniform Push {
   mat4  viewProj;

@@ -275,7 +275,7 @@ void ModelMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
                    const LevelMesh::Push& frame, const rc::Mat4& world,
                    const std::vector<rc::Mat4>* partPoses, bool lightsOn) const {
   const rc::Vec3 camera = {frame.cameraPos[0],frame.cameraPos[1],frame.cameraPos[2]};
-  const rc::Vec3 sun    = {frame.sunDir[0],   frame.sunDir[1],   frame.sunDir[2]};
+  const rc::Vec3 sun    = light.on ? light.toLight : rc::Vec3{frame.sunDir[0],frame.sunDir[1],frame.sunDir[2]};
 
   // the shader works in the space of the vertices, so camera and sun go into part space
   std::vector<LevelMesh::Push> push(partList.size(),frame);
@@ -303,6 +303,11 @@ void ModelMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
     LevelMesh::Push& pp = push[b.part];
     pp.flags  = (b.mode==rc::AlphaMode::Cutout) ? uint32_t(LevelMesh::F_Cutout) : 0u;
     pp.envMap = b.envMap;
+    if(light.on) {
+      pp.flags    |= LevelMesh::F_CarLight;
+      pp.carPos[3] = light.ambient;
+      pp.sunDir[3] = light.direct;
+      }
     const bool dirty = dirt>0 && b.dirt[0]!=nullptr;
     if(dirty) {
       pp.flags |= LevelMesh::F_Dirt;

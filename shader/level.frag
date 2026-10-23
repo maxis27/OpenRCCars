@@ -127,7 +127,10 @@ void main() {
     light = texture(texLight, inUvLight).rgb * push.sunDir.w;
     } else {
     float d = max(dot(normal, normalize(push.sunDir.xyz)), 0.0);
-    light   = vec3(0.55) + vec3(0.55)*d;
+    if((push.flags & F_CARLIGHT)!=0u)
+      light = vec3(min(push.carPos.w + push.sunDir.w*d, 1.0));
+    else
+      light = vec3(0.55) + vec3(0.55)*d;
     }
   if((push.flags & F_WATER)!=0u) {
     // sun glitter on the waves

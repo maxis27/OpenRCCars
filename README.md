@@ -26,7 +26,9 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   i `compressor_<rezonator+1>`, opony `tire2*`/`tire3*` z teksturą `tire<2|3>_<opony+1>`, a przy doładowaniu powyżej 0
   koła poszerzone o 0,95 / 1,07 / 1,25 / 1,35 według poziomu opon (0x50be40); gracz ma poziom z klawisza U, przeciwnicy
   `AI<n>Boost/Reson/Tires` z `ailayouts.ini`. Dalej od kamery auto rysuje się modelami `Car<n>LOD1` (od 7,96 m) i
-  `Car<n>LOD2` (od 8,87 m), odległości z `Settings/LOD.ini` (0x4f98e0, 0x501c10)
+  `Car<n>LOD2` (od 8,87 m), odległości z `Settings/LOD.ini` (0x4f98e0, 0x501c10). Pod autem gracza leży cień z
+  `Settings/carRender.ini` (tekstury `shadows1..3`), a auta ciemnieją w cieniu i w tunelach według lightmapy pod
+  kołami (`car_lmshd.ini`, światło z `carLight.ini`), jak w oryginale
 - **kolizje trasy** z węzła `COLL`: siatka komórek nad trasą, w każdej lista ścian siatek renderu, które ją przecinają;
   z tego powstaje siatka kolizji (trójkąty w przestrzeni świata) z raycastem po komórkach (DDA). Auto staje na
   ziemi wyznaczonej raycastem. Kod `constr` (w trybie `-dev`) pokazuje nakładkę kolizji: zielone podłoże, żółte zbocza, czerwone
@@ -58,8 +60,8 @@ Projekt nie zawiera żadnych danych gry. Wczytuje assety z legalnie kupionej ins
   Liczą się główne punkty kontrolne `cp_N` (na beach_1 cztery, każdy z kolorowym graffiti na ziemi): okrążenie to
   przejechanie ich wszystkich po kolei, jak w instrukcji, a R wraca na ostatni zaliczony. Jak w RCCars.exe punkt
   zalicza się, gdy auto minie jego marker bliżej niż 1,6 m (liczone w 3D), i sprawdzany jest tylko następny w
-  kolejności. Pośrednie `cp_N_M` prowadzą strzałkę i „zły kierunek” (strzałka idzie dalej, gdy auto przetnie linię
-  punktu do 15 m od niego albo podjedzie bliżej niż 4 m od boku jego korytarza). Tak jak w oryginale na country_3
+  kolejności. Główne i pośrednie `cp_N_M` wyznaczają korytarz trasy, jak w RCCars.exe: z niego biorą
+  kierunek strzałka i „zły kierunek” (6 s jazdy przodem pod prąd). Tak jak w oryginale na country_3
   da się zaliczyć `cp_3` wcześnie: stoi 2,2 m od drogi przy wjeździe w pętlę, którą trasa objeżdża dwa razy. Kokpit rysujemy obrazkami
   z gry (`Language/Polish` albo `Language/English`: odliczanie, „okrążenie”, komunikaty, czcionka `Smash26`; czas, numer okrążenia i liczby na zegarach metalicznymi cyframi `cock_num`, które oryginał trzyma w samym `RCCars.sb`)
   w miejscach z `Settings/cockpit.ini`; strzałka kierunku to jak w oryginale bryła 3D `Arrow` z `cockpit.sb`
@@ -313,6 +315,7 @@ rcinfo <folder_gry> ai RCCarsDB/beach_1.sb [poziom 1-3] [okrążenia]  # przeciw
 rcinfo <folder_gry> fx                            # ustawienia efektów, ile cząsteczek, śladów i kilwatera daje auto na każdej nawierzchni
 rcinfo <folder_gry> ram RCCarsDB/beach_1.sb [przeciwnik] [s] [side]  # gracz wjeżdża w przeciwnika: wypadnięcie z nagrania, powrót, „Łup!”
 rcinfo <folder_gry> drown RCCarsDB/beach_1.sb [auto 1-3]  # strefy powrotu, pudło kolizji, czas tonięcia na kilku głębokościach (też przeciwnika)
+rcinfo <folder_gry> shade RCCarsDB/beach_2.sb     # lightmapa wzdłuż trasy i jasność aut, jaką daje
 rcinfo <folder_gry> fog beach_1                   # mgła trasy: gęstość, kolor, ile koloru zostaje w danej odległości
 rcinfo <folder_gry> traffic beach_2 [s]           # ruch uliczny: odjazdy, wysokość kół nad drogą, światła, cienie, potrącenie gracza
 rcinfo <folder_gry> shots beach_4 [auto 1-3] [s]  # strażnicy i BTR strzelają do auta: serie, trafienia, odrzut, powrót
@@ -327,6 +330,8 @@ RCSHOT_DRIVE=2 RCSHOT_JUMP=1.6 rcshot ...                       # skok w 1,6 s, 
 RCSHOT_DRIVE=3 RCSHOT_BOOST=1 rcshot ...                        # z dopalaczem
 RCSHOT_DRIVE=1 RCSHOT_JUMP=0.8 RCSHOT_VIEW=90,0.6 rcshot ...   # z bliska, z lewego boku auta (0 = z tyłu), z 0,6 m
 RCSHOT_START="-8 -41 90" RCSHOT_DRIVE=1.6 rcshot ...            # auto najpierw w punkcie x z, obrócone o yaw (tu: do morza)
+RCSHOT_START="69.6 -6.4 0 4.5" RCSHOT_VIEW=270,0.6,0.4 rcshot <gra> beach_2 ...  # na ziemi pod y = 4,5 (w tunelu), kamera z prawej, wyżej
+RCSHOT_NOSHADOW=1 rcshot ...  /  RCSHOT_SHADE=1 rcshot ...      # bez cienia pod autem / jasność auta 1 zamiast lightmapy
 RCSHOT_TIME=2.5 rcshot ...                                       # chwila animacji wody (fale, piana)
 RCSHOT_OBJECTS=0 rcshot ...                                      # bez rekwizytów
 RCSHOT_FX=2 rcshot ...                                           # najpierw 2 s efektów trasy (rozbryzgi, fale, strzały)
@@ -489,6 +494,13 @@ lib/Tempest     silnik (submoduł git)
     w wodzie dokłada `coeffWater·v²` przeciw ruchowi punktu, którym jej dotyka, od zera przy kole zanurzonym
     w 30% do całości przy 90%, a poza wodą w głębokim piasku `coeffDeepSand·v²`; koło w powietrzu nie hamuje.
     Liczy się to razem z resztą sił przy każdym kroku Eulera;
+  - obrót kół (0x4ef280, raz na klatkę po krokach): koło na ziemi toczy się z `v/r` (v: prędkość jego punktu wzdłuż
+    kierunku koła), w powietrzu 0; obrót goni to tempem 200 rad/s² na ziemi i 5 rad/s² w powietrzu. Gaz albo wsteczny
+    (powyżej 0,3) dokłada do `SpeedAngMaxREL` (`tires<N>.ini`, 0..20 rad/s; 10,7/10,3/10,1) tempem 70 rad/s²,
+    na ziemi tylko poniżej 4 m/s (całość w miejscu, nic przy 4 m/s), bez klawisza dodatek wraca do 0 tempem 35;
+    hamowanie zeruje jedno i drugie. Poślizg koła (0x5019a0) to |obrót − toczenie| / 20, najwyżej 1; z niego
+    kurz i dym buksowania oraz dźwięk `car_motor_ws`: tylne koło z poślizgiem ponad 0,45 przez 0,3 s, poniżej
+    5 km/h, bez hamowania, z gazem albo wstecznym (0x50b238). Koła rysujemy obrócone o ten obrót;
   - kroki (0x4f6ea0): klatka krótsza niż 0,02 s to jeden krok, dłuższa to kroki po 0,02 s, dopóki zostaje
     więcej niż 0,038 s, a reszta w dwóch połowach (przy 60 kl./s krok 1/60 s). U nas każdy z nich dzieli się
     jeszcze na równe części najwyżej po 1/120 s: przy krokach długości klatki nasze sprężyny co chwilę tracą
@@ -523,8 +535,18 @@ lib/Tempest     silnik (submoduł git)
   - R (co najmniej 1 s od poprzedniego) stawia auto na markerze ostatniego zaliczonego punktu, przodem w stronę
     następnego markera trasy; przed pierwszym punktem na starcie;
   - punkt kontrolny `cp_N` zalicza się, gdy auto gracza minie jego marker bliżej niż 1,6 m (auta AI: 2,88 m).
-    `width`/`height`/`expand` z markerów (domyślnie z folderu `Checkpoints`, inaczej 2/1/0,1) opisują w oryginale
-    korytarz trasy od markera do następnego, z którego liczy się postęp i miejsca w wyścigu.
+    `width`/`height`/`expand` z markerów (domyślnie z folderu `Checkpoints`, inaczej 2/1/0,1) opisują korytarz
+    trasy od markera do następnego (0x4e9560, 0x4e9980): prostopadłościan wzdłuż odcinka, `expand` dłuższy z obu
+    końców, `width` w obie strony i `height` w górę i w dół (oś „w górę” to pion prostopadły do odcinka). Gra bierze
+    podpunkty `cp_N_1`, `cp_N_2` … do pierwszego brakującego numeru (country_1 pomija więc `cp_4_5`) i najwyżej
+    8 głównych punktów. Auto szuka się najpierw w odcinkach od ostatniego głównego punktu do następnego (od końca),
+    potem w pozostałych od `cp_1`; poza korytarzem zostaje na ostatnim odcinku, na którym było (0x4eba30, 0x4eb670).
+    Dalsza droga (0x4e8f00) to kierunek tego odcinka (następnego po 90% długości; za ostatnim przed punktem prosto
+    na punkt); w innym odcinku za następnym głównym punktem (bliżej w tył niż w przód po okrążeniu) kierunek
+    odwrotny, a poza korytarzem prosto na następny główny punkt. Auto zwrócone przodem przeciw tej drodze nabija
+    licznik (1/s, najwyżej 12), zwrócone zgodnie zbija go 3/s; ponad 6 s to „zły kierunek”, chyba że ostatni
+    zaliczony główny punkt jest bliżej niż 8 m (poziomo). Ten sam kierunek pokazuje strzałka, a jej kolor to
+    droga, która została po korytarzu do następnego punktu, przez drogę od poprzedniego.
 - Indeksy tekstur `GLTX` są lokalne dla węzła `MODL`: w `Car.sb` każde auto (i każdy LOD) numeruje tekstury od zera.
 - Zagnieżdżone markery (`cp_1` → `cp_1_1`, `cp_1_2` …) mają transformacje w przestrzeni świata, nie względem rodzica
   (w przeciwieństwie do siatek): kolejne podcheckpointy prowadzą od `cp_1` do `cp_2`.
@@ -575,11 +597,12 @@ lib/Tempest     silnik (submoduł git)
   `[ymin, ymax, x0, z0, x1, z1, …]` (wielokąt w XZ).
 - Markery (`MARK`) mają w elemencie `0x04` właściwości wpisane w edytorze poziomów jako pary tekstów (lista
   `0x05 { 0x06 klucz, 0x07 wartość }`). Punkty kontrolne mają `width`, `height` i `expand` (np. beach_1 `cp_1`:
-  szerokość 8, wysokość 1, expand 3); tam, gdzie ich brak (cały country_1, prawie cały country_2), przyjmujemy
-  szerokość 6. W oryginale opisują korytarz trasy do następnego markera (z niego liczy się postęp i miejsca), a nie
-  zaliczanie punktu; u nas szerokość pomaga tylko strzałce. Główne markery `cp_N` wiszą najwyżej 0,5 m nad ziemią,
+  szerokość 8, wysokość 1, expand 3); tam, gdzie ich brak, gra bierze je z właściwości folderu `Checkpoints`
+  (`FOLD`, np. country_2: `expand` 2, `width` 3), a gdy i tam ich nie ma, 2, 1 i 0,1 m. Opisują korytarz trasy do
+  następnego markera, a nie zaliczanie punktu. Główne markery `cp_N` wiszą najwyżej 0,5 m nad ziemią,
   pośrednie do 2,7 m. Numeracja podpunktów ma dziury
-  (country_1: `cp_4_3`, `cp_4_5`) i nie zawsze idzie po kolei w pliku, więc sortujemy po numerze.
+  (country_1: `cp_4_3`, `cp_4_5`) i nie zawsze idzie po kolei w pliku; gra szuka podpunktów po nazwie do
+  pierwszej dziury.
   `rcinfo race` przejeżdża wszystkie 10 tras po linii markerów (i drugi raz obok punktów pośrednich) i zalicza
   każde okrążenie, a `rcinfo gates` dojeżdża autem z fizyką do każdego z 50 głównych punktów (rusza kilka metrów
   przed nim) i wszystkie się zaliczają.
@@ -623,9 +646,7 @@ lib/Tempest     silnik (submoduł git)
   `dir` − 90. Model obraca się wokół osi pionowej najwyżej o 90° na sekundę (10 razy szybciej, kolor też, zaraz po
   zaliczeniu punktu, dopóki nie wskaże nowego kierunku z dokładnością do 1°). Miga (0,25 s widać, 0,25 s nie) przy
   jeździe w złą stronę i gdy auto było już bliżej niż 5 m od następnego punktu, ale go nie zaliczyło. Kierunek
-  w oryginale to kierunek korytarza trasy, na którym jest auto (albo prosto na punkt poza korytarzami), a zła
-  strona to 6 s jazdy przeciw niemu; u nas strzałka wskazuje pośredni punkt `cp_N_M`, a zła strona zostaje z
-  `rc::Race`.
+  to dalsza droga po korytarzu trasy (patrz punkty kontrolne wyżej), tak jak w oryginale.
 - `CarProfiles/<trasa>/<nazwa>.dat` (nagrania przeciwników) mają ten sam format elementów co sceny: nagłówek
   `0x60` (m.in. `g` = 136, długość klatki, i teksty „Time path FULL: 68.185939”, „CYCLE: 65.022942”), `0x63`
   (liczba klatek, czas), `0x64` klatki, `0x65` lista zdarzeń (nieużywana). Klatka (ok. 100 na sekundę) to pełny
@@ -743,8 +764,8 @@ lib/Tempest     silnik (submoduł git)
   na wstecznym przednie (połowa) i tylne (ćwierć), na głębokim piasku wszystkie. Cząsteczka dostaje
   `dust_speed(m/s)` procent prędkości auta, zwalnia w poziomie (`SpeedAtt`), obraca się coraz szybciej i rośnie w
   ciągu sekundy do `DynamicScale` (tył) albo `DynamicScaleForw` (przód) razy (0x52e180). Przy buksowaniu
-  (`WheelSpinThresh`) kurz leci do tyłu z prędkością obwodu koła; nasz Bullet nie ma poślizgu kół, więc ta gałąź
-  czeka na nową fizykę.
+  (poślizg koła ponad `WheelSpinThresh`, z gazem albo hamulcem) kurz leci do tyłu z prędkością obrotu koła
+  × `WheelSpinSpeed`, a ilość to `dust_int(rad/s obrotu) × WheelSpinScale`.
 - **Bryzgi** (`WATER_SPRAY`, 0x527e20, 0x527f70, 0x528220, 0x528780): gdy lustro wody przecina koło, a auto jedzie
   szybciej niż 15 km/h; ilość to `wspr_int(km/h) × cięciwa / promień`. Krople lecą na zewnątrz i w górę pod kątem
   `AngleIncidence`, połowa w drugą stronę i trzy razy krócej, płyną z autem (`SpeedDecay`), drgają
@@ -777,8 +798,8 @@ lib/Tempest     silnik (submoduł git)
   gazie, × 1,5 na turbo (powyżej 5 km/h), a włączenie turbo powyżej 10 km/h daje na `ExplodeTime` s
   `2 × eg_int(50)` kłębów, trzy razy dłużej żyjących, prawie przezroczystych (`ExplodeAlpha`); kolor ciemnieje wtedy
   512/s do `ExplodeColor` i wraca 256/s. Kłąb dostaje `Speed` wzdłuż rury plus prędkość auta, zwalnia (`SpeedAtt`)
-  i rośnie bez końca o `DynamicScale` − 1 na sekundę (0x530330). Gałąź buksowania (`WheelSpin`) czeka na poślizg
-  kół w fizyce. Flagę, która odpala kłąb (0x577c), uznajemy za włączenie turbo (wywnioskowane).
+  i rośnie bez końca o `DynamicScale` − 1 na sekundę (0x530330). Buksujące tylne koło (poślizg ponad `WheelSpin`, z gazem
+  albo hamulcem) dymi `eg_int(2 × poślizg)` kłębów na sekundę. Flagę, która odpala kłąb (0x577c), uznajemy za włączenie turbo (wywnioskowane).
 - **Brud** (0x52e320, 0x531c20, 0x507dc0, 0x531450): każde koło, które kurzy, dokłada do licznika auta
   `ilość kurzu × 0,1` na sekundę (do 3000), każde koło w wodzie zmywa 350 na sekundę. Licznik wybiera między
   czystym autem a teksturami `dirt_car<auto>_1` i `_2` (auta 2 i 3 mają osobne `a`/`b` dla dwóch tekstur
@@ -833,6 +854,25 @@ lib/Tempest     silnik (submoduł git)
   chromy) `EnvMapGRE1` 255/255, `*GRE2*` (lampy, zderzaki) `EnvMapGRE2` 137/255; reszta z flagą (np. rekwizyty ze
   `stone.sb`) całą mapę. `EnvMapUpgrades` (156) dotyczy ulepszeń, których jeszcze nie pokazujemy. U nas to jeden
   przebieg `shader/level.frag` (`environment()`), który dodaje mapę do koloru; takie siatki oryginał rysuje bez mgły.
+- **Cień auta** (`RCCars.exe` 0x5072f0, przy `VIDEO_CarShadow`): tylko auta graczy, przeciwnicy w oryginale cienia
+  nie mają. Jedna plama kolejki świateł (rodzaj 3, z teksturą, 0x44c640) położona na trasie jak cienie kół ruchu
+  ulicznego i przyciemniająca to, co pod nią (`Zero, InvSrcColor`, tryb 4 z 0x45c6e0): promień `ShadowSize<n>`/100 m
+  (0,36 / 0,29 / 0,42), środek `ShadowShift<n>`/100 − 0,5 m przed środkiem auta (0 / 0 / 0,01), tekstura `shadows2`
+  Overkill, `shadows3` Buggy, `shadows1` Hummer; tekstura obrócona tak, że jej oś v biegnie wzdłuż auta.
+  `ShadowDensity`, `FilterSpeed`, `TextureSizePow2` i `FrameSkipNmb` są czytane, ale nic ich nie używa.
+- **Światło aut** (`carLight.ini`, 0x5077e0 dla każdego rysowanego LOD): najbliższy model (LOD 0) ma światło
+  Direct3D: otoczenie `AmbientI` (138) i jedno kierunkowe `DirectI` (128), oba razy jasność auta i obcięte do 255;
+  dalsze LOD-y rysują się bez światła, z samą teksturą. Światło pada z (0,0,1) obróconego o `AngleAzimuth` (0°) wokół
+  pionu i o `AngleElevation` (75°) w górę (0x40b4c0), czyli z (0; 0,966; 0,259). Klucze kolorów (`AmbientR` … `DirectB`)
+  nic nie czyta. Jasność (0x531ff0, `car_lmshd.ini`, co klatkę dla każdego auta): gdy kamera jest bliżej niż `maxdist`
+  (25 m) i włączone jest `VIDEO_Light` albo `VIDEO_EnvMap`, gra uśrednia teksel lightmapy (bez filtrowania, (r+g+b)/3,
+  0x4572c0: uv z pierwszych trzech rogów ściany) pod pierwszymi czterema kołami dotykającymi trasy, a gdy żadne nie
+  dotyka, tylko dla auta gracza, pod autem (promień 1,5 m w dół z 1 cm nad nim). Wartość × 255 przechodzi przez
+  `Splines/light_car.bspl` (liniowo, poza końcami stała: 112,6 → 158,9, 200,9 → 260,0) i / 255, więc 0,62 … 1,02.
+  Za pierwszym razem jasność od razu taka, potem goni cel z prędkością `alphavel`/100 (1,27) na sekundę, gdy różni się
+  o więcej niż `deltaalpha`/100 (0,05). Auto dalej od kamery ma 1. U nas przeciwnicy odtwarzający nagranie nie mają
+  styków kół, więc szukamy lightmapy pod ich kołami tak, jak są narysowane (wywnioskowane, nie z oryginału).
+  `rcinfo <gra> shade RCCarsDB/beach_2.sb` pokazuje lightmapę wzdłuż trasy i jasność, jaką daje.
 - **Paski bieżnika na trasach** (`wt_wetsand`, 151 siatek na wszystkich 10 trasach): to nie ślady aut, tylko
   część mapy. Słowo 4 nagłówka `0x08` węzła `MESH` (`SbMesh::renderFlags`) mówi, jak siatkę rysować (0x48e4b0,
   0x451310): `0x1000` przezroczystość z alfy tekstury, `0x2000` morza, `0x40000000` mnożenie przez to, co pod spodem

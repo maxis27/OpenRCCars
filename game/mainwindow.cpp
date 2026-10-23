@@ -57,6 +57,9 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   menu     = std::make_unique<Menu>(device,res,*sounds);
   characterView = std::make_unique<CharacterView>(device);
   trafficView   = std::make_unique<TrafficView>(device,res);
+  carShadow     = std::make_unique<CarShadow>(res);
+  carSpots      = std::make_unique<SpotView>(device);
+  carLight      = rc::fx::CarLight::load(res.pack());
   chase    = ChaseCamera(ChaseCamera::Settings::load([&res](const std::string& f){ return res.pack().read(f); }));
   lodDistances = CarModel::Distances::load(res.pack());
   try {
@@ -113,6 +116,10 @@ void MainWindow::loadLevel(const std::string& name) {
     checkpoints.reset();
     level   = std::move(next);
     checkpoints = std::make_unique<rc::Checkpoints>(level->scene(),level->collision());
+    lightProbe  = std::make_unique<rc::fx::LightmapProbe>(level->scene(),level->collision(),
+                                                         [this](const std::string& f){ return resources.pack().read(f); });
+    carShade.reset();
+    aiShades.clear();
     race        = std::make_unique<rc::Race>(*checkpoints,laps);
     resetVolumes = rc::ResetVolumes(level->scene());
     fog.setTarget(rc::FogParams::load(resources.pack(),name));
@@ -337,12 +344,13 @@ Hud::Info MainWindow::hudInfo() const {
   }
 
 float MainWindow::wayDirection() const {
-  // the point the arrow shows seen from the car, positive = on the left (+X)
-  const auto&    route = checkpoints->route();
-  const rc::Vec3 f     = carPose.vector({0,0,1});
-  if(route.empty() || std::abs(f.x)+std::abs(f.z)<=1e-3f)
+  // the way on seen from the car (RCCars.exe 0x4e8f00, 0x410150), positive = on the left (+X)
+  const rc::Vec3 f = carPose.vector({0,0,1});
+  if(checkpoints->empty() || std::abs(f.x)+std::abs(f.z)<=1e-3f)
     return 0;
-  const rc::Vec3 to = route[checkpoints->guide()].position-carPose.translation();
+  const rc::Vec3 to = checkpoints->wayOn(carPose.translation());
+  if(std::abs(to.x)+std::abs(to.z)<=1e-6f)
+    return 0;
   float a = std::atan2(to.x,to.z)-std::atan2(f.x,f.z);
   while(a> 3.14159265f) a -= 6.2831853f;
   while(a<-3.14159265f) a += 6.2831853f;
@@ -356,16 +364,9 @@ DirectionArrow::Input MainWindow::arrowInput() const {
   const auto& route = checkpoints->route();
   if(route.empty())
     return in;
-  // RCCars.exe 0x4eb670: the way still to go to the next main checkpoint over the way from the last one to it,
-  // along the route: to the point the arrow shows, then from point to point
   const rc::Vec3 at   = carPose.translation();
-  const size_t   next = checkpoints->next(), guide = checkpoints->guide();
-  const size_t   last = checkpoints->lastPassed();
-  const float    from = last+1<route.size() ? checkpoints->along(last) : 0.f;
-  const rc::Vec3 d    = route[guide].position-at;
-  const float    left = std::sqrt(d.x*d.x+d.z*d.z)+checkpoints->along(next)-checkpoints->along(guide);
-  const float    way  = checkpoints->along(next)-from;
-  in.left     = way>1e-3f ? left/way : 1.f;
+  const size_t   next = checkpoints->next();
+  in.left     = checkpoints->wayLeft(at);
   in.distance = (route[next].position-at).length();
   in.next     = next;
   return in;
@@ -753,7 +754,7 @@ void MainWindow::tick(float dt) {
     carPose = vehicle->pose();
     const rc::Vec3 at = carPose.translation();
     const size_t   was = checkpoints->next();
-    const auto     ev  = race->update(dt,at,(at-lastCarPos)*(1.f/std::max(dt,1e-4f)));
+    const auto     ev  = race->update(dt,at,carPose.vector({0,0,1}));
     if(ev==rc::Race::Event::Finish) {
       playerFinish = race->time();
       if(opponents && opponents->size()>0)
@@ -1084,6 +1085,7 @@ void MainWindow::tickSounds(float dt) {
   in.gas      = control && (keys[Event::K_W] || keys[Event::K_Up]);
   in.back     = control && (keys[Event::K_S] || keys[Event::K_Down]);
   in.braking  = (in.back && fwd*3.6f>1.f) || (control && keys[Event::K_B]);
+  in.rearSlip = vehicle->rearSlip();
   in.airborne = airborne>0.05f;
   in.racing   = racing;
   in.boost    = vehicle->boosting();
@@ -1160,6 +1162,60 @@ void MainWindow::renderMenu() {
   device.present(swapchain);
   }
 
+// RCCars.exe 0x531ff0 (rc::fx::CarLight): the lightmap under the first four wheels touching the track, for the
+// player's car the one under the car if none does. The opponents on their recordings have no wheel contacts of
+// ours: theirs are looked for under their wheels as drawn.
+void MainWindow::shadeCars(float dt) {
+  if(lightProbe==nullptr)
+    return;
+  constexpr size_t Wheels = 4;
+  auto near = [this](const rc::Mat4& pose) {
+    return (pose.translation()-camera.position).length()<carLight.maxDist;
+    };
+  auto average = [](float sum, int n) { return n>0 ? std::optional<float>(sum/float(n)) : std::nullopt; };
+  auto contacts = [this](const rc::Vehicle& v, float& sum, int& n) {
+    rc::Vec3 at;
+    for(size_t i=0; i<Wheels; ++i)
+      if(v.wheelGround(i,at))
+        if(auto l = lightProbe->below(at+rc::Vec3{0,0.05f,0},0.1f)) {
+          sum += *l;
+          ++n;
+          }
+    };
+  if(vehicle) {
+    float sum = 0;
+    int   n   = 0;
+    contacts(*vehicle,sum,n);
+    auto light = average(sum,n);
+    if(!light)
+      light = lightProbe->below(carPose.translation()+rc::Vec3{0,0.01f,0},1.5f);
+    carShade.update(carLight,dt,near(carPose),light);
+    }
+  if(opponents) {
+    aiShades.resize(opponents->size());
+    for(size_t i=0; i<opponents->size(); ++i) {
+      auto&      o    = (*opponents)[i];
+      const auto pose = o.pose();
+      float      sum  = 0;
+      int        n    = 0;
+      if(auto* v = o.vehicle()) {
+        contacts(*v,sum,n);
+        }
+      else {
+        const auto& wheels = o.geometry().wheels;
+        for(size_t w=0; w<std::min(Wheels,wheels.size()); ++w) {
+          const rc::Vec3 hub = pose.point(o.wheelPose(w).translation());
+          if(auto l = lightProbe->below(hub,wheels[w].radius+0.1f)) {
+            sum += *l;
+            ++n;
+            }
+          }
+        }
+      aiShades[i].update(carLight,dt,near(pose),average(sum,n));
+      }
+    }
+  }
+
 void MainWindow::render() {
   try {
     if(raceRequested) {
@@ -1183,6 +1239,7 @@ void MainWindow::render() {
       time  += zeroCam==ZeroCam::Detached ? (fixedTime>0 ? fixedTime/1000.f : lastDt) : std::min(dt,0.1f);
     tick(std::min(dt,0.1f));
     hud->tick(std::min(dt,0.1f));
+    shadeCars(std::min(dt,0.1f));
 
     frameId = uint8_t((frameId+1)%MaxFramesInFlight);
     auto& sync = fence[frameId];
@@ -1217,10 +1274,15 @@ void MainWindow::render() {
         characterView->draw(enc,frameId,resources,*characters,push);
       if(traffic)
         trafficView->draw(enc,frameId,*traffic,viewProj,push,level ? &level->collision() : nullptr);
+      if(car && level) {
+        carSpotList.assign(1,carShadow->spot(carId,carPose));
+        carSpots->draw(enc,frameId,carSpotList,viewProj,push,level->collision());
+        }
       if(car) {
         auto&      mesh  = car->at((carPose.translation()-camera.position).length(),lodDistances);
         const auto parts = carPartPoses(mesh);
         mesh.setDirt(forcedDirt>=0 ? float(forcedDirt) : effects->dirt());
+        lightCar(mesh,&mesh==&car->full(),carLight,carShade.value());
         mesh.draw(enc,viewProj,push,carPose,&parts);
         }
       if(opponents) {
@@ -1231,6 +1293,7 @@ void MainWindow::render() {
             continue;
           auto&       mesh  = m->second->at((o.pose().translation()-camera.position).length(),lodDistances);
           const auto  parts = opponentPartPoses(mesh,o);
+          lightCar(mesh,&mesh==&m->second->full(),carLight,i<aiShades.size() ? aiShades[i].value() : 1.f);
           mesh.draw(enc,viewProj,push,o.pose(),&parts);
           }
         }

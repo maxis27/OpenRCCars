@@ -84,8 +84,8 @@ struct CarState {
     Vec3                 contact;          // where it touches the ground
     rc::Surface          surface = rc::Surface::Default;
     std::optional<float> water;            // height of the water surface over the wheel, if any
-    float                slip = 0;         // 0..1: wheel spin (RCCars.exe 0x5019a0), with
-    float                rimSpeed = 0;     // m/s of the tyre's surface; our Bullet car has no wheel spin: both 0
+    float                slip = 0;         // 0..1: wheel spin (RCCars.exe 0x5019a0, Vehicle::wheelSlip), with
+    float                rimSpeed = 0;     // rad/s the wheel turns at, + forwards; the computer's replays: both 0
     int                  slot = -1;        // RCCars.exe's number: 0/1 front left/right, 2/3 rear, 4/5 the middle
     Vec3                 axle{1,0,0};      // world, turned with the steering
     Vec3                 normal{0,1,0};    // of the ground at `contact`

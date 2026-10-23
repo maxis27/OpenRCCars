@@ -31,6 +31,8 @@
 #include "sounds.h"
 #include "world/characters.h"
 #include "world/traffic.h"
+#include "world/carshadow.h"
+#include "fx/carlight.h"
 #include "world/carmodel.h"
 #include "world/modelmesh.h"
 #include "world/level.h"
@@ -76,6 +78,7 @@ class MainWindow : public Tempest::Window {
     void respawnCar();    // back to the last checkpoint passed (R, drowned, out of the track, reset volume)
     // the car on the start line and the race from the countdown; `again`: "Jeszcze raz", no delay before "3"
     void setupPhysics(bool restartRace = true, bool again = false);
+    void shadeCars(float dt);                   // carShade, aiShades from the lightmaps under the cars
     void setupOpponents();                      // the opponents of the track for aiLevel
     // engines, checkpoint voice: once per frame after the physics
     void tickSounds(float dt);
@@ -130,6 +133,14 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<CharacterView>    characterView;
     std::unique_ptr<rc::Traffic>      traffic;    // road cars: bodies in `physics`
     std::unique_ptr<TrafficView>      trafficView;
+    std::unique_ptr<CarShadow>        carShadow;
+    std::unique_ptr<SpotView>         carSpots;
+    std::vector<SpotView::Spot>       carSpotList;
+    // how the cars are lit (carLight.ini, car_lmshd.ini): the level's lightmaps under them make them darker
+    rc::fx::CarLight                       carLight;
+    std::unique_ptr<rc::fx::LightmapProbe> lightProbe;
+    rc::fx::CarShade                       carShade;
+    std::vector<rc::fx::CarShade>          aiShades;
     std::unique_ptr<rc::Vehicle>      vehicle;
     std::unique_ptr<rc::Checkpoints>  checkpoints;
     std::unique_ptr<rc::Race>         race;

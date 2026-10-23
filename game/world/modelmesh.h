@@ -76,6 +76,12 @@ class ModelMesh {
     // how dirty the car is, 0 clean .. 2 (Effects::dirt): its paint (car_askin<car>*, car_bskin<car>*) gets the
     // dirt_car<car>_1/_2 textures (with a/b for the two paints of cars 2 and 3) laid over it
     void                     setDirt(float level) { dirt = level; }
+    // RCCars.exe's light of a car (rc::fx::CarLight): `ambient` + `direct` x the cosine towards `toLight` (world),
+    // held at 1; ambient 1 and direct 0 show the textures as they are (the far LODs). Not set: the light all
+    // models have
+    void                     setLight(float ambient, float direct = 0, const rc::Vec3& toLight = {0,1,0}) {
+      light = {true,ambient,direct,toLight};
+      }
 
     const std::string&       name()    const { return modelName; }
     const std::vector<Part>& parts()   const { return partList; }
@@ -105,4 +111,9 @@ class ModelMesh {
     const Tempest::Texture2d*             envTex = nullptr;
     rc::Vec3                              bbox[2];
     float                                 dirt = 0;
+    struct {
+      bool     on = false;
+      float    ambient = 1, direct = 0;
+      rc::Vec3 toLight = {0,1,0};
+      }                                   light;
   };

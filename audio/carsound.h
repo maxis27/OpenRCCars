@@ -22,7 +22,8 @@ namespace rc {
 //    up to 0 dB at 35 km/h, in water -10 dB up to 0 dB at 15 km/h), and a hit or a touch of the body against the
 //    ground or a prop (-5 dB at 1 km/h up to 0 dB at 35 km/h along the contact normal), at most one a second;
 //    landing on a surface with sounds counts as a hit of 17.5 km/h;
-//  - car_motor_ws: wheelspin, gas held below 5 km/h with the wheels spinning for 0.3 s: motor_accel1_ws, then the
+//  - car_motor_ws: wheelspin, a rear wheel spinning (slip over 0.45) for 0.3 s below 5 km/h, not braking, with the
+//    gas or the reverse key held: motor_accel1_ws, then the
 //    motor_engine_ws loop, motor_decel1_ws when it stops;
 //  - the engine is 5 dB quieter with the car in water.
 //
@@ -40,7 +41,8 @@ class CarSound {
       float   speed    = 0;     // km/h, whichever way
       bool    gas      = false; // forward key
       bool    back     = false; // brake / reverse key
-      bool    braking  = false; // the back key while still rolling forward
+      bool    braking  = false; // the wheels hold the car (the back key while still rolling forward, handbrake)
+      float   rearSlip = 0;     // the more spinning rear wheel's slip, 0..1 (Vehicle::wheelSlip)
       bool    airborne = false; // no wheel on the ground
       bool    racing   = false; // the race is on (not the countdown, not after the finish)
       bool    boost    = false; // the turbo works
@@ -96,7 +98,6 @@ class CarSound {
     Contact     event;            // contact of this update that makes a sound
     float       quiet      = 0;   // s until the next contact sound
     float       spinTime   = 0;
-    float       lastSpeed  = 0;
     bool        spinning   = false;
     float       speed    = 0;
     State       st       = State::Idle;

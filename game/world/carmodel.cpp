@@ -53,3 +53,12 @@ ModelMesh& CarModel::at(float distance, const Distances& d) {
     --i;
   return *lods[i];
   }
+
+void lightCar(ModelMesh& mesh, bool nearest, const rc::fx::CarLight& light, float shade) {
+  if(!nearest) {
+    mesh.setLight(1);
+    return;
+    }
+  // Direct3D's colours: 0..255, held at 255
+  mesh.setLight(std::min(light.ambient*shade,1.f),std::min(light.direct*shade,1.f),light.toLight);
+  }

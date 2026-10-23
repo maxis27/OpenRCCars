@@ -208,6 +208,13 @@ class Vehicle {
     CarRig::Pose               rigPose() const;
     // pose of geometry().wheels[i] in model space as drawn: hub position, steering and spin
     Mat4                       wheelPose(size_t i) const;
+    // how much wheel i spins against the ground (RCCars.exe 0x5019a0): the rad/s it turns faster or slower than it
+    // rolls, over 20, up to 1. `rim` gets the rad/s it turns at, + forwards.
+    float                      wheelSlip(size_t i, float* rim = nullptr) const;
+    // where wheel i touches the track (world), false in the air
+    bool                       wheelGround(size_t i, Vec3& at) const;
+    // the more spinning of the two rear wheels (the original's 2 and 3), for the wheelspin sound and smoke
+    float                      rearSlip() const;
 
   private:
     friend class PhysicsWorld;
@@ -221,8 +228,13 @@ class Vehicle {
       float       change   = 0;       // m: what `length` changed by in the last suspension pass (0x5970)
       bool        contact  = false;
       Vec3        point, normal;      // world: the point of the track the sphere touches, the normal there
-      float       spin     = 0;       // rad, for drawing
+      float       spin     = 0;       // rad, for drawing (0x5938)
       float       drag     = 0;       // 1/m: deep sand or water holding it back, k v^2 (0x4eeea0)
+      // how fast it turns (RCCars.exe 0x4ef280), rad/s, + forwards: as the ground under it rolls it (0x5940), what
+      // it follows of that (0x593c) and what the gas adds on top (0x5944)
+      float       roll     = 0;
+      float       turn     = 0;
+      float       gasSpin  = 0;
       };
 
     // RCCars.exe's rigid body (car data 0x57f4, state 0x5884): the centre of mass, the orientation, the momentum and
@@ -274,6 +286,8 @@ class Vehicle {
     void                                  advance(float dt);
     // one step of RCCars.exe's car physics (0x4f5e50)
     void                                  step(float h);
+    // after the steps of a frame of `dt` s: how fast the wheels turn and spin (0x4ef280)
+    void                                  wheelSpin(float dt);
     // the forces on the body as it is now, for an Euler step of `h` s (0x4f0910) -> moveForce / moveTorque
     void                                  engine();
     void                                  forces(float h);

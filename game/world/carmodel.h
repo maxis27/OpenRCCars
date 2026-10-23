@@ -3,6 +3,7 @@
 #include <array>
 #include <memory>
 
+#include "fx/carlight.h"
 #include "modelmesh.h"
 
 namespace rc { class PackFile; }
@@ -31,3 +32,7 @@ class CarModel {
   private:
     std::array<std::unique_ptr<ModelMesh>,3> lods;
   };
+
+// RCCars.exe's light of a car's LOD (0x5077e0): the nearest one (`nearest`) lit by `light` times the car's
+// brightness `shade` (rc::fx::CarShade), the far ones unlit
+void lightCar(ModelMesh& mesh, bool nearest, const rc::fx::CarLight& light, float shade);

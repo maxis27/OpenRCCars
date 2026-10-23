@@ -344,6 +344,7 @@ void Vehicle::place(const Mat4& pose, const Vec3& velocity, const Vec3& spin) {
     wh.contact = false;
     wh.spin    = 0;
     wh.drag    = 0;
+    wh.roll    = wh.turn = wh.gasSpin = 0;
     }
   steer        = 0;
   steerDeg     = 0;
@@ -478,16 +479,78 @@ void Vehicle::advance(float dt) {
     return;
   if(dt<0.02f) {
     steps(dt);
-    return;
     }
-  float rest = dt;
-  if(dt>0.038f)
-    do {
-      steps(0.02f);
-      rest -= 0.02f;
-      } while(rest>0.038f);
-  steps(0.5f*rest);
-  steps(0.5f*rest);
+  else {
+    float rest = dt;
+    if(dt>0.038f)
+      do {
+        steps(0.02f);
+        rest -= 0.02f;
+        } while(rest>0.038f);
+    steps(0.5f*rest);
+    steps(0.5f*rest);
+    }
+  wheelSpin(dt);
+  }
+
+// RCCars.exe 0x4ef280, once a frame after the steps. A wheel on the ground is rolled by it at roll = v/r (v: the
+// velocity of the wheel's point along its heading), in the air roll is 0; `turn` follows roll by 200 rad/s^2 on the
+// ground and 5 in the air. The gas (or the reverse key) held past 0.3 spins the wheel faster by up to
+// CarParams::spinMax, reached at 70 rad/s^2, on the ground only as long as the car is slower than 4 m/s (all of it
+// standing still, none at 4 m/s); otherwise that goes at 35 rad/s^2. Braking stops both. The wheel is drawn turned
+// by (turn + gasSpin) * dt every frame.
+void Vehicle::wheelSpin(float dt) {
+  auto towards = [](float v, float to, float rate) {
+    return std::abs(to-v)<=rate ? to : v+(to>v ? rate : -rate);
+    };
+  const bool  gas  = throttle>0.3f, back = throttle<-0.3f;
+  const float ls   = vel.length();
+  const auto  rp   = rigPose();
+  for(size_t i=0; i<wheels.size(); ++i) {
+    auto&      wh  = wheels[i];
+    const Mat4 wp  = rp.wheel(i);
+    const Vec3 hub = rot.point(wp.translation()-com)+st.x;
+    const float a  = steerAngle(wh)*Pi/180.f;   // + = left, towards +X
+    const Vec3 fwd = rot.vector({std::sin(a),0,std::cos(a)});
+    wh.roll = wh.contact ? Vec3::dot(pointVelocity(hub),fwd)/wh.radius : 0.f;
+    wh.turn = braking ? 0.f : towards(wh.turn,wh.roll,(wh.contact ? 200.f : 5.f)*dt);
+    float to = 0, rate = 35.f;
+    if(gas || back) {
+      to   = gas ? prm.spinMax : -prm.spinMax;
+      rate = 70.f;
+      if(wh.contact)
+        to *= std::clamp(1.f-0.25f*ls,0.f,1.f);
+      }
+    wh.gasSpin = braking ? 0.f : towards(wh.gasSpin,to,rate*dt);
+    wh.spin    = std::fmod(wh.spin+(wh.turn+wh.gasSpin)*dt,2.f*Pi);
+    }
+  }
+
+float Vehicle::rearSlip() const {
+  float s = 0;
+  for(int i:rearPair)
+    if(i>=0)
+      s = std::max(s,wheelSlip(size_t(i)));
+  return s;
+  }
+
+bool Vehicle::wheelGround(size_t i, Vec3& at) const {
+  if(i>=wheels.size() || !wheels[i].contact)
+    return false;
+  at = wheels[i].point;
+  return true;
+  }
+
+float Vehicle::wheelSlip(size_t i, float* rim) const {
+  if(i>=wheels.size()) {
+    if(rim!=nullptr)
+      *rim = 0;
+    return 0;
+    }
+  const auto& wh = wheels[i];
+  if(rim!=nullptr)
+    *rim = wh.turn+wh.gasSpin;
+  return std::min(std::abs(wh.turn+wh.gasSpin-wh.roll)/20.f,1.f);
   }
 
 // RCCars.exe holds a car still (0x4f59a0, 0x4f6610) once, with no key held, it has gone slower than 1.3 km/h and
@@ -1040,8 +1103,6 @@ bool Vehicle::suspension(float h, bool hit) {
       }
     }
 
-  const Vec3 v   = velocity();
-  const Vec3 fwd = axis(2);
   for(size_t i=0; i<wheels.size(); ++i) {
     auto& wh = wheels[i];
     wh.change = stopped || i>=std::size(before) ? 0.f : wh.length-before[i];
@@ -1050,9 +1111,6 @@ bool Vehicle::suspension(float h, bool hit) {
     local.setIdentity();
     local.setOrigin(toBt(wh.mount-Vec3{0,std::max(wh.length-WheelLift*wh.radius,prm.springMin),0}-com)*S);
     shape->updateChildTransform(int(prm.body.size())+int(i),local,false);
-    // rolling, for drawing
-    if(wh.contact && !braking)
-      wh.spin = std::fmod(wh.spin+Vec3::dot(v,fwd)/wh.radius*h,2.f*Pi);
     }
   shape->recalculateLocalAabb();
   return stopped;

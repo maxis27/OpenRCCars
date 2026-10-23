@@ -53,6 +53,8 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   hud      = std::make_unique<Hud>(device,res);
   arrow    = std::make_unique<DirectionArrow>(device,res);
   effects  = std::make_unique<Effects>(device,res);
+  sunView  = std::make_unique<SunView>(device,res);
+  flareSettings = rc::fx::LensFlare::Settings::load([&res](const std::string& f){ return res.pack().read(f); });
   sounds   = std::make_unique<Sounds>(res);
   menu     = std::make_unique<Menu>(device,res,*sounds);
   characterView = std::make_unique<CharacterView>(device);
@@ -126,6 +128,10 @@ void MainWindow::loadLevel(const std::string& name) {
     hud->setTrack(name);
     sounds->setTrack(level->scene(),level->mesh().seaCoast());
     effects->setTrack(level->scene(),level->mesh().mainSea());
+    if(auto sun = level->scene().marker("SUN_AF"))
+      sunFlare = rc::fx::LensFlare(flareSettings,sun->position());
+    else
+      sunFlare = rc::fx::LensFlare();
     camera  = level->startCamera();
     setupPhysics();
     }
@@ -1305,6 +1311,16 @@ void MainWindow::render() {
         level->mesh().draw(enc,push,LevelMesh::Pass::Translucent,viewProj,poses);
       if(vehicle)
         effects->draw(enc,frameId,int(w()),int(h()),viewProj,camera.position);
+      if(level && sunFlare.has()) {
+        // the sun and its flare (RCCars.exe 0x479250): a ray from the camera to the sun every TimeShootRay s
+        const rc::CollisionMesh& coll = level->collision();
+        sunFlare.update(paused ? 0.f : std::min(dt,0.1f),camera.position,camera.forward(),viewProj,int(w()),int(h()),
+                        [&coll](const rc::Vec3& from, const rc::Vec3& to) {
+                          const rc::Vec3 d = to-from;
+                          return coll.raycast(from,d,0.98f).has_value(); // not the sky the sun stands on
+                          });
+        sunView->draw(enc,frameId,int(w()),int(h()),sunFlare);
+        }
       if(level && showCollision)
         level->collisionView().draw(enc,push);
       if(race && vehicle) {

@@ -32,6 +32,8 @@
 #include "world/characters.h"
 #include "world/traffic.h"
 #include "world/carshadow.h"
+#include "world/sunview.h"
+#include "fx/lensflare.h"
 #include "fx/carlight.h"
 #include "world/carmodel.h"
 #include "world/modelmesh.h"
@@ -164,6 +166,9 @@ class MainWindow : public Tempest::Window {
     std::array<int32_t,3>   previewUpgrade = {-1,-1,-1};
     std::unique_ptr<DirectionArrow> arrow;
     std::unique_ptr<Effects>        effects;    // dust and spray of the cars
+    rc::fx::LensFlare::Settings     flareSettings;
+    rc::fx::LensFlare               sunFlare;   // the track's sun (SUN_AF) and its lens flare
+    std::unique_ptr<SunView>        sunView;
     std::unique_ptr<Sounds> sounds;
     std::unique_ptr<rc::CarSound>   carSound;   // the player's engine
     std::vector<rc::AiCarSound>     aiSounds;   // one per opponent

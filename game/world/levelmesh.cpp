@@ -332,7 +332,8 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
   // the detail textures
   const Detail detail = Detail::load(res.pack());
   for(int i=0; i<6; ++i) {
-    auto t = res.texture(i==0 ? std::string("detailer") : "detailer"+std::to_string(i+1));
+    // the game has no detailer6: what would get it stays without
+    auto t = i==5 ? nullptr : res.texture(i==0 ? std::string("detailer") : "detailer"+std::to_string(i+1));
     detailTex[i] = t!=nullptr ? &t->tex : nullptr;
     WaterBlock b;
     b.detail[0] = detail.scale[i]*0.1f;

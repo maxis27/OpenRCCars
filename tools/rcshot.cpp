@@ -10,7 +10,7 @@
 //   RCSHOT_BOOST=1 holds the boost, RCSHOT_START="x z yaw" puts the car somewhere else first.
 //   env RCSHOT_TIME=<seconds> is the moment of the water animation and of the moving scenery (beach_4's submarine
 //   and radar; default: the drive time, else 0).
-//   env RCSHOT_FOG=0 draws without the track's fog (Settings\fog_<track>.ini).
+//   env RCSHOT_FOG=0 draws without the track's fog (Settings\fog_<track>.ini), RCSHOT_NOSUN=1 without the sun.
 //   env RCSHOT_OBJECTS=0 hides the objects placed on the track (props, characters, road cars).
 //   env RCSHOT_ACTOR=<instance name> looks at a person or animal from RCSHOT_ACTOR_DIST m (default 2.5) after
 //   RCSHOT_ACTOR_TIME seconds (default 1) with the car parked RCSHOT_ACTOR_CAR m in front of it (default 2), and
@@ -49,6 +49,7 @@
 #include "game/world/characters.h"
 #include "game/world/traffic.h"
 #include "game/world/carshadow.h"
+#include "game/world/sunview.h"
 #include "game/world/carmodel.h"
 #include "fx/carlight.h"
 #include "physics/traffic.h"
@@ -375,6 +376,16 @@ int main(int argc, const char** argv) {
       Log::i("car brightness ",k);
       lightCar(*car,std::getenv("RCSHOT_LOD")==nullptr,light,k);
       }
+    // the sun and its flare as they are after half a second
+    rc::fx::LensFlare sunFlare;
+    if(auto sun = level.scene().marker("SUN_AF"); sun!=nullptr && std::getenv("RCSHOT_NOSUN")==nullptr)
+      sunFlare = rc::fx::LensFlare(rc::fx::LensFlare::Settings::load([&res](const std::string& f){ return res.pack().read(f); }),
+                                   sun->position());
+    for(int i=0; i<30 && sunFlare.has(); ++i)
+      sunFlare.update(1.f/60.f,cam.position,cam.forward(),viewProj,int(w),int(h),[&level](const rc::Vec3& a, const rc::Vec3& b) {
+        return level.collision().raycast(a,b-a,0.98f).has_value();
+        });
+    SunView                     sunView(device,res);
     SpotView                    carSpots(device);
     std::vector<SpotView::Spot> carSpotList;
     CommandBuffer cmd;
@@ -402,6 +413,7 @@ int main(int argc, const char** argv) {
       level.mesh().draw(enc,push,LevelMesh::Pass::Translucent,viewProj,poses,sky);
       if(fx)
         fx->draw(enc,0,int(w),int(h),viewProj,cam.position);
+      sunView.draw(enc,0,int(w),int(h),sunFlare);
       if(std::getenv("RCSHOT_COLL")!=nullptr)
         level.collisionView().draw(enc,push);
     }

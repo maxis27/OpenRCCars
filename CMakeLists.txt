@@ -101,6 +101,7 @@ add_library(rcfx STATIC
   fx/groundspots.h fx/groundspots.cpp
   fx/carlight.h   fx/carlight.cpp
   fx/animobjects.h fx/animobjects.cpp
+  fx/lensflare.h  fx/lensflare.cpp
   )
 target_link_libraries(rcfx PUBLIC rcformats)
 
@@ -143,6 +144,7 @@ add_library(rcengine STATIC
   game/world/traffic.h     game/world/traffic.cpp
   game/world/spots.h       game/world/spots.cpp
   game/world/carshadow.h   game/world/carshadow.cpp
+  game/world/sunview.h     game/world/sunview.cpp
   )
 target_include_directories(rcengine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} lib/Tempest/Engine/include)
 target_link_libraries(rcengine PUBLIC rcformats rcphysics rcaudio rcfx Tempest Shaders)

@@ -232,7 +232,9 @@ Jazda (kamera za autem):
 
 Menu (mysz): w menu głównym wybór trasy obrazkami (też ← / →), „Szybki wyścig” to tor, liczba okrążeń,
 umiejętności przeciwników i auto; zielony „Wyścig” rusza (też Enter), „Wyjdź” zamyka grę. Przyciski części,
-których jeszcze nie ma (mistrzostwa, opcje, autorzy …), są szare.
+których jeszcze nie ma (mistrzostwa, opcje, autorzy …), są szare. Oryginał pokazuje menu zawsze w 800x600
+(RCCars.exe 0x4a6840); u nas menu wypełnia całe okno: tło jest rozciągnięte na szerokość, przyciski po prawej
+trzymają się krawędzi i łuków tła, a obrazki, napisy i auto zachowują proporcje.
 
 Tryb deweloperski (`-dev`, jak `RCCars.exe -dev`):
 

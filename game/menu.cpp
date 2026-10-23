@@ -197,7 +197,20 @@ Menu::Box Menu::slotBox(int slot) const {
 Menu::Box Menu::buttonBox(const Button& b) const {
   if(b.kind==Button::Race)
     return {RaceBox[0]*800.f,RaceBox[1]*600.f,RaceBox[2]*800.f,RaceBox[3]*600.f};
-  return slotBox(b.slot);
+  // on a wide screen the right ones stay on the plates of the stretched background, reaching the screen's edge
+  Box r = slotBox(b.slot);
+  r.x0 *= stretch();
+  r.x1  = 800.f+wide;
+  return r;
+  }
+
+void Menu::layout(int w, int h) {
+  // the whole window: the 800x600 screen as high as the window (as wide where it is narrower), the background
+  // stretched to the sides and the controls kept by the edges or the middle they belong to
+  scale   = std::min(float(h)/600.f,float(w)/800.f);
+  offsetX = 0;
+  wide    = std::max(0.f,float(w)/scale-800.f);
+  dx      = 0;
   }
 
 void Menu::open(Page p) {
@@ -428,7 +441,7 @@ void Menu::pressButton(Button& b) {
   }
 
 void Menu::mouseMove(int x, int y) {
-  mouseX  = (float(x)-offsetX)/scale;
+  mouseX  = float(x)/scale;
   mouseY  = float(y)/scale;
   mouseIn = true;
   if(slide!=0)
@@ -455,7 +468,7 @@ void Menu::mouseMove(int x, int y) {
       playControl(0);
     }
   for(auto& p:pills) {
-    const bool in = p.box.contains(mouseX,mouseY);
+    const bool in = p.box.contains(mouseX-wide*0.5f,mouseY);
     if(in && !p.hover)
       playControl(0);
     p.hover = in;
@@ -471,7 +484,8 @@ void Menu::mouseMove(int x, int y) {
   auto hoverEnum = [&](Enum& e) {
     Box l, r;
     arrowsOf(e,l,r);
-    const bool hl = l.contains(mouseX,mouseY), hr = r.contains(mouseX,mouseY);
+    const float mx = mouseX-contentShift();
+    const bool  hl = l.contains(mx,mouseY), hr = r.contains(mx,mouseY);
     if((hl && !e.hoverL) || (hr && !e.hoverR))
       playControl(1);
     e.hoverL = hl;
@@ -517,7 +531,7 @@ void Menu::mouseDown(int x, int y) {
     const float side = 100.f+3.f;
     for(int k:{-2,-1,1,2}) {
       const float x0 = k<0 ? 223.f-3.f+float(k)*side : 223.f+199.f+3.f+float(k-1)*side;
-      if(Box{x0,303,x0+100,379}.contains(mouseX,mouseY)) {
+      if(Box{x0,303,x0+100,379}.contains(mouseX-contentShift(),mouseY)) {
         changeShot(k);
         return;
         }
@@ -565,7 +579,7 @@ std::optional<Menu::Preview> Menu::carPreview() const {
     return std::nullopt;
   // dlgRACESUM animCar
   Preview p;
-  p.x = px(306);
+  p.x = px(306+contentShift());
   p.y = py(254);
   p.w = 374.f*scale;
   p.h = 304.f*scale;
@@ -581,7 +595,7 @@ std::optional<Menu::Preview> Menu::carPreview() const {
 void Menu::image(const Tex& t, const Box& b, const Uv& uv, const Color& c) {
   if(!t)
     return;
-  quad(*t.tex,1,1,{uv.u0,uv.v0,uv.u1,uv.v1},px(b.x0),py(b.y0),(b.x1-b.x0)*scale,(b.y1-b.y0)*scale,
+  quad(*t.tex,1,1,{uv.u0,uv.v0,uv.u1,uv.v1},px(b.x0+dx),py(b.y0),(b.x1-b.x0)*scale,(b.y1-b.y0)*scale,
        {c[0],c[1],c[2],c[3]*fade});
   }
 
@@ -592,7 +606,7 @@ void Menu::imageOpaque(const Tex& t, const Box& b, const Uv& uv) {
   }
 
 void Menu::fill(const Box& b, const Color& c) {
-  quad(*white,1,1,{0,0,1,1},px(b.x0),py(b.y0),(b.x1-b.x0)*scale,(b.y1-b.y0)*scale,{c[0],c[1],c[2],c[3]*fade});
+  quad(*white,1,1,{0,0,1,1},px(b.x0+dx),py(b.y0),(b.x1-b.x0)*scale,(b.y1-b.y0)*scale,{c[0],c[1],c[2],c[3]*fade});
   }
 
 void Menu::label(const Font& f, std::string_view s, const Box& b, int ax, int ay, const Color& c, float k) {
@@ -603,7 +617,7 @@ void Menu::label(const Font& f, std::string_view s, const Box& b, int ax, int ay
   const float h  = f.cell*k;
   const float y  = ay==0 ? b.y0 : ay==1 ? (b.y0+b.y1)*0.5f-h*0.5f-h*0.06f : b.y1-h*0.78f-4.f;
   const float x  = ax==0 ? b.x0 : ax==1 ? (b.x0+b.x1)*0.5f : b.x1;
-  text(f,s,px(x),py(y),h,{c[0],c[1],c[2],c[3]*fade},ax-1);
+  text(f,s,px(x+dx),py(y),h,{c[0],c[1],c[2],c[3]*fade},ax-1);
   }
 
 void Menu::lines(const Font& f, std::string_view s, const Box& b, int ax, float step, const Color& c) {
@@ -630,7 +644,9 @@ void Menu::underline(float x0, float x1, float y, const Color& c) {
 void Menu::drawBackground() {
   // 0x4de1a0: the four Podl_ parts, first opaque (their colour where they are clear makes the dark centre), then
   // over it once more with their opacity
-  const Box boxes[4] = {{0,0,512,512},{512,0,800,512},{0,512,512,600},{512,512,800,600}};
+  // stretched to the width of the window
+  const float k = stretch();
+  const Box   boxes[4] = {{0,0,512*k,512},{512*k,0,800*k,512},{0,512,512*k,600},{512*k,512,800*k,600}};
   const Uv  uvs[4]   = {{0,0,1,1},{0,0,1,1},{0,0,1,0.34f},{0,0,1,0.34f}};
   for(size_t i=0; i<4; ++i)
     imageOpaque(podl[i],boxes[i],uvs[i]);
@@ -662,7 +678,8 @@ void Menu::drawButton(const Button& b) {
   const Box   r    = buttonBox(b);
   const int   slot = b.slot & 7;
   // the change of screen (0x4ab3d0): the plate first, then the button, from the right; lower ones later
-  float plateOff = 0, off = 0;   // fractions of the screen's width
+  const float W    = 800.f+wide;   // the screen's width
+  float plateOff = 0, off = 0, focus = 0;   // fractions of the screen's width
   if(slide!=0) {
     const float a = (float(slot)*0.25f+1.f)*0.4f;
     const float k = 2.f-float(slot)*0.125f;
@@ -674,15 +691,16 @@ void Menu::drawButton(const Button& b) {
   const bool lit = b.enabled && (b.hover || b.checked);
   if(off==0 || off<1.f) {
     if(b.anim==1) {
-      off  += -0.1f*focusIn.at(b.animT/0.6f);
+      focus = -0.1f*focusIn.at(b.animT/0.6f);
       glint = b.animT/0.6f;
       }
     else if(b.anim==2)
-      off  += -0.1f*focusOut.at(b.animT/0.6f);
+      focus = -0.1f*focusOut.at(b.animT/0.6f);
     else if(lit)
-      off  += -0.1f*focusIn.at(1.f);
+      focus = -0.1f*focusIn.at(1.f);
     }
   if(b.kind==Button::Race) {
+    off += focus;
     // Button_race: grey, green; lit when focused
     const auto& uv = RaceUv[!b.enabled ? 0 : b.hover ? 4 : 1];
     const float dx = std::max(0.f,plateOff>=1e-6f ? 1.f : off)*800.f;
@@ -693,11 +711,13 @@ void Menu::drawButton(const Button& b) {
     }
   // the plate under it (ButtonPodl_right_<slot+1>)
   const float cy = (r.y0+r.y1)*0.5f-0.02917f*600.f;
-  const Box   pb = {0.68f*800.f+plateOff*800.f,cy,800.f+plateOff*800.f,cy+0.0633f*600.f};
+  const Box   pb = {0.68f*800.f*stretch()+plateOff*W,cy,W+plateOff*W,cy+0.0633f*600.f};
   image(plates[size_t(std::clamp(b.slot,0,8))],pb,{PlateUv[0],PlateUv[1],PlateUv[2],PlateUv[3]},{1,1,1,1});
 
   const bool  back = b.kind==Button::Back;
-  const Box   s    = {r.x0+off*800.f,r.y0+(back ? 5.f : 4.f),r.x1+off*800.f,r.y1-(back ? 3.f : 2.f)};
+  const float sh   = off*W+focus*800.f;
+  const Box   s    = {r.x0+sh,r.y0+(back ? 5.f : 4.f),std::min(r.x0+(r.x1-r.x0)/stretch(),W)+sh,
+                      r.y1-(back ? 3.f : 2.f)};
   const bool  pressed = b.pressT>0;
   const Tex*  t  = &buttons;
   const float* uv = nullptr;
@@ -723,8 +743,8 @@ void Menu::drawButton(const Button& b) {
     }
   image(*t,s,{uv[0],uv[1],uv[2],uv[3]},{1,1,1,1});
   // moved left, the button's last column stretched to the screen's edge (0x4ac2d0)
-  if(s.x1<800.f)
-    image(*t,{s.x1,s.y0,800.f,s.y1},{uv[2],uv[1],uv[2],uv[3]},{1,1,1,1});
+  if(s.x1<W)
+    image(*t,{s.x1,s.y0,W,s.y1},{uv[2],uv[1],uv[2],uv[3]},{1,1,1,1});
   if(glint>=0 && flare) {
     const float gx = r.x0+0.2f*800.f*blick.at(glint);
     const float a  = 1.f-std::clamp(blickAlpha.at(glint),0.f,1.f);
@@ -732,7 +752,7 @@ void Menu::drawButton(const Button& b) {
     }
   // the text, right aligned at 0.995 of the screen (0x4abfa0)
   const float c = lit ? 1.f : Grey;
-  label(font20,str(b.text),{s.x0,s.y0,0.995f*800.f,s.y1},2,1,{c,c,c,1});
+  label(font20,str(b.text),{s.x0,s.y0,W-0.005f*800.f,s.y1},2,1,{c,c,c,1});
   }
 
 void Menu::drawPill(const Pill& p) {
@@ -866,12 +886,15 @@ void Menu::drawCursor() {
 
 void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const std::function<void()>& preview) {
   begin(w,h);
+  layout(w,h);
   size_t at = size_t(-1);
   if(current==Page::InRace) {
     // over the race: the scene darkened
     quad(*white,1,1,{0,0,1,1},0,0,float(w),float(h),{0,0,0,0.5f});
+    dx = wide*0.5f;
     for(auto& p:pills)
       drawPill(p);
+    dx = 0;
     drawCursor();
     flush(enc,frame);
     return;
@@ -883,12 +906,17 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
   // the screen's own controls fade out and in with the change of screen
   fade = slide==0 ? 1.f : std::clamp(slideT/SlideTime,0.f,1.f);
   if(current==Page::Main) {
+    dx = wide;
     if(logo)
       image(logo,{800-100,0,800,100},{0,0,1,1},{1,1,1,1});
+    dx = contentShift();
     drawMain();
     }
-  if(current==Page::QuickRace)
+  if(current==Page::QuickRace) {
+    dx = contentShift();
     drawQuickRace();
+    }
+  dx   = 0;
   fade = 1;
   for(auto& b:right)
     drawButton(b);
@@ -899,34 +927,41 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
 
 void Menu::drawLoading(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, size_t track, float progress) {
   begin(w,h);
+  layout(w,h);
+  const float k = stretch();
   // 0x570888: Desktop, the map, two lines, four shots, the progress, the name and "Wczytywanie..."
   if(desktop.loaded) {
     sharpen = -1;
-    quad(desktop.tex,desktop.w,desktop.h,{0,0,float(desktop.w),float(desktop.h)},px(0),py(0),800*scale,600*scale,
+    quad(desktop.tex,desktop.w,desktop.h,{0,0,float(desktop.w),float(desktop.h)},px(0),py(0),800*k*scale,600*scale,
          {1,1,1,1});
     sharpen = 0;
     }
   const std::string prefix = track<TrackCount ? shotPrefix(track) : "";
   if(!prefix.empty()) {
+    // the map in the middle, the shots by the sides
+    dx = wide*0.5f;
     if(auto t = tex(prefix+"_L"))
       image(t,{0.2f*800,0,0.84f*800,0.8533f*600},{0,0,1,1},{1,1,1,1});
     const Box shots[4] = {{0.0025f*800,0.05f*600,0.3225f*800,0.4767f*600},{0.6775f*800,0.05f*600,0.9975f*800,0.4767f*600},
                           {0.0025f*800,0.365f*600,0.3225f*800,0.7917f*600},{0.6775f*800,0.365f*600,0.9975f*800,0.7917f*600}};
-    for(int i=0; i<4; ++i)
+    for(int i=0; i<4; ++i) {
+      dx = i%2==0 ? 0 : wide;
       if(auto t = tex(prefix+"_"+std::to_string(i)))
         image(t,shots[i],{0,0,1,1},{1,1,1,1});
+      }
+    dx = 0;
     }
   const Color white = {1,1,1,1};
-  underline(0.05375f*800,0.9337f*800,0.09f*600,white);
-  underline(0.05375f*800,0.9337f*800,0.7583f*600,white);
+  underline(0.05375f*800*k,0.9337f*800*k,0.09f*600,white);
+  underline(0.05375f*800*k,0.9337f*800*k,0.7583f*600,white);
   if(track<TrackCount)
-    label(font26,str(T_TrackName+uint32_t(track)),{0,0,800,0.7467f*600},1,2,white);
-  label(font26,str(T_Loading),{0,0,800,0.9033f*600},1,2,white);
+    label(font26,str(T_TrackName+uint32_t(track)),{0,0,800*k,0.7467f*600},1,2,white);
+  label(font26,str(T_Loading),{0,0,800*k,0.9033f*600},1,2,white);
 
   // the progress (class PGS, 0x4b89e0): the grey bar with round ends, the red one from the left as far as the
   // loading is, a dot at every tenth and the slider
   if(progressor) {
-    const Box   b  = {0.04125f*800,0.9117f*600,0.9588f*800,0.955f*600};
+    const Box   b  = {0.04125f*800*k,0.9117f*600,0.9588f*800*k,0.955f*600};
     const float i0 = b.x0+27, i1 = b.x1-27;   // where the red one goes
     const float xp = i0+(i1-i0)*std::clamp(progress,0.f,1.f);
     image(progressor,{b.x0,b.y0,b.x0+64,b.y1},{0,0,1,0.25f},white);

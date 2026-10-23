@@ -16,8 +16,9 @@ class Sounds;
 
 // The game's front end as RCCars.exe draws it (its dialog framework, 0x43f250 and the window classes of
 // 0x4aa2e0 ..): the main menu, the quick race, the loading screen and the menu over a race (Esc). Laid out in
-// units of a 800x600 screen like the original, whose dialogs are fractions of the screen; on wide screens the
-// pictures keep their shape, centred between black bars.
+// units of a 800x600 screen like the original, whose dialogs are fractions of the screen (it always shows its menus
+// in 800x600, RCCars.exe 0x4a6840); on wide screens the background is stretched to the whole window and the
+// controls keep their shape, by the edge or the part of the background they belong to.
 class Menu : public Canvas {
   public:
     enum class Page : uint8_t {
@@ -152,7 +153,14 @@ class Menu : public Canvas {
     std::string_view str(uint32_t id) const;
     Tex    tex(const std::string& name);
     Box    slotBox(int slot) const;
+    // where the button is: the right ones stretched to the screen's edge on wide screens
     Box    buttonBox(const Button& b) const;
+    // the scale and the width of the window for this frame (after begin())
+    void   layout(int w, int h);
+    // how many times the background is stretched sideways
+    float  stretch() const { return (800.f+wide)/800.f; }
+    // where the screen's own controls go on a wide screen: under the middle of the background's circle
+    float  contentShift() const { return wide*0.4f; }
 
     // drawing in 800x600 units
     void   image(const Tex& t, const Box& b, const Uv& uv, const Color& c);
@@ -214,4 +222,6 @@ class Menu : public Canvas {
     bool                    mouseIn = false;
     float                   time = 0;
     float                   fade = 1;   // the opacity of what is drawn (the screen's controls changing)
+    float                   wide = 0;   // how much wider than 800 units the window is
+    float                   dx   = 0;   // moves what is drawn right, in units
   };

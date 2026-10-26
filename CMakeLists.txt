@@ -129,6 +129,7 @@ add_library(rcengine STATIC
   game/canvas.h            game/canvas.cpp
   game/menu.h              game/menu.cpp
   game/hud.h               game/hud.cpp
+  game/fpscounter.h        game/fpscounter.cpp
   game/arrow.h             game/arrow.cpp
   game/effects.h           game/effects.cpp
   game/sounds.h            game/sounds.cpp

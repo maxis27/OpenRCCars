@@ -654,6 +654,17 @@ nawierzchniach, uderzenia i otarcia, buksowanie (`car_motor_ws`, [obrót kół](
   włącza na `GMP_INIT_MAP` i wyłącza na `GMP_TERM_MAP`, czyli przez cały czas wczytanej trasy; wiadomość 0x83
   z interfejsu (0x4c73c9, 0x4ca9a1) wyłącza ją na czas ekranów menu (przypuszczenie z kontekstu). U nas kody nie
   działają, gdy otwarte jest menu. `debug.gm` czytamy tylko po `Set ZeroSpeed/ZeroAngle/FixedTime`.
+- **Licznik FPS** (0x4a3c3c, `game/fpscounter.*`): gdy zmienna skryptów `ShowFPS` (rejestrowana z 0 w 0x490383,
+  ustawiana np. `Set ShowFPS 1` w `Config.gm` albo `Autoexec.gm`; działa też bez `-dev`) nie jest zerem, gra co klatkę
+  wypisuje w warstwie napisów debugowania (0x148fae8, 9 miejsc na ekranie, 0x480020) przy lewej krawędzi w połowie
+  wysokości `FPS:%5.1f TRS:%4.1f+%4.1f+%4.1f=%4.1fms P/S:%6.1fK`, w lewym górnym rogu
+  `P/F:%4.1fK VVM:%5.2fM(%5.2fM) T/F:%5.2fM` i niżej `TVM:%5.2fM(%5.2fM)` (wielokąty na klatkę, pamięć wideo
+  i tekstur). Liczby są średnimi z co najmniej 1 s (0x554390): klatki i wielokąty (licznik 0x14761f4, 0x462a40)
+  zliczone, podzielone przez czas, liczone od nowa, gdy czas przekroczy sekundę; FPS idzie też do zmiennej
+  `gmdShowFPS`. Czcionka warstwy to `albet16` (16x16, 0x48f2a7), której nie ma w plikach gry. U nas tylko pierwsza
+  linia bez P/S, czcionką Smash20 na przyciemnionym pasku, a T, R i S to nasze czasy (logika gry; czekanie na klatkę
+  w locie i nagranie rysowania; wysłanie i pokazanie klatki), bo znaczenie oryginalnych nie jest rozpracowane. F12
+  przełącza licznik (nasz klawisz).
 - **Nie przeniesione**: polecenia skryptów kariery (`GetInfo` i `GetStat` wypisują profil gracza: kasę, wynik, auta
   z ulepszeniami, otwarte wyścigi; `Give`, `Buy`, `EmRace`), bo nie ma jeszcze profili ani mistrzostw, oraz kody
   `burst`, `road` (i drugi `constr`), które przełączają flagi, których nikt nie czyta (`burst`: 0x4fd420 → 0x5725e8).

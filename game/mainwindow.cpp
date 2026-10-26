@@ -51,6 +51,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   resetSwapchain();
   carScene = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
   hud      = std::make_unique<Hud>(device,res);
+  fps      = std::make_unique<FpsCounter>(device,res);
   arrow    = std::make_unique<DirectionArrow>(device,res);
   effects  = std::make_unique<Effects>(device,res);
   sounds   = std::make_unique<Sounds>(res);
@@ -77,6 +78,10 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
     zeroAngle = scriptValue(res,f,"ZeroAngle",zeroAngle);
     fixedTime = scriptValue(res,f,"FixedTime",fixedTime);
     }
+  // ShowFPS: a variable of the game's scripts (RCCars.exe 0x490383), Config.gm runs before Autoexec.gm
+  for(const char* f:{"Config.gm","Autoexec.gm","debug.gm"})
+    if(devMode || f!=std::string("debug.gm"))
+      fps->visible = scriptValue(res,f,"ShowFPS",fps->visible ? 1.f : 0.f)!=0;
   // the codes registered with -dev (0x480568, 0x482728, 0x4e9cc0, 0x4fcb40, 0x5313a8); burst, road and the
   // first constr only flip flags nothing reads, so they are left out
   if(devMode)
@@ -414,6 +419,11 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
   keys[e.key] = true;
   if(devMode && e.key==Event::K_F11)
     Tempest::SystemApi::exit();
+  // F12: the frame rate line (ours; the original only has its ShowFPS variable)
+  if(e.key==Event::K_F12) {
+    fps->visible = !fps->visible;
+    return;
+    }
   if(menu->active()) {
     menu->keyDown(e.key);
     return;
@@ -1157,9 +1167,12 @@ void MainWindow::renderMenu() {
       if(preview)
         drawCarPreview(enc,*preview);
       });
+    fps->draw(enc,frameId,int(w()),int(h()));
   }
+  fps->drawDone();
   sync = device.submit(cmd);
   device.present(swapchain);
+  fps->presented();
   }
 
 // RCCars.exe 0x531ff0 (rc::fx::CarLight): the lightmap under the first four wheels touching the track, for the
@@ -1222,6 +1235,7 @@ void MainWindow::render() {
       raceRequested = false;
       startRace();
       }
+    fps->frameStart();
     const uint64_t now = Application::tickCount();
     const float    dt  = float(now-lastTick)/1000.f;
     lastTick = now;
@@ -1232,6 +1246,7 @@ void MainWindow::render() {
     if(front) {
       sounds->tick();
       sounds->setPaused(false);
+      fps->logicDone();
       renderMenu();
       return;
       }
@@ -1240,6 +1255,7 @@ void MainWindow::render() {
     tick(std::min(dt,0.1f));
     hud->tick(std::min(dt,0.1f));
     shadeCars(std::min(dt,0.1f));
+    fps->logicDone();
 
     frameId = uint8_t((frameId+1)%MaxFramesInFlight);
     auto& sync = fence[frameId];
@@ -1320,10 +1336,13 @@ void MainWindow::render() {
         }
       if(menu->active())
         menu->draw(enc,frameId,int(w()),int(h()),{});
+      fps->draw(enc,frameId,int(w()),int(h()));
     }
+    fps->drawDone();
 
     sync = device.submit(cmd);
     device.present(swapchain);
+    fps->presented();
     }
   catch(const Tempest::SwapchainSuboptimal&) {
     resetSwapchain();

@@ -31,6 +31,12 @@ std::shared_ptr<const Clip> SoundLibrary::clip(const std::string& name) {
   return c;
   }
 
+void SoundLibrary::preload() {
+  for(auto& ch:sounds.channels)
+    for(auto& s:ch.sounds)
+      clip(s.name);
+  }
+
 BankChannel::BankChannel(Mixer& mixer, SoundLibrary& lib, const std::string& channel) {
   def = lib.bank().find(channel);
   if(def==nullptr) {

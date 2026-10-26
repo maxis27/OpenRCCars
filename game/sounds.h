@@ -71,6 +71,8 @@ class Sounds {
 
   private:
     void nextTrack();
+    // the sound channels of a .sb file of the game's folder (none if it cannot be read)
+    std::unique_ptr<rc::SoundLibrary> loadLibrary(const char* sbFile, const char* what);
 
     Resources&                                   res;
     rc::Mixer                                    mix;

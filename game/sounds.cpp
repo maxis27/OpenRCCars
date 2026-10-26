@@ -44,6 +44,13 @@ Sounds::Sounds(Resources& res) : res(res) {
   catch(const std::exception& e) {
     Log::e("music list: ",e.what());
     }
+  // every sound read now, before the menus: read when first played, it held up that frame of the race
+  peopleLib    = loadLibrary("RCCarsDB/people.sb","character sounds");
+  animalLib    = loadLibrary("RCCarsDB/AIChars.sb","character sounds");
+  propLib      = loadLibrary("RCCarsDB/stone.sb","prop sounds");
+  interfaceLib = loadLibrary("RCCarsDB/Interface.sb","menu sounds");
+  for(auto* l:{lib.get(),peopleLib.get(),animalLib.get(),propLib.get(),interfaceLib.get()})
+    l->preload();
 
   try {
     device = std::make_unique<SoundDevice>();
@@ -61,6 +68,17 @@ Sounds::~Sounds() {
   device.reset();
   }
 
+std::unique_ptr<rc::SoundLibrary> Sounds::loadLibrary(const char* sbFile, const char* what) {
+  std::vector<uint8_t> sb;
+  try {
+    sb = res.readFile(sbFile);
+    }
+  catch(const std::exception& e) {
+    Log::e(what,": ",e.what());
+    }
+  return std::make_unique<rc::SoundLibrary>([this](const std::string& f){ return res.pack().read(f); },sb);
+  }
+
 void Sounds::play(const std::string& channel, const std::string& sound) {
   auto it = channels.find(channel);
   if(it==channels.end())
@@ -69,16 +87,6 @@ void Sounds::play(const std::string& channel, const std::string& sound) {
   }
 
 void Sounds::playInterface(const std::string& channel, int sound) {
-  if(interfaceLib==nullptr) {
-    std::vector<uint8_t> sb;
-    try {
-      sb = res.readFile("RCCarsDB/Interface.sb");
-      }
-    catch(const std::exception& e) {
-      Log::e("menu sounds: ",e.what());
-      }
-    interfaceLib = std::make_unique<rc::SoundLibrary>([this](const std::string& f){ return res.pack().read(f); },sb);
-    }
   auto it = interfaceChannels.find(channel);
   if(it==interfaceChannels.end()) {
     it = interfaceChannels.emplace(channel,rc::BankChannel(mix,*interfaceLib,channel)).first;
@@ -135,16 +143,6 @@ void Sounds::tickCharacters(const rc::Characters& chars, const rc::Vec3& ear, co
         continue;   // nothing to stop either
       const bool people = a->kind==rc::Characters::Kind::Person || a->kind==rc::Characters::Kind::Guard;
       auto&      lib    = people ? peopleLib : animalLib;
-      if(lib==nullptr) {
-        std::vector<uint8_t> sb;
-        try {
-          sb = res.readFile(people ? "RCCarsDB/people.sb" : "RCCarsDB/AIChars.sb");
-          }
-        catch(const std::exception& e) {
-          Log::e("character sounds: ",e.what());
-          }
-        lib = std::make_unique<rc::SoundLibrary>([this](const std::string& f){ return res.pack().read(f); },sb);
-        }
       it = actorChannels.emplace(key,rc::BankChannel(mix,*lib,a->model->name)).first;
       }
     auto&          ch = it->second;
@@ -159,16 +157,6 @@ void Sounds::tickCharacters(const rc::Characters& chars, const rc::Vec3& ear, co
   }
 
 void Sounds::tickProps(const std::vector<Objects::Sound>& props, const rc::Vec3& ear, const rc::Vec3& right) {
-  if(propLib==nullptr) {
-    std::vector<uint8_t> sb;
-    try {
-      sb = res.readFile("RCCarsDB/stone.sb");
-      }
-    catch(const std::exception& e) {
-      Log::e("prop sounds: ",e.what());
-      }
-    propLib = std::make_unique<rc::SoundLibrary>([this](const std::string& f){ return res.pack().read(f); },sb);
-    }
   std::map<std::string,int> seen;
   for(auto& p:props) {
     if(p.model==nullptr)

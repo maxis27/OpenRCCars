@@ -11,7 +11,7 @@
 
 namespace rc {
 
-// Sound\*.wav loaded on first use, and the channels of RCCars.sb
+// Sound\*.wav loaded on first use (or all at once by preload()), and the channels of RCCars.sb
 class SoundLibrary {
   public:
     using Reader = std::function<std::vector<uint8_t>(const std::string&)>;
@@ -22,6 +22,9 @@ class SoundLibrary {
     const SoundBank&            bank() const { return sounds; }
     // e.g. "cp_start" for Sound\cp_start.wav; nullptr if it cannot be loaded (logged once)
     std::shared_ptr<const Clip> clip(const std::string& name);
+    // every sound of every channel, read now rather than when it is first played: a read from RCCars.pack in the
+    // middle of a race holds up that frame (~100 ms for dog_attack.wav from a cold disk)
+    void                        preload();
 
   private:
     Reader                                             read;

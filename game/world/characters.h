@@ -24,6 +24,9 @@ class CharacterView {
     explicit CharacterView(Tempest::Device& device);
     ~CharacterView();
 
+    // the meshes and textures of all of `chars`, made now rather than when each first comes near the camera (the
+    // textures are read from RCCars.pack, which holds up that frame); call it for every new rc::Characters
+    void preload(Resources& res, const rc::Characters& chars);
     // `frame` is the frame in flight: its vertex buffer is rewritten
     void draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frame, Resources& res,
               const rc::Characters& chars, const LevelMesh::Push& push);
@@ -54,6 +57,8 @@ class CharacterView {
       };
 
     const Model& model(const rc::Skeleton& sk);
+    // the texture `a` wears for its model's `own` (its "clother" textures)
+    static std::string textureOf(const rc::Characters::Actor& a, const std::string& own);
 
     Tempest::Device&                                   device;
     ScenePipelines                                     pso;

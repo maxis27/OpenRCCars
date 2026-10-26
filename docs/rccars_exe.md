@@ -650,6 +650,13 @@ silnik gracza i przeciwników (`audio/carsound.h`), punkty kontrolne, turbo, ham
 nawierzchniach, uderzenia i otarcia, buksowanie (`car_motor_ws`, [obrót kół](#fizyka-auta)), rozbryzgi fal
 `water_splash`, wodospady `WATER_FALL_N`, ruch uliczny i muzyka MP3 z `Tracks/` w kolejności z `Autoexec.gm`.
 
+- **Wczytywanie** (menedżer dźwięków `snm*`): oryginał wczytuje wszystkie zarejestrowane dźwięki naraz (`snmLoadAll`,
+  0x495f20) w kroku `SEND_INIT` ładowania trasy (0x48d15b, po `LOAD_INST` i `LOAD_TEXTURES`, przed zdjęciem ekranu
+  ładowania), a dźwięki menu po ich rejestracji (0x4dd755); przy wyjściu z trasy zwalnia je (0x495fa0, 0x48c700).
+  Odtwarzanie niewczytanego dźwięku nie wczytuje go, tylko loguje błąd i milczy (`snmGetBuffer`, 0x496000). U nas
+  wszystkie dźwięki (`RCCars.sb`, `people.sb`, `AIChars.sb`, `stone.sb`, `Interface.sb`) wczytują się raz przy starcie
+  gry i zostają w pamięci; wcześniej czytaliśmy je przy pierwszym odtworzeniu, co zatrzymywało klatkę wyścigu.
+
 - **Szum morza** (kanał `water` z `RCCars.sb`: pętla `water.wav`, pełna głośność do 3 m, −20 dB w 10 m, dalej cisza;
   0x522ed0, 0x522f60, 0x523140): gra bierze ostatnie znalezione morze (węzły z „more” w nazwie szukane w głąb, dzieci
   węzła od najnowszego, 0x51eff0, 0x44ed80), czyli `more1`, a nie lagunę `more2` na beach_1. Dźwięk stoi w narożniku

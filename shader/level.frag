@@ -7,7 +7,8 @@ layout(binding = 0) uniform sampler2D texBase;
 layout(binding = 1) uniform sampler2D texLight;
 layout(binding = 2) uniform sampler2D texMask;
 layout(binding = 3) uniform sampler2D texBase2;
-layout(binding = 5) uniform sampler2D texEnv;   // one face of the cube map cubemap_racer (all six are the same)
+layout(binding = 5) uniform sampler2D texEnv;   // one face of the cube map cubemap_racer (all six are the same);
+                                                // with F_DETAIL the detail texture instead (never both)
 
 layout(location = 0) in vec3 inNormal;
 layout(location = 1) in vec2 inUvBase;
@@ -61,6 +62,14 @@ void main() {
     float m  = texture(texMask, inUvMask).a;
     vec4  c2 = texture(texBase2, inUvBase2);
     color.rgb = mix(c2.rgb, color.rgb, m);
+    }
+
+  if((push.flags & F_DETAIL)!=0u) {
+    // RCCars.exe's detailer (0x480e50, 0x466d80): a texture stage on the base texture's coordinates times "Scale",
+    // with the texture factor (alpha density, colour (1-density)*128): detail*density + (1-density)*0.5, then
+    // twice that times the colour (the blend ops are a guess that leaves the colour as it is for a grey detail)
+    vec3 d = texture(texEnv, inUvBase*water.detail.x, water.detail.z).rgb;
+    color.rgb *= 2.0*mix(vec3(0.5), d, water.detail.y);
     }
 
   if((push.flags & F_DIRT)!=0u) {
@@ -139,7 +148,7 @@ void main() {
     light  += vec3(0.6)*pow(max(dot(normal, h), 0.0), 60.0);
     }
   color.rgb *= light;
-  if(push.envMap>0.0)
+  if(push.envMap>0.0 && (push.flags & F_DETAIL)==0u)
     color.rgb += environment(normal)*push.envMap;
 
   // D3DFOG_EXP table fog (formats/fog.h): what is `depth` (w) in front of the camera keeps exp(-density*depth) of

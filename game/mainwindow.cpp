@@ -53,6 +53,11 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   hud      = std::make_unique<Hud>(device,res);
   arrow    = std::make_unique<DirectionArrow>(device,res);
   effects  = std::make_unique<Effects>(device,res);
+  sunView  = std::make_unique<SunView>(device,res);
+  antennaView = std::make_unique<AntennaView>(device,res,carScene);
+  for(size_t i=0; i<antennaSettings.size(); ++i)
+    antennaSettings[i] = rc::Antenna::Settings::load(res.pack(),i);
+  flareSettings = rc::fx::LensFlare::Settings::load([&res](const std::string& f){ return res.pack().read(f); });
   sounds   = std::make_unique<Sounds>(res);
   menu     = std::make_unique<Menu>(device,res,*sounds);
   characterView = std::make_unique<CharacterView>(device);
@@ -126,6 +131,10 @@ void MainWindow::loadLevel(const std::string& name) {
     hud->setTrack(name);
     sounds->setTrack(level->scene(),level->mesh().seaCoast());
     effects->setTrack(level->scene(),level->mesh().mainSea());
+    if(auto sun = level->scene().marker("SUN_AF"))
+      sunFlare = rc::fx::LensFlare(flareSettings,sun->position());
+    else
+      sunFlare = rc::fx::LensFlare();
     camera  = level->startCamera();
     setupPhysics();
     }
@@ -149,6 +158,8 @@ void MainWindow::loadCar(size_t id) {
 void MainWindow::fitCar() {
   ModelMesh::CarLook look;
   look.boost = look.resonator = look.tires = upgrade;
+  look.antenna = !antennaView->has(carId);
+  carAntenna.reset();
   car = std::make_unique<CarModel>(device,resources,carScene,carId,look);
   }
 
@@ -180,8 +191,11 @@ void MainWindow::setupOpponents() {
   for(size_t i=0; i<opponents->size(); ++i) {
     auto& o   = (*opponents)[i];
     auto& m   = aiMeshes[{o.car,o.skin,o.boost,o.reson,o.tires}];
-    if(m==nullptr)
-      m = std::make_unique<CarModel>(device,resources,carScene,size_t(o.car),aiLook(o));
+    if(m==nullptr) {
+      auto look = aiLook(o);
+      look.antenna = !antennaView->has(size_t(o.car));
+      m = std::make_unique<CarModel>(device,resources,carScene,size_t(o.car),look);
+      }
     }
   // the channels stay in the mixer, so they are made once and reused
   while(aiSounds.size()<opponents->size())
@@ -1165,6 +1179,39 @@ void MainWindow::renderMenu() {
 // RCCars.exe 0x531ff0 (rc::fx::CarLight): the lightmap under the first four wheels touching the track, for the
 // player's car the one under the car if none does. The opponents on their recordings have no wheel contacts of
 // ours: theirs are looked for under their wheels as drawn.
+void MainWindow::tickAntennas(float dt) {
+  // RCCars.exe 0x4fe9d0 every frame for every car; set up again (0x4ff2d0) where the car was put somewhere else
+  auto follow = [this,dt](std::optional<rc::Antenna>& a, size_t id, const rc::Mat4& pose, std::optional<float> ceiling) {
+    if(!antennaView->has(id)) {
+      a.reset();
+      return;
+      }
+    const rc::Vec3 mount = pose.point(antennaView->mount(id));
+    if(!a || (a->mountPoint()-mount).length()>1.f) {
+      a.emplace(antennaSettings[id],pose,antennaView->mount(id),antennaView->rest(id));
+      return;
+      }
+    a->step(dt,pose,ceiling);
+    };
+  if(car) {
+    // 0x4fe5f0: the player's antenna feels for a ceiling straight up from where it stands
+    std::optional<float> ceiling;
+    if(level && carAntenna)
+      if(auto hit = level->collision().raycast(carAntenna->mountPoint(),{0,1,0},carAntenna->reach()))
+        ceiling = hit->distance;
+    follow(carAntenna,carId,carPose,ceiling);
+    }
+  else {
+    carAntenna.reset();
+    }
+  const size_t n = opponents ? opponents->size() : 0;
+  aiAntennas.resize(n);
+  for(size_t i=0; i<n; ++i) {
+    const auto& o = (*opponents)[i];
+    follow(aiAntennas[i],size_t(o.car),o.pose(),std::nullopt);
+    }
+  }
+
 void MainWindow::shadeCars(float dt) {
   if(lightProbe==nullptr)
     return;
@@ -1240,6 +1287,7 @@ void MainWindow::render() {
     tick(std::min(dt,0.1f));
     hud->tick(std::min(dt,0.1f));
     shadeCars(std::min(dt,0.1f));
+    tickAntennas(paused ? 0.f : std::min(dt,0.1f));
 
     frameId = uint8_t((frameId+1)%MaxFramesInFlight);
     auto& sync = fence[frameId];
@@ -1266,8 +1314,9 @@ void MainWindow::render() {
       auto enc = cmd.startEncoding(device);
       enc.setFramebuffer({{swapchain[swapchain.currentImage()],Vec4(0.62f,0.72f,0.82f,1.f),Tempest::Preserve}},
                          {zbuffer,1.f,Tempest::Preserve});
+      const auto poses = level ? level->animated().poses(time) : std::vector<rc::Mat4>();
       if(level)
-        level->mesh().draw(enc,push,LevelMesh::Pass::Opaque);
+        level->mesh().draw(enc,push,LevelMesh::Pass::Opaque,viewProj,poses);
       if(objects)
         objects->draw(enc,viewProj,push);
       if(characters)
@@ -1284,6 +1333,12 @@ void MainWindow::render() {
         mesh.setDirt(forcedDirt>=0 ? float(forcedDirt) : effects->dirt());
         lightCar(mesh,&mesh==&car->full(),carLight,carShade.value());
         mesh.draw(enc,viewProj,push,carPose,&parts);
+        antennaView->clear();
+        if(&mesh==&car->full() && carAntenna)
+          antennaView->add(carId,carAntenna->joints(),mesh.lighting());
+        }
+      else {
+        antennaView->clear();
         }
       if(opponents) {
         for(size_t i=0; i<opponents->size(); ++i) {
@@ -1295,15 +1350,28 @@ void MainWindow::render() {
           const auto  parts = opponentPartPoses(mesh,o);
           lightCar(mesh,&mesh==&m->second->full(),carLight,i<aiShades.size() ? aiShades[i].value() : 1.f);
           mesh.draw(enc,viewProj,push,o.pose(),&parts);
+          if(&mesh==&m->second->full() && i<aiAntennas.size() && aiAntennas[i])
+            antennaView->add(size_t(o.car),aiAntennas[i]->joints(),mesh.lighting());
           }
         }
+      antennaView->draw(enc,frameId,push);
       effects->setFog(push.cameraPos[3],push.fogColor);
       if(vehicle)
         effects->drawTracks(enc,frameId,viewProj,camera.position);
       if(level)
-        level->mesh().draw(enc,push,LevelMesh::Pass::Translucent);
+        level->mesh().draw(enc,push,LevelMesh::Pass::Translucent,viewProj,poses);
       if(vehicle)
         effects->draw(enc,frameId,int(w()),int(h()),viewProj,camera.position);
+      if(level && sunFlare.has()) {
+        // the sun and its flare (RCCars.exe 0x479250): a ray from the camera to the sun every TimeShootRay s
+        const rc::CollisionMesh& coll = level->collision();
+        sunFlare.update(paused ? 0.f : std::min(dt,0.1f),camera.position,camera.forward(),viewProj,int(w()),int(h()),
+                        [&coll](const rc::Vec3& from, const rc::Vec3& to) {
+                          const rc::Vec3 d = to-from;
+                          return coll.raycast(from,d,0.98f).has_value(); // not the sky the sun stands on
+                          });
+        sunView->draw(enc,frameId,int(w()),int(h()),sunFlare);
+        }
       if(level && showCollision)
         level->collisionView().draw(enc,push);
       if(race && vehicle) {

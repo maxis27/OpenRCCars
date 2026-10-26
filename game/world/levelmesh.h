@@ -16,6 +16,7 @@
 #include "formats/collision.h"
 #include "formats/scene.h"
 #include "formats/csi.h"
+#include "formats/pack.h"
 #include "formats/water.h"
 
 class Resources;
@@ -28,6 +29,7 @@ struct WaterBlock {
   float edge[4]  = {};  // 1/magnetRadius, alphaRadius, distAlphaClampMin, distAlphaClampMax
   float color[4] = {};  // colorMin/255, colorMax/255, 1 = waves set, foam heightOn
   float foam[4]  = {};  // foam alphaMin, alphaMax, scrollVel
+  float detail[4] = {}; // the detail texture (F_Detail): scale, density/256, mip bias
 
   static WaterBlock from(const rc::WaterWaves& w, const rc::CoastFoam& foam);
   };
@@ -74,6 +76,18 @@ class LevelMesh {
       F_Dirt     = 128, // ModelMesh: the car's dirt over its paint, `time` = how dirty
       F_Modulate = 256, // multiplied onto what is under it (SbMesh::renderFlags 0x40000000)
       F_CarLight = 512, // ModelMesh::setLight: ambient carPos.w + direct sunDir.w towards sunDir.xyz, held at 1
+      F_Detail   = 1024, // the detail texture (LevelMesh::Detail) in binding 5, its settings in the Water block
+      };
+
+    // RCCars.exe's "detailer" (Settings\Detail.ini, loaded by 0x480a70; VIDEO_Detailer, on by default): six detail
+    // textures (detailer, detailer2 .. detailer6) laid over the meshes near the camera. Which one a texture gets
+    // comes from its GLTX groups (SbTexture::groups, see detailLayer in levelmesh.cpp)
+    struct Detail {
+      float density[6] = {118,118,110,96,256,118}; // the sliders as they are, /256 is the strength
+      float lodBias[6] = {37,16,7,20,51,50};       // mip bias v*0.04 - 2
+      float scale[6]   = {100,100,30,89,101,60};   // repeats over the base texture: v*0.1
+      float distObj    = 30;                       // v*0.1 m: only meshes whose box is that close to the camera
+      static Detail load(rc::PackFile& pack);
       };
 
     struct Push {
@@ -96,13 +110,19 @@ class LevelMesh {
 
     // `ground` (the track collision) gives water without WLOD settings its depth, so that it fades out towards
     // the shore; `track` names the WLOD_<track>_<object>.ini files of the sea
+    // `groups`: the moving scenery (rc::fx::AnimatedObjects::groups), the group each of the scene's meshes goes
+    // with, 0 for those that stay
     LevelMesh(Tempest::Device& device, Resources& res, const rc::SbScene& scene, const rc::CollisionMesh* ground = nullptr,
-              std::string_view track = {});
+              std::string_view track = {}, const std::vector<int32_t>* groups = nullptr);
 
 
     // opaque and alpha-tested batches first, then (after the cars) the see-through ones: water, shore foam ...
     enum class Pass { Opaque, Translucent };
     void         draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, const Push& frame, Pass pass, bool drawSky = true) const;
+    // the same with the moving scenery placed by `poses` (rc::fx::AnimatedObjects::poses, index = group) on top of
+    // `viewProj` (the matrix in `frame`)
+    void         draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, const Push& frame, Pass pass,
+                      const rc::Mat4& viewProj, const std::vector<rc::Mat4>& poses, bool drawSky = true) const;
 
     rc::Vec3     bboxMin() const { return bbox[0]; }
     rc::Vec3     bboxMax() const { return bbox[1]; }
@@ -131,6 +151,11 @@ class LevelMesh {
       bool                      sky    = false; // sky dome (sky_* textures)
       int32_t                   water  = -1;    // waterUbo, -1: ScenePipelines::noWater
       float                     envMap = 0;     // Push::envMap
+      int32_t                   group  = 0;     // the moving scenery it goes with, 0 none
+      int32_t                   detail = 0;     // detail texture 1..6, 0 none
+      // detail batches: the part of each mesh, drawn with the detail texture only when it is near the camera
+      struct Range { size_t first = 0, count = 0; rc::Vec3 lo, hi; };
+      std::vector<Range>        ranges;
       };
     struct SeaSurface; // the seas' waves and outlines, for waveLift
 
@@ -139,6 +164,9 @@ class LevelMesh {
     Tempest::VertexBuffer<Vertex> vbo;
     std::vector<Batch>            batches;
     std::vector<Tempest::UniformBuffer<WaterBlock>> waterUbo; // one per sea with waves
+    Tempest::UniformBuffer<WaterBlock> detailUbo[6];           // the settings of each detail texture
+    const Tempest::Texture2d*     detailTex[6] = {};
+    float                         detailDist   = 3;
     std::deque<Tempest::Texture2d> embedded;  // lightmaps stored inside the scene; deque keeps addresses stable
     std::vector<std::pair<int32_t,size_t>> embeddedIndex;
     ScenePipelines                pso;

@@ -6,6 +6,7 @@
 
 #include "formats/collision.h"
 #include "formats/scene.h"
+#include "fx/animobjects.h"
 #include "game/camera.h"
 #include "collisionview.h"
 #include "levelmesh.h"
@@ -20,6 +21,8 @@ class Level {
     const std::string&  name()  const { return levelName; }
     const rc::SbScene&  scene() const { return sb; }
     const LevelMesh&    mesh()  const { return *gpu; }
+    // the moving scenery (beach_4's submarine and radar); LevelMesh::draw places it with animated().poses(time)
+    const rc::fx::AnimatedObjects& animated() const { return anim; }
     // track collision from the COLL node (render faces the game collides with), and its debug overlay
     const rc::CollisionMesh& collision()     const { return coll; }
     const CollisionView&     collisionView() const { return *collGpu; }
@@ -44,6 +47,7 @@ class Level {
   private:
     std::string                levelName;
     rc::SbScene                sb;
+    rc::fx::AnimatedObjects    anim;
     std::unique_ptr<LevelMesh> gpu;
     rc::CollisionMesh          coll;
     std::unique_ptr<CollisionView> collGpu;

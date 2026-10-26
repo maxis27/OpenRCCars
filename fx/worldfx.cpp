@@ -205,6 +205,20 @@ WorldSettings WorldSettings::load(const Reader& read) {
   wv.incTime       = val(n,"IncTime",100);
 
   // read as whole numbers over 100 (0x50fcb0)
+  // the hatch smoke's sliders as the bullets' puffs, the sizes 1 (0x530ff0 reads no ScaleX/ScaleY)
+  try {
+    const auto h = sliders(read,"hatch_smoke");
+    static_cast<Puff&>(s.hatch) = puff(h);
+    s.hatch.scaleX   = s.hatch.scaleY = 1;
+    s.hatch.lifeDisp = val(h,"TimePartDisp",100);
+    s.hatch.shiftY   = val(h,"ShiftY",100);
+    s.hatch.shiftXZ  = val(h,"ShiftXZ",100);
+    s.hatch.zOffset  = std::abs(val(h,"ZOffset",100)-2.f);
+    }
+  catch(...) {
+    s.hatch.intensity = 0;
+    }
+
   const auto p = sliders(read,"peop_sole");
   s.sole.delay  = val(p,"TimeDelay",100);
   s.sole.shiftX = val(p,"ShiftX",100);
@@ -318,6 +332,83 @@ void WaterSplashes::collect(std::vector<Billboard>& out) const {
     return;
   for(auto& sp:pool)
     collectDrops(sp.drops,set->splash,out);
+  }
+
+// --- hatch smoke ---
+
+HatchSmoke::HatchSmoke(const WorldSettings& settings, const std::vector<Source>& sources)
+  : set(&settings) {
+  for(auto& b:sources) {
+    Emit e;
+    e.box = b;
+    e.at  = (b.lo+b.hi)*0.5f+Vec3{0,settings.hatch.shiftY,0};
+    emit.push_back(std::move(e));
+    }
+  }
+
+void HatchSmoke::update(const View& view, float dt, Random& rnd) {
+  if(set==nullptr)
+    return;
+  const auto& s = set->hatch;
+  for(auto& e:emit) {
+    movePuffs(e.puffs,s,dt);
+    // in the picture: a corner or the middle of its box on the screen
+    bool seen = view.onScreen((e.box.lo+e.box.hi)*0.5f);
+    for(int c=0; c<8 && !seen; ++c)
+      seen = view.onScreen({(c&1) ? e.box.hi.x : e.box.lo.x,(c&2) ? e.box.hi.y : e.box.lo.y,
+                            (c&4) ? e.box.hi.z : e.box.lo.z});
+    e.puffs.moveTo(e.at);
+    const size_t n = e.puffs.count(seen ? s.intensity : 0.f,dt);
+    for(size_t i=0; i<n; ++i) {
+      // 0x5312c0: a random direction across, made a unit vector
+      Vec3 side = {rnd.unit()-0.5f,0,rnd.unit()-0.5f};
+      if(side.length()>=Eps)
+        side = side.normalized();
+      Particle* q = e.puffs.spawn(e.at+side*s.shiftXZ);
+      if(q==nullptr)
+        break;
+      q->life  = std::max(s.life+rnd.sym()*s.lifeDisp,0.01f);
+      q->left  = q->life;
+      q->angle = rnd.unit()*180.f;
+      q->twist = rnd.chance(50) ? -s.twist : s.twist;
+      q->vel   = {0,s.speedY,0};
+      }
+    e.puffs.endFrame();
+    }
+  }
+
+void HatchSmoke::collect(std::vector<Billboard>& out) const {
+  if(set==nullptr)
+    return;
+  // 0x530d90: the growth runs over the longest life, not the puff's own
+  WorldSettings::Puff s = set->hatch;
+  for(auto& e:emit)
+    for(auto& p:e.puffs.particles()) {
+      const float g = ramp(p.age(),(s.life+set->hatch.lifeDisp)*s.growTime,s.grow);
+      Billboard b;
+      b.pos     = p.pos;
+      b.halfW   = s.dx*g*Metres;
+      b.halfH   = s.dy*g*Metres;
+      b.angle   = p.angle*Pi/180.f;
+      b.texture = Billboard::Dust;
+      for(int c=0; c<3; ++c)
+        b.rgba[c] = s.rgba[c]/255.f;
+      b.rgba[3] = s.rgba[3]/255.f*(p.life>0 ? std::max(p.left,0.f)/p.life : 0.f);
+      b.depthBias = set->hatch.zOffset;
+      out.push_back(b);
+      }
+  }
+
+void HatchSmoke::clear() {
+  for(auto& e:emit)
+    e.puffs.clear();
+  }
+
+size_t HatchSmoke::size() const {
+  size_t n = 0;
+  for(auto& e:emit)
+    n += e.puffs.particles().size();
+  return n;
   }
 
 // --- shore waves ---

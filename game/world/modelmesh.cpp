@@ -103,6 +103,8 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
         return -1;
       return under(mesh,opt.parts)+1;
       }
+    if(!look.antenna && under(mesh,{"ANTENNA"})>=0)
+      return -1;
     rc::CarAddOns addOns;
     if(!look.lod)
       addOns = {look.boost,look.resonator};

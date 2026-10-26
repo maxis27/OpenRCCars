@@ -49,6 +49,15 @@ struct WorldSettings {
     float scaleX = 1, scaleXDisp = 0, scaleY = 1, scaleYDisp = 0;
     float grow = 1, growTime = 1;       // the size grows `grow` times over growTime of the life
     } bulletDust, bulletSmoke;
+  // HATCH_SMOKE (hatch_smoke.ini, 0x530ff0): the smoke out of beach_4's coolers; a Puff without ScaleX/ScaleY
+  struct Hatch : Puff {
+    float lifeDisp = 0;     // TimePartDisp: the life is TimePart +- this
+    float shiftY   = 0;     // m above the middle of the cooler's box
+    float shiftXZ  = 0;     // m: the puffs start this far to a side
+    // ZOffset/100 - 2 (-0.49): the emitter's depth offset (+0xc0, added by 0x459260); taken as the metres its
+    // sprites are tested nearer to the camera, the sign of the original's offset is not known
+    float zOffset  = 0.49f;
+    } hatch;
   // BURST_MNG (burst_mng.ini, 0x52df20): a guard's gun
   struct Burst {
     int   shots = 6;            // NShoots, a shot every timeShoot s
@@ -245,6 +254,37 @@ class Gunfire {
     std::vector<Hole>     holes;                           // at most 256 (0x478440)
     std::vector<Sound>    heard;
     std::vector<Hit>      struck;
+  };
+
+// The smoke rising out of the coolers (RCCars.exe HATCH_SMOKE, VIDEO_HatchSmokeEff: 0x52b750, 0x52b7a0, 0x530c60):
+// every node with "KOOLER" in its name (beach_4's two) is an emitter in the middle of its box, ShiftY above it,
+// making Intensity puffs a second while it is in the picture (0x530e40, 0x534f80: the mesh was drawn). A puff
+// starts ShiftXZ m to a random side (0x5312c0), lives TimePart +- TimePartDisp s, rises at SpeedY slowing down by
+// SpeedDecay every frame, turns one way or the other (0x530e80, 0x530f40, as the bullets' puffs) and grows to
+// DynamicScale times its size over DynamicScaleTime of the longest life (0x530d90), up to 10 m across.
+class HatchSmoke {
+  public:
+    struct Source {
+      Vec3 lo, hi;    // the cooler's box, world space
+      };
+
+    HatchSmoke() = default;
+    HatchSmoke(const WorldSettings& settings, const std::vector<Source>& sources);
+
+    void update(const View& view, float dt, Random& rnd);
+    void collect(std::vector<Billboard>& out) const;
+    void clear();
+    size_t size() const;
+
+  private:
+    struct Emit {
+      Source  box;
+      Vec3    at;
+      Emitter puffs{1000};    // 0x477250: room for 1000
+      };
+
+    const WorldSettings*  set = nullptr;
+    std::vector<Emit>     emit;
   };
 
 // The footprints people leave as they walk (RCCars.exe 0x50f930, PEOP): every TimeDelay s a walking person puts

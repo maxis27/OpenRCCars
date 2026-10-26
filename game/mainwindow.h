@@ -11,6 +11,7 @@
 #include <array>
 #include <map>
 #include <memory>
+#include <optional>
 
 #include "arrow.h"
 #include "formats/fog.h"
@@ -32,6 +33,10 @@
 #include "world/characters.h"
 #include "world/traffic.h"
 #include "world/carshadow.h"
+#include "world/sunview.h"
+#include "world/antennaview.h"
+#include "physics/antenna.h"
+#include "fx/lensflare.h"
 #include "fx/carlight.h"
 #include "world/carmodel.h"
 #include "world/modelmesh.h"
@@ -79,6 +84,7 @@ class MainWindow : public Tempest::Window {
     // the car on the start line and the race from the countdown; `again`: "Jeszcze raz", no delay before "3"
     void setupPhysics(bool restartRace = true, bool again = false);
     void shadeCars(float dt);                   // carShade, aiShades from the lightmaps under the cars
+    void tickAntennas(float dt);                // the cars' springy antennas
     void setupOpponents();                      // the opponents of the track for aiLevel
     // engines, checkpoint voice: once per frame after the physics
     void tickSounds(float dt);
@@ -164,6 +170,13 @@ class MainWindow : public Tempest::Window {
     std::array<int32_t,3>   previewUpgrade = {-1,-1,-1};
     std::unique_ptr<DirectionArrow> arrow;
     std::unique_ptr<Effects>        effects;    // dust and spray of the cars
+    rc::fx::LensFlare::Settings     flareSettings;
+    rc::fx::LensFlare               sunFlare;   // the track's sun (SUN_AF) and its lens flare
+    std::unique_ptr<SunView>        sunView;
+    std::unique_ptr<AntennaView>    antennaView;
+    std::array<rc::Antenna::Settings,3> antennaSettings;
+    std::optional<rc::Antenna>      carAntenna; // the player's
+    std::vector<std::optional<rc::Antenna>> aiAntennas; // one per opponent
     std::unique_ptr<Sounds> sounds;
     std::unique_ptr<rc::CarSound>   carSound;   // the player's engine
     std::vector<rc::AiCarSound>     aiSounds;   // one per opponent

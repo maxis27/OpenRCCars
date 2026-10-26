@@ -35,7 +35,8 @@ CarModel::CarModel(Device& device, Resources& res, const rc::SbScene& sb, size_t
   lods[0] = std::make_unique<ModelMesh>(device,res,sb,name,look);
   for(size_t i=1; i<lods.size(); ++i) {
     ModelMesh::CarLook l = look;
-    l.lod = true;
+    l.lod     = true;
+    l.antenna = true;   // their own, standing still
     try {
       lods[i] = std::make_unique<ModelMesh>(device,res,sb,name+"LOD"+std::to_string(i),l);
       }

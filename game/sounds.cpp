@@ -49,7 +49,8 @@ Sounds::Sounds(Resources& res) : res(res) {
   animalLib    = loadLibrary("RCCarsDB/AIChars.sb","character sounds");
   propLib      = loadLibrary("RCCarsDB/stone.sb","prop sounds");
   interfaceLib = loadLibrary("RCCarsDB/Interface.sb","menu sounds");
-  for(auto* l:{lib.get(),peopleLib.get(),animalLib.get(),propLib.get(),interfaceLib.get()})
+  carLib       = loadLibrary("RCCarsDB/Car.sb","antenna sound");
+  for(auto* l:{lib.get(),peopleLib.get(),animalLib.get(),propLib.get(),interfaceLib.get(),carLib.get()})
     l->preload();
 
   try {
@@ -204,6 +205,27 @@ void Sounds::tickTraffic(const rc::Traffic& traffic, const rc::Vec3& ear, const 
     if(c.sound>=0 && !own.isPlaying() && size_t(c.sound)<own.size())
       own.play(c.sound);
     }
+  }
+
+void Sounds::tickAntenna(int car, bool under, float speed) {
+  if(car!=antennaCar) {
+    if(antenna.valid())
+      antenna.stop();
+    antenna    = rc::BankChannel();
+    antennaCar = car;
+    if(car>=0)
+      if(auto def = carLib->bank().ofModel("Car"+std::to_string(car+1)+"Antenna"))
+        antenna = rc::BankChannel(mix,*carLib,def->name);
+    }
+  if(!antenna.valid() || antenna.size()==0)
+    return;
+  if(!under || speed<=1.f) {
+    if(antenna.isPlaying())
+      antenna.play(-1);   // stops it, after its tail
+    return;
+    }
+  antenna.setVolume(0,speed>35.f ? 0.f : (speed-1.f)*(15.f/34.f)-15.f);
+  antenna.play(0);
   }
 
 void Sounds::startMusic() {

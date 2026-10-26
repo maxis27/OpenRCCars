@@ -1215,9 +1215,13 @@ void MainWindow::tickAntennas(float dt) {
       if(auto hit = level->collision().raycast(carAntenna->mountPoint(),{0,1,0},carAntenna->reach()))
         ceiling = hit->distance;
     follow(carAntenna,carId,carPose,ceiling);
+    // 0x4fe5f0: and scratches along it
+    sounds->tickAntenna(carAntenna && vehicle ? int(carId) : -1,ceiling.has_value(),
+                       vehicle ? vehicle->velocity().length()*3.6f : 0.f);
     }
   else {
     carAntenna.reset();
+    sounds->tickAntenna(-1,false,0.f);
     }
   const size_t n = opponents ? opponents->size() : 0;
   aiAntennas.resize(n);

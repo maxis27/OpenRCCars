@@ -29,8 +29,12 @@ struct SbScene;
 // the antenna feels half the car's sideways motion; done the same here.
 // The ceiling (0x4fe5f0, the player's car only): a ray up from the mount; if something is closer than the
 // tallest height of CacheData\car_antenna_<Car>_H2F.data + 0.1 m, that table gives the a which holds the tip
-// under it (0x4ffe30 built it by letting the antenna settle for every a from pi/2 up); otherwise a is the table's
-// last. The Antenna_scratch sound it plays there is left out.
+// under it; otherwise a is the table's last. 0x4ffe30 built the table by letting the antenna settle for 10 s, then
+// for every a from pi/2 up in steps of pi/100, 10 s each, while the top of the drawn antenna (the box of the
+// Car<n>Antenna instance, skinned and bent as AntennaView draws it) rose above the mount. Car2's table is that, to
+// the millimetre; Car1's and Car3's were made with older sliders (chainLength 20, not 25, stiffness 25, not 10:
+// that gives both to the millimetre), and the game uses them as they
+// are. While under something it plays Antenna_scratch (Sounds::tickAntenna).
 class Antenna {
   public:
     struct Settings {               // Settings\Antenna_Car<n>.ini (0x500230): /100, 10 above 1000

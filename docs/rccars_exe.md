@@ -565,12 +565,28 @@ i trzy pikapy (w kilku malowaniach), na urban_1 hummer, a na beach_4 pływający
   sztywność 10), tłumienie ruchu względem ramki poprzedniego punktu `damping`/l; długości ogniw trzyma układ
   trójdiagonalny mnożników Lagrange'a, potem v += a·dt/2, p += v·dt i powrót na długości. Symulacja idzie z x i z
   auta podzielonymi przez 2 (antena czuje połowę ruchu na boki). Pierwsza ramka to ćwierć obrotu wokół z dla
-  wszystkich aut, więc antena Buggy (modelowana wygięta do tyłu) startuje prosto w górę. Tylko auto gracza szuka
+  wszystkich aut, więc łańcuch zawsze startuje prosto w górę. Rysując (0x4ff0c0), gra stawia staw j na punkcie j
+  z ramką punktu j+1, a potem obraca go wokół jego własnej osi y o kąt z jego macierzy w modelu (0x4ff2d0 zapisuje
+  macierze `jnt3_1..3` względem rodzica pod +0xdc4; kąt = asin(−z osi x), 0x4074c0, obrót 0x40cab0); kolejne stawy
+  idą za nim, więc wygięcia się sumują. Antena Buggy (modelowana wygięta do tyłu o 33°, 31° i 8°) zostaje więc
+  wygięta do tyłu także w grze, antena Car3 o 10° u podstawy, Car1 prosta. Tylko auto gracza szuka
   sufitu: promień w górę z podstawy na najwyższą wysokość z `CacheData/car_antenna_Car<n>_H2F.data` + 0,1 m; gdy
   coś jest bliżej, ta tablica daje kąt a, przy którym czubek mieści się pod spodem (bez sufitu: ostatni kąt
-  tablicy). **Niepewne:** wysokości z tablicy są mniejsze, niż wychodzi z naszej symulacji (Buggy: 0,19 m przy
-  łańcuchu 0,35 m bez pchnięcia), więc albo tablica liczy coś innego (górę obrysu instancji, +0x220), albo była
-  liczona przy innych suwakach. Dźwięk `Antenna_scratch` pominięty.
+  tablicy; odległość minus jedno ogniwo przycięta do 0…0,4667 i plus ogniwo, bez interpolacji: kąt z wpisu
+  poniżej). **Tablica H2F** (0x4ffe30, liczona tylko, gdy pliku brak): antena stoi 10 s krokami 0,01 s, potem dla
+  a od π/2 co π/100 po 10 s symulacji zapisuje (a, wysokość, a), dopóki wysokość rośnie (najwyżej 200 wpisów).
+  Wysokość to góra obrysu instancji `Car<n>Antenna` (+0x220 węzła, czyli największe y; 0x210 to najmniejsze x, y,
+  z, 0x21c największe; obrys skóry po wygięciu stawów) minus y podstawy (pozycja ramki punktu 0, +0x8f0). Z
+  wygięciem stawów nasza symulacja daje tablicę Buggy co do milimetra (0,091 przy π/2 … 0,191 przy 3/2 π). Tablice
+  Car1 i Car3 z paczki liczono przy innych suwakach (obie wychodzą z `chainLength` 20 zamiast 25 i sztywnością 25
+  zamiast 10, przy π/2 i na końcu co do milimetra), ale gra
+  bierze je takie, jakie są (sprawdza tylko nagłówek `ARAC`, liczbę wpisów i końcowe `ARAC`), więc my też.
+- **Dźwięk `Antenna_scratch`** (0x4fe5f0, tylko auto gracza; `Sounds::tickAntenna`): kanał `AntennaSnd` w modelach
+  `Car<n>Antenna` z `Car.sb` ma jeden dźwięk (`Antenna_scratch`, flagi 0x80420: pętla, bez restartu, ogon
+  350 ms). Gdy promień w górę z podstawy trafia (coś w zasięgu anteny) i auto jedzie szybciej niż 1 km/h
+  (długość prędkości ciała ×3,6, 0x50b6a0), gra ustawia mu głośność (SOND +0x1c): −15 dB przy 1 km/h liniowo do
+  0 dB przy 35 km/h i więcej, i go gra; gdy nic nad anteną nie ma albo auto stoi, zatrzymuje kanał (z ogonem).
+  Przy `VIDEO_Light` gra barwi jeszcze antenę jasnością auta (+0xe824 × 255, szaro), co u nas robi `CarLight`.
 
 ## Słońce, detale i ruchome dekoracje
 

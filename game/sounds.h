@@ -62,6 +62,13 @@ class Sounds {
     // siren (channel Roadcar, when rc::Traffic asks), heard from `ear`; the BTR's bursts are fx::Gunfire's
     void tickTraffic(const rc::Traffic& traffic, const rc::Vec3& ear, const rc::Vec3& right);
 
+    // the player's antenna scratching along something above it (RCCars.exe 0x4fe5f0): `car` 0..2 (Car1 ..
+    // Car3, -1 for none), `under` whether something is within the antenna's reach above its mount, `speed` km/h of
+    // the car (its whole velocity). Antenna_scratch, the one sound of the channel AntennaSnd in Car<n>Antenna of
+    // Car.sb (the same for all three: loops, not restarted, 350 ms tail), plays while under something faster than 1 km/h, at -15 dB at
+    // 1 km/h up to 0 dB at 35 km/h; otherwise it stops
+    void tickAntenna(int car, bool under, float speed);
+
     // call once per frame
     void tick();
 
@@ -80,11 +87,13 @@ class Sounds {
     std::map<std::string,rc::BankChannel>        channels;
     rc::MusicList                                music;
     rc::AmbientSounds                            ambient;
-    std::unique_ptr<rc::SoundLibrary>            peopleLib, animalLib, propLib, interfaceLib;
+    std::unique_ptr<rc::SoundLibrary>            peopleLib, animalLib, propLib, interfaceLib, carLib;
     std::map<std::string,rc::BankChannel>        interfaceChannels;
     std::map<std::pair<std::string,int>,rc::BankChannel> propChannels; // as actorChannels
     // by model and the actor's number among those of its model; the mixer keeps its channels, so they are reused
     std::map<std::pair<std::string,int>,rc::BankChannel> actorChannels;
+    rc::BankChannel                              antenna;
+    int                                          antennaCar = -1;
     // per road car: its own sound and its gun
     std::vector<rc::BankChannel> trafficChannels;
     bool                                         musicOn = false;

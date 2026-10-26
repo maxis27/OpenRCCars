@@ -3,6 +3,7 @@
 #include <Tempest/Log>
 
 #include <algorithm>
+#include <cmath>
 
 #include "game/resources.h"
 #include "physics/antenna.h"
@@ -27,6 +28,10 @@ AntennaView::AntennaView(Device& device, Resources& res, const rc::SbScene& sb)
       joints.push_back(b);
       md.bind.push_back(sk.bones()[size_t(b)].bind);
       md.bindInverse.push_back(sk.bones()[size_t(b)].bindInverse);
+      // 0x4ff2d0 keeps each joint's own (parent space) matrix as modelled, 0x4ff0c0 takes its turn about y from
+      // it: asin of minus the z of its x axis (0x4074c0)
+      const rc::Mat4& local = sb.meshes[sk.bones()[size_t(b)].mesh].local;
+      md.bend.push_back(std::asin(std::clamp(-local.m[2][0],-1.f,1.f)));
       }
     const int32_t carId = sb.findModel("Car"+std::to_string(car+1));
     if(joints.empty() || carId<0 || !rc::Antenna::mountOf(sb,carId,md.mount)) {
@@ -122,9 +127,21 @@ void AntennaView::add(size_t car, const std::vector<rc::Mat4>& joints, const Mod
   if(!has(car))
     return;
   const Model& md = models[car];
+  // 0x4ff0c0: each joint where the chain puts it, then turned about its own y by its bend as modelled; the joints
+  // after it follow, so the bends add up along the antenna (Car2's, modelled bent back, stays bent back)
+  std::vector<rc::Mat4> placed(joints.size());
+  for(size_t j=0; j<joints.size(); ++j) {
+    rc::Mat4 turn;
+    if(j<md.bend.size()) {
+      const float c = std::cos(md.bend[j]), s = std::sin(md.bend[j]);
+      turn.m[0][0] = c;  turn.m[0][2] = s;
+      turn.m[2][0] = -s; turn.m[2][2] = c;
+      }
+    placed[j] = (j==0 ? joints[j] : placed[j-1]*joints[j-1].inverse()*joints[j])*turn;
+    }
   std::vector<rc::Mat4> skin(md.bind.size());
   for(size_t j=0; j<skin.size(); ++j)
-    skin[j] = (j<joints.size() ? joints[j] : joints.empty() ? rc::Mat4() : joints.back())*md.bindInverse[j];
+    skin[j] = (j<placed.size() ? placed[j] : placed.empty() ? rc::Mat4() : placed.back())*md.bindInverse[j];
   Draw d;
   d.car   = car;
   d.first = verts.size();

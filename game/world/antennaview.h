@@ -19,7 +19,8 @@ class Resources;
 
 // The cars' springy antennas (rc::Antenna) on screen. RCCars.exe hides the ANTENNA node of the car's full model
 // (ModelMesh::CarLook::antenna) and draws Car<n>Antenna of Car.sb instead: the mesh Antennaa skinned to the joints
-// jnt3_1 .. jnt3_3, which the chain of rc::Antenna places. All antennas of a frame are skinned on the CPU into world
+// jnt3_1 .. jnt3_3, which the chain of rc::Antenna places, each turned about its y as it is in the model (Car2's
+// antenna, bent back by 33, 31 and 8 degrees, Car3's by 10 at its foot, Car1's straight). All antennas of a frame are skinned on the CPU into world
 // space and drawn together.
 class AntennaView {
   public:
@@ -29,8 +30,8 @@ class AntennaView {
     // the car (0..2) has an antenna of its own
     bool     has(size_t car) const;
     // what rc::Antenna stands on: the mount (car space, rc::Antenna::mountOf of the car's model) and the rotation
-    // of the first point's frame (the same for all cars, whatever the joints' bind pose: Car2's antenna is modelled
-    // bent back, the chain starts straight up)
+    // of the first point's frame (the same for all cars, whatever the joints' bind pose: the chain starts straight
+    // up and add() bends the joints as modelled)
     rc::Vec3 mount(size_t car) const;
     rc::Mat4 rest(size_t car) const;
     // the joints as modelled, standing on the car at `carPose`
@@ -55,6 +56,7 @@ class AntennaView {
       std::unique_ptr<rc::Skeleton> skeleton;
       rc::Vec3                      mount;
       std::vector<rc::Mat4>         bind, bindInverse;  // of the joints
+      std::vector<float>            bend;               // of the joints, about their y, radians
       std::vector<Corner>           corners;
       const Tempest::Texture2d*     tex  = nullptr;
       rc::AlphaMode                 mode = rc::AlphaMode::Opaque;

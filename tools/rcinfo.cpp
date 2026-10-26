@@ -23,6 +23,8 @@
 #include "formats/collision.h"
 #include "formats/objects.h"
 #include "formats/texttable.h"
+#include "formats/playerprofile.h"
+#include "formats/settings.h"
 #include "formats/water.h"
 #include "physics/characters.h"
 #include "physics/checkpoints.h"
@@ -1705,9 +1707,64 @@ static int cmdShots(const fs::path& game, const std::string& track, rc::PackFile
   return 0;
   }
 
+// "rcinfo <game> scp Players/<name>.scp": a player of the game (formats/playerprofile.h); also checks that writing it
+// back gives the same bytes
+// "rcinfo <game> crs [section key value out]": the player of RCCars.crs; with a value, the file with that string
+// set written to `out` (setting the name it has gives the same bytes back)
+static int cmdCrs(const fs::path& game, int argc, char** argv) {
+  const auto data = readFile(game/"RCCars.crs");
+  const auto cfg  = rc::ConfigFile::parse(data);
+  std::printf("Player/Name \"%s\", GhostMode %d, VIDEO_RunInWindow %d\n",cfg.string("Player","Name").c_str(),
+              cfg.integer("Player","GhostMode"),cfg.integer("Video","VIDEO_RunInWindow"));
+  const auto same = rc::ConfigFile::withString(data,"Player","Name",cfg.string("Player","Name"));
+  std::printf("the name written back: %s\n",same==data ? "identical" : "DIFFERENT");
+  if(argc>6) {
+    const auto out = rc::ConfigFile::withString(data,argv[3],argv[4],argv[5]);
+    std::ofstream f(argv[6],std::ios::binary);
+    f.write(reinterpret_cast<const char*>(out.data()),std::streamsize(out.size()));
+    const auto back = rc::ConfigFile::parse(out);
+    std::printf("%s/%s = \"%s\", Video/VIDEO_RunInWindow %d, %zu -> %zu bytes\n",argv[3],argv[4],
+                back.string(argv[3],argv[4]).c_str(),back.integer("Video","VIDEO_RunInWindow"),data.size(),out.size());
+    }
+  return 0;
+  }
+
+static int cmdScp(const fs::path& file) {
+  const auto data = readFile(file);
+  const auto p    = rc::PlayerProfile::parse(data);
+  std::printf("%s: time %.0f s, cash %d, scores %d, distance %.0f m, face %zu bytes\n",p.name.c_str(),
+              p.timePlayed,p.cash,p.scores,p.distance,p.facePixels.size());
+  for(size_t i=0; i<p.cars.size(); ++i) {
+    auto& c = p.cars[i];
+    std::printf("  car %zu: %s boost %d resonator %d tires %d skin %d\n",i,c.bought ? "bought" : "-",c.boost,
+                c.resonator,c.tires,c.skin);
+    }
+  auto rec = [](const rc::PlayerProfile::Record& r) {
+    char buf[96];
+    if(!r.made())
+      return std::string("-");
+    std::snprintf(buf,sizeof(buf),"%.2f (car %d, %02u.%02u.%u %02u:%02u)",r.time,r.car,r.date[0],r.date[1],r.date[2],
+                  r.clock[0],r.clock[1]);
+    return std::string(buf);
+    };
+  for(size_t i=0; i<p.tracks.size(); ++i) {
+    auto& t = p.tracks[i];
+    std::printf("  track %zu: races %d, best place %d, %.0f s, %.0f m, lap %s, championship %s\n",i,t.races,
+                t.bestPlace,t.raceTime,t.distance,rec(t.bestLap).c_str(),rec(t.champion).c_str());
+    for(size_t n=0; n<t.bestRace.size(); ++n)
+      if(t.bestRace[n].made())
+        std::printf("    %zu laps: %s\n",n,rec(t.bestRace[n]).c_str());
+    }
+  std::printf("  last: track %d car %d laps %d skill %d, \"%s\" %d\n",p.lastTrack,p.lastCar,p.lastLaps,p.lastSkill,
+              p.createdAs.c_str(),p.unknown61);
+  const auto back = p.serialize();
+  std::printf("written back: %s\n",back==data ? "identical" : "DIFFERENT");
+  return 0;
+  }
+
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|tbl|sb|obj|nodes|coll|objects|check|drive|race|gates|ai|fx|fog|ram|chars|drown|traffic|shots ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|tbl|scp|crs|sb|obj|nodes|coll|objects|check|drive|race|gates|ai|fx|fog|ram|chars|drown|traffic|shots ...\n");
     return 1;
     }
   try {
@@ -1723,6 +1780,11 @@ int main(int argc, char** argv) {
       return cmdObj(game/argv[3],argv[4]);
     if(cmd=="nodes" && argc>4)
       return cmdNodes(game/argv[3],argv[4]);
+
+    if(cmd=="crs")
+      return cmdCrs(game,argc,argv);
+    if(cmd=="scp" && argc>3)
+      return cmdScp(game/argv[3]);
 
     rc::PackFile pack(game/"RCCars.pack");
     if(cmd=="pack" && argc>3) {

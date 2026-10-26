@@ -21,6 +21,7 @@
 #include "fpscounter.h"
 #include "hud.h"
 #include "menu.h"
+#include "players.h"
 #include "physics/aiemu.h"
 #include "physics/characters.h"
 #include "physics/traffic.h"
@@ -65,6 +66,7 @@ class MainWindow : public Tempest::Window {
     void mouseUpEvent   (Tempest::MouseEvent& e) override;
     void mouseMoveEvent (Tempest::MouseEvent& e) override;
     void mouseDragEvent (Tempest::MouseEvent& e) override;
+    void mouseWheelEvent(Tempest::MouseEvent& e) override;
 
     void resetSwapchain();
     // the menus: what the player chose, and the front end drawn instead of the race
@@ -158,6 +160,8 @@ class MainWindow : public Tempest::Window {
     rc::Opponents::Level              aiLevel = rc::Opponents::Level::Normal; // O: off, easy, normal, hard
     std::map<std::array<int32_t,5>,std::unique_ptr<CarModel>> aiMeshes; // by car, skin and upgrades
     float                             playerFinish = -1;  // race time of the player's finish
+    float                             odometer = 0;       // the way the player's car went this race (car+0x5d38)
+    bool                              devFlew  = false;   // F9 or N this race: its times are not the player's
     rc::AiEmu                         aiEmu;              // what the opponents seem to run into
     // s since each car's last "kochaś zderzaków" (RCCars.exe car+0x5704): the player's, then the opponents'
     std::vector<float>                sinceBumper;
@@ -167,6 +171,7 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<Hud>    hud;
     std::unique_ptr<FpsCounter> fps;   // ShowFPS, F12
     std::unique_ptr<Menu>   menu;
+    std::unique_ptr<Players> players;   // Players\ and the one playing
     bool                    raceRequested = false;  // "Wyścig": the loading screen at the next frame
     std::array<std::unique_ptr<CarModel>,3> previewCars; // the quick race's car, by car
     std::array<int32_t,3>   previewUpgrade = {-1,-1,-1};

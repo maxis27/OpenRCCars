@@ -34,6 +34,7 @@ add_library(rcformats STATIC
   formats/skeleton.h   formats/skeleton.cpp
   formats/actorpath.h  formats/actorpath.cpp
   formats/texttable.h  formats/texttable.cpp
+  formats/playerprofile.h formats/playerprofile.cpp
   )
 target_include_directories(rcformats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -131,6 +132,7 @@ add_library(rcengine STATIC
   game/resources.h         game/resources.cpp
   game/canvas.h            game/canvas.cpp
   game/menu.h              game/menu.cpp
+  game/players.h           game/players.cpp
   game/hud.h               game/hud.cpp
   game/fpscounter.h        game/fpscounter.cpp
   game/arrow.h             game/arrow.cpp

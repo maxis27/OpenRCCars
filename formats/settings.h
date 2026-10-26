@@ -51,10 +51,19 @@ class ConfigFile {
     static ConfigFile parse(const std::vector<uint8_t>& data);
 
     // the integer `key` of `section` ("Video", "VIDEO_RunInWindow"), `def` if it is missing
-    int32_t integer(std::string_view section, std::string_view key, int32_t def = 0) const;
+    int32_t     integer(std::string_view section, std::string_view key, int32_t def = 0) const;
+    // the string `key` of `section` ("Player", "Name"), `def` if it is missing
+    std::string string(std::string_view section, std::string_view key, std::string_view def = {}) const;
+
+    // `data` with the string `key` of the top section `section` set to `value` the way RCCars.exe keeps it
+    // (0x404a30: the length with its zero, the capacity as it was), the key or the section added when missing
+    // with `capacity`; nothing else of the file changes
+    static std::vector<uint8_t> withString(const std::vector<uint8_t>& data, std::string_view section,
+                                           std::string_view key, std::string_view value, uint16_t capacity = 16);
 
   private:
-    std::map<std::string,int32_t,std::less<>> ints;   // "section/key"
+    std::map<std::string,int32_t,std::less<>>     ints;      // "section/key"
+    std::map<std::string,std::string,std::less<>> strings;
   };
 
 // Scripts\upgrades.ini:

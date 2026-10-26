@@ -183,6 +183,7 @@ Klawisze jak w instrukcji oryginału (`Instrukcja.pdf`):
 | Enter | wyścig od nowa, od odliczania („Jeszcze raz”) |
 | P, Pause | pauza |
 | Esc | menu wyścigu: Przerwij (do menu głównego), Wróć na tor, Zastosuj (dalej), Jeszcze raz? |
+| F12 | licznik FPS (nasz klawisz; jak w oryginale włącza go też `Set ShowFPS 1` w `Config.gm` albo `Autoexec.gm`) |
 
 Menu obsługuje się myszą. W menu głównym trasę wybiera się obrazkami (też ← / →); „Szybki wyścig” to tor, liczba
 okrążeń, umiejętności przeciwników i auto; zielony „Wyścig” rusza (też Enter), „Wyjdź” zamyka grę. Przyciski części,
@@ -331,6 +332,7 @@ game/           gra (Tempest)
   camera.*      kamera (oko, kierunek, rzutowanie)
   chasecamera.* kamera za autem według RCCars.exe i Settings/Camera.ini
   hud.*         kokpit wyścigu (obrazki i czcionka z Language/<język>), konsola czatu
+  fpscounter.*  licznik FPS (ShowFPS, F12)
   arrow.*       strzałka kierunku 3D z cockpit.sb
   menu.*        menu gry (Interface.sb, dlg*.ini)
   effects.*     efekty aut i trasy: sprite'y zwrócone do kamery, posortowane, z testem głębi

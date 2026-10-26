@@ -18,6 +18,7 @@
 #include "camera.h"
 #include "chasecamera.h"
 #include "effects.h"
+#include "fpscounter.h"
 #include "hud.h"
 #include "menu.h"
 #include "physics/aiemu.h"
@@ -164,6 +165,7 @@ class MainWindow : public Tempest::Window {
     bool                    paused   = false;
     rc::Vec3                lastCarPos;     // for the car's velocity
     std::unique_ptr<Hud>    hud;
+    std::unique_ptr<FpsCounter> fps;   // ShowFPS, F12
     std::unique_ptr<Menu>   menu;
     bool                    raceRequested = false;  // "Wyścig": the loading screen at the next frame
     std::array<std::unique_ptr<CarModel>,3> previewCars; // the quick race's car, by car

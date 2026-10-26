@@ -56,6 +56,15 @@ class ModelMesh {
       int32_t resonator = -1;
       int32_t tires     = -1;
       bool    lod       = false; // a Car<n>LOD<n> model
+      // the modelled ANTENNA node drawn; off where AntennaView draws the moving one
+      bool    antenna   = true;
+      };
+
+    // RCCars.exe's light of a car (setLight)
+    struct Light {
+      bool     on = false;
+      float    ambient = 1, direct = 0;
+      rc::Vec3 toLight = {0,1,0};
       };
 
     // `origin`: model space point that becomes the origin (ObjectLibrary::Model::origin)
@@ -82,6 +91,7 @@ class ModelMesh {
     void                     setLight(float ambient, float direct = 0, const rc::Vec3& toLight = {0,1,0}) {
       light = {true,ambient,direct,toLight};
       }
+    const Light&             lighting() const { return light; }
 
     const std::string&       name()    const { return modelName; }
     const std::vector<Part>& parts()   const { return partList; }
@@ -111,9 +121,5 @@ class ModelMesh {
     const Tempest::Texture2d*             envTex = nullptr;
     rc::Vec3                              bbox[2];
     float                                 dirt = 0;
-    struct {
-      bool     on = false;
-      float    ambient = 1, direct = 0;
-      rc::Vec3 toLight = {0,1,0};
-      }                                   light;
+    Light                                 light;
   };

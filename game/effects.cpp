@@ -125,6 +125,7 @@ void Effects::clear(bool keep) {
     splashes.clear();
     shore.clear();
     footprints.clear();
+    hatch.clear();
     }
   if(keep) {
     for(auto& o:opponents)
@@ -186,6 +187,7 @@ void Effects::tick(float dt, const rc::Vehicle& car, const rc::Opponents* ai, co
 void Effects::setTrack(const rc::SbScene& scene, const rc::WaterWaves* sea) {
   splashes = {};
   shore    = {};
+  hatch    = {};
   gunfire.clear();
   if(!worldLoaded)
     return;
@@ -201,6 +203,30 @@ void Effects::setTrack(const rc::SbScene& scene, const rc::WaterWaves* sea) {
     return r;
     };
   splashes = rc::fx::WaterSplashes(world,markers("water_splash_",16));
+  // the coolers (0x52b750): the box of the node and everything below it
+  std::vector<rc::fx::HatchSmoke::Source> coolers;
+  for(size_t i=0; i<scene.meshes.size(); ++i) {
+    if(scene.meshes[i].name.find("KOOLER")==std::string::npos)
+      continue;
+    rc::fx::HatchSmoke::Source b;
+    b.lo = { 1e9f, 1e9f, 1e9f};
+    b.hi = {-1e9f,-1e9f,-1e9f};
+    for(size_t j=0; j<scene.meshes.size(); ++j) {
+      bool under = false;
+      for(int32_t p=int32_t(j); p>=0 && !under; p=scene.meshes[size_t(p)].parent)
+        under = size_t(p)==i;
+      if(!under)
+        continue;
+      for(auto& v:scene.meshes[j].positions) {
+        const rc::Vec3 w = scene.meshes[j].world.point(v);
+        b.lo = {std::min(b.lo.x,w.x),std::min(b.lo.y,w.y),std::min(b.lo.z,w.z)};
+        b.hi = {std::max(b.hi.x,w.x),std::max(b.hi.y,w.y),std::max(b.hi.z,w.z)};
+        }
+      }
+    if(b.lo.x<=b.hi.x)
+      coolers.push_back(b);
+    }
+  hatch = rc::fx::HatchSmoke(world,coolers);
   if(sea!=nullptr)
     shore = rc::fx::ShoreWaves(world,markers("water_wave_",8),*sea);
   }
@@ -215,6 +241,7 @@ void Effects::tickWorld(float dt, const rc::fx::View& view, float time, const rc
   shore.update(view,time,dt,water,rnd);
   gunfire.update(bursts,cars,track,dt,rnd);
   footprints.update(walkers,dt);
+  hatch.update(view,dt,rnd);
   }
 
 void Effects::drawTracks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Mat4& vp, const rc::Vec3& eye) {
@@ -301,6 +328,7 @@ void Effects::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, con
       o.fx->collect(sprites);
   splashes.collect(sprites);
   gunfire.collect(sprites);
+  hatch.collect(sprites);
   if(sprites.empty() || w<=0 || h<=0)
     return;
 
@@ -325,7 +353,7 @@ void Effects::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, con
     // forward axis
     const float    half = b.pixels ? 0.05f : std::max(b.halfW,b.halfH);
     const float    over = std::max(eye.y-p.y,0.1f);
-    const float    bias = std::clamp(half+z*half/over,0.f,z-0.02f);
+    const float    bias = std::clamp(b.depthBias>=0 ? b.depthBias : half+z*half/over,0.f,z-0.02f);
     const rc::Vec3 fwd  = {vp.m[3][0],vp.m[3][1],vp.m[3][2]};
     const rc::Vec3 cb   = vp.point(p-fwd*bias);
     items.push_back({&b,(c.x/z*0.5f+0.5f)*float(w),(c.y/z*0.5f+0.5f)*float(h),z,cb.z/(z-bias)});

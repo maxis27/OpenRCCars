@@ -34,7 +34,12 @@ plików w [docs/formaty.md](docs/formaty.md).
   otoczenia; płaskie strumienie i kałuże.
 - **Auto**: Overkill, Buggy i Hummer z `Car.sb` na starcie gracza (`INST 'Player'`), z kołami i zawieszeniem
   rysowanymi jak w oryginale, ulepszeniami na modelu, modelami LOD dalej od kamery, odbiciami na karoserii i
-  szybach, cieniem pod autem gracza i przyciemnianiem w cieniu i w tunelach według lightmapy.
+  szybach, cieniem pod autem gracza i przyciemnianiem w cieniu i w tunelach według lightmapy. Antena gracza i
+  przeciwników sprężynuje jak w `RCCars.exe` (`Antenna_Car<n>.ini`): gnie się przy ruszaniu, hamowaniu i skrętach,
+  a pod niskim sufitem kładzie się do tyłu.
+- **Świat**: słońce na znaczniku `SUN_AF` z flarą obiektywu (`LENS_FLARE.ini`), tekstury detali z bliska
+  (`Detail.ini`), wynurzająca się łódź podwodna i obracający się radar na beach_4 (`submarine.ini`), dym z chłodnic
+  (`hatch_smoke.ini`).
 - **Kamera za autem** z `Settings/Camera.ini` (odległość, opóźnienia, odsuwanie przy prędkości i turbo, unoszenie,
   gdy teren zasłania auto), która nie schodzi pod wodę.
 - **Fizyka jazdy jak w `RCCars.exe`**: własny model auta oryginału (bryła 1 kg, kule nadwozia z `cdt<N>.ini`, koła
@@ -262,6 +267,8 @@ rcinfo <folder_gry> shots beach_4 [auto 1-3] [s]  # strażnicy i BTR strzelają 
 ```sh
 rcshot <folder_gry> beach_1 shot.png [w h] [x y z yaw pitch]
 RCSHOT_CAR=Car3 rcshot ...                                      # inne auto (Car1/Car2/Car3), none = sama trasa
+RCSHOT_NOSUN=1 rcshot ...                                       # bez słońca i flary
+RCSHOT_ANTENNA=0 rcshot ...                                     # antena jak w modelu, bez symulacji
 RCSHOT_COLL=1 rcshot ...                                        # z nakładką kolizji
 RCSHOT_DRIVE=3 RCSHOT_STEER=1 rcshot ...                        # najpierw 3 s jazdy na pełnym gazie, druga połowa ze skrętem
 RCSHOT_DRIVE=2 RCSHOT_JUMP=1.6 rcshot ...                       # skok w 1,6 s, zdjęcie w 2 s
@@ -352,9 +359,8 @@ lib/dr_mp3      dekoder MP3
 
 Zrobione są wszystkie elementy pojedynczego szybkiego wyścigu. Brakuje:
 
-- **Grafika i świat**: słońce i flary obiektywu (`SUN_AF`, `LENS_FLARE.ini`), sprężynująca antena auta
-  (`Antenna_Car<n>.ini`), tekstury detali (`Detail.ini`), wynurzająca się łódź podwodna na beach_4
-  (`submarine.ini`), przyciemnianie postaci i rekwizytów w cieniu (`feat_lmshd.ini`).
+- **Grafika i świat**: przyciemnianie postaci i rekwizytów w cieniu (`feat_lmshd.ini`), dźwięk zahaczenia anteny
+  (`Antenna_scratch`).
 - **Opakowanie gry**: profil gracza i zapis rekordów, mistrzostwa z `championship.ini` ze sklepem, ulepszeniami i
   twarzami kierowców, wyścig z duchami (`GhostRecords`), ekran mety jak w oryginale (`dlgFINISH`), reszta menu
   (opcje, informacje o trasie, autorzy), demo, intro, dwóch graczy na podzielonym ekranie, gra przez sieć.

@@ -28,6 +28,8 @@ struct SbTexture {
   int32_t              index = -1;
   int32_t              model = -1; // SbScene::models
   uint32_t             material = 0;
+  // the GLTX chunk's word at 16: material groups, bits 21..27 pick the detail texture (LevelMesh, Detail.ini)
+  uint32_t             groups = 0;
   std::string          name;
   std::vector<uint8_t> embedded; // raw .csi, if stored inside the scene
   };

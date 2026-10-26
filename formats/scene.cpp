@@ -341,8 +341,10 @@ class Loader {
           case 0x03: t.name  = std::string(ch.str()); break;
           case 0x08:
             t.index = ch.i32(4);
-            if(ch.u32(0)>=5)
+            if(ch.u32(0)>=5) {
+              t.groups   = ch.u32(16);
               t.material = ch.u32(20);
+              }
             break;
           case 0x32: t.embedded.assign(ch.data(),ch.data()+ch.size()); break;
           }

@@ -215,6 +215,7 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
       characters = std::make_unique<rc::Characters>(*physics,library,level->scene(),level->name(),
                                                     [this](const std::string& f){ return resources.pack().read(f); });
       Log::i("characters: ",characters->size());
+      characterView->preload(resources,*characters);
       }
     catch(const std::exception& e) {
       Log::e("characters: ",e.what());
@@ -223,6 +224,7 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
       traffic = std::make_unique<rc::Traffic>(*physics,library,level->scene(),level->name(),
                                               [this](const std::string& f){ return resources.pack().read(f); });
       Log::i("road cars: ",traffic->size());
+      trafficView->preload(*traffic);
       }
     catch(const std::exception& e) {
       Log::e("road cars: ",e.what());

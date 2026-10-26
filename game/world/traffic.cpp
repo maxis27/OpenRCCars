@@ -38,6 +38,11 @@ const ModelMesh* TrafficView::mesh(const rc::Traffic::Car& car) {
   return m.get();
   }
 
+void TrafficView::preload(const rc::Traffic& traffic) {
+  for(auto* c:traffic.cars())
+    mesh(*c);
+  }
+
 void TrafficView::draw(Encoder<CommandBuffer>& enc, uint8_t frameId, const rc::Traffic& traffic,
                        const rc::Mat4& viewProj, const LevelMesh::Push& frame, const rc::CollisionMesh* track) {
   for(auto* c:traffic.cars()) {

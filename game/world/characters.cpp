@@ -132,6 +132,24 @@ const CharacterView::Model& CharacterView::model(const rc::Skeleton& sk) {
   return *m;
   }
 
+std::string CharacterView::textureOf(const rc::Characters::Actor& a, const std::string& own) {
+  std::string name = own;
+  for(auto& [from,to]:a.textures)
+    if(name==from)
+      name = to;
+  return name;
+  }
+
+void CharacterView::preload(Resources& res, const rc::Characters& chars) {
+  models.clear();   // those of the previous track's skeletons, which are gone
+  for(auto* a:chars.actors()) {
+    if(a->skeleton==nullptr)
+      continue;
+    for(auto& b:model(*a->skeleton).batches)
+      res.texture(textureOf(*a,b.texture));
+    }
+  }
+
 static constexpr float PoseDistance = 270.f; // metres from the camera
 
 void CharacterView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, Resources& res, const rc::Characters& chars,
@@ -155,14 +173,10 @@ void CharacterView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, Resources& 
       pose[i] = a->world*pose[i];
 
     for(auto& b:md.batches) {
-      std::string name = b.texture;
-      for(auto& [from,to]:a->textures)
-        if(name==from)
-          name = to;
       Draw d;
       d.first = verts.size();
       d.count = b.count;
-      if(auto t = res.texture(name)) {
+      if(auto t = res.texture(textureOf(*a,b.texture))) {
         d.tex  = &t->tex;
         d.mode = t->alpha;
         }

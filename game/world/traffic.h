@@ -28,6 +28,8 @@ class TrafficView {
     TrafficView(Tempest::Device& device, Resources& res);
     ~TrafficView();
 
+    // the meshes (and textures) of all of `traffic`'s cars, made now rather than when each first shows up
+    void preload(const rc::Traffic& traffic);
     // `track`: the faces the spots are laid onto (none: no spots); `frame`: the frame in flight (0, 1)
     void draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frameId, const rc::Traffic& traffic,
               const rc::Mat4& viewProj, const LevelMesh::Push& frame, const rc::CollisionMesh* track);

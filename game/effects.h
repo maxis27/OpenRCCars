@@ -17,7 +17,7 @@ class Resources;
 
 namespace rc {
 class CollisionMesh;
-class SbScene;
+struct SbScene;
 struct WaterWaves;
 class Opponents;
 class Vehicle;

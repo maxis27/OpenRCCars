@@ -8,7 +8,7 @@
 #include "formats/math3d.h"
 
 namespace rc {
-class SbScene;
+struct SbScene;
 }
 
 namespace rc::fx {

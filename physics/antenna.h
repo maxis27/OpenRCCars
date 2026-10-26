@@ -9,7 +9,7 @@
 namespace rc {
 
 class PackFile;
-class SbScene;
+struct SbScene;
 
 // The cars' springy antenna (RCCars.exe 0x4ff2d0 sets it up, 0x4fe9d0 moves it, 0x4fe5f0 feels for a ceiling;
 // the engine's chain of points 0x44cc10). The antenna is a chain of nPoints points chainLength apart: the first

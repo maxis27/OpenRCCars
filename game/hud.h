@@ -43,7 +43,6 @@ class Hud : public Canvas {
       rc::Vec3 carPos, carForward;            // the player's car, for the map
       struct Car { rc::Vec3 pos, forward; };
       std::vector<Car> opponents;             // the other cars on the map
-      std::vector<rc::Opponents::Standing> standings;  // with opponents: the order, for the table at the finish
       bool  paused    = false;
       bool  lowSignal = false; // in a reset volume: "Słaby sygnał" (msg_low_signal.csi)
       bool  gates     = false; // the checkpoints drawn over the 3D view (debug)

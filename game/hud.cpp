@@ -95,10 +95,10 @@ const TrackMap TrackMaps[] = {
   {"urban_2",    4, {  0.5583f, -2.3726f}, {  261.783f,  283.176f}},
   };
 
-const char* const Texts[2][7] = {
+const char* const Texts[2][2] = {
   // Smash fonts have no Polish letters
-  {"Okr.", "Razem", "Najlepsze", "Enter - jeszcze raz", "dopalacz", "km/h", "Ty"},
-  {"Lap",  "Total", "Best",      "Enter - race again",  "boost", "km/h", "You"},
+  {"dopalacz", "km/h"},
+  {"boost",    "km/h"},
   };
 // Settings/anim_cp.ini: Size 146, Shift 128, MinDist 237, MaxDist 900, BlinkDelta 10. Shift reads as texels of
 // the 256 high picture: it is raised by half its height, so the shadow drawn at its bottom lies on the ground under
@@ -679,9 +679,9 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
 
   // bottom: turbo on the left, the speed on the right
   const float tank = info.turbo*info.turboMax;
-  gauge(false,tank,info.turboMax,std::to_string(int(std::lround(tank*100.f))),Texts[li][4]);
+  gauge(false,tank,info.turboMax,std::to_string(int(std::lround(tank*100.f))),Texts[li][0]);
   gauge(true,info.speed/GaugeKmh,info.speedMax>0 ? info.speedMax/GaugeKmh : 1.f,
-        std::to_string(int(std::lround(info.speed))),Texts[li][5]);
+        std::to_string(int(std::lround(info.speed))),Texts[li][1]);
 
   // the brackets around the arrow (overtaking.csi), the left one as drawn, the right one mirrored
   if(overtaking!=nullptr) {
@@ -729,43 +729,6 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     }
   else if(message==Message::BestLap && clock-messageAt<2.5f) {
     sprite(msgBest,{0,0,float(msgBest.w),float(msgBest.h)},px(400),my,1,white4);
-    }
-
-  // after the finish: the lap times, or against opponents the standings (filled in as they finish)
-  if(phase==rc::Race::Phase::Finished && !info.standings.empty()) {
-    const auto& st   = info.standings;
-    const float line = 34, x0 = px(230), x1 = px(570);
-    float       y    = 200;
-    const float rows = float(st.size()+2);
-    quad(*white,1,1,{0,0,1,1},px(210),py(y-12),px(590)-px(210),py(rows*line+24),Color{0,0,0,0.45f});
-    for(size_t i=0; i<st.size(); ++i, y+=line) {
-      const Color c = st[i].player ? yellow : white4;
-      text(font,std::to_string(i+1)+". "+(st[i].player ? std::string(Texts[li][6]) : st[i].name),x0,py(y),28,c,-1);
-      text(font,st[i].time>=0 ? formatTime(st[i].time) : std::string("-"),x1,py(y),28,c,1);
-      }
-    text(font,Texts[li][2],x0,py(y),28,yellow,-1);
-    text(font,formatTime(race.bestLap()),x1,py(y),28,yellow,1);
-    y += line*1.3f;
-    text(font,Texts[li][3],px(400),py(y),24,white4,0);
-    }
-  else if(phase==rc::Race::Phase::Finished) {
-    const auto& times = race.lapTimes();
-    const float line  = 34, x0 = px(250), x1 = px(550);
-    float       y     = 230;
-    const float rows  = float(times.size()+3);
-    quad(*white,1,1,{0,0,1,1},px(230),py(y-12),px(570)-px(230),py(rows*line+24),Color{0,0,0,0.45f});
-    for(size_t i=0; i<times.size(); ++i, y+=line) {
-      const Color c = times[i]<=race.bestLap() ? yellow : white4;
-      text(font,std::string(Texts[li][0])+" "+std::to_string(i+1),x0,py(y),28,c,-1);
-      text(font,formatTime(times[i]),x1,py(y),28,c,1);
-      }
-    text(font,Texts[li][1],x0,py(y),28,white4,-1);
-    text(font,formatTime(race.time()),x1,py(y),28,white4,1);
-    y += line;
-    text(font,Texts[li][2],x0,py(y),28,yellow,-1);
-    text(font,formatTime(race.bestLap()),x1,py(y),28,yellow,1);
-    y += line*1.3f;
-    text(font,Texts[li][3],px(400),py(y),24,white4,0);
     }
 
   flush(enc,frame);

@@ -40,7 +40,11 @@ class Race {
     // seconds from restart() to the start
     float  startTime() const { return startAt; }
     // seconds since the start (stops at the finish)
-    float  time()      const { return std::max(0.f,clock-startAt); }
+    float  time()      const { return state==Phase::Finished ? finishAt : std::max(0.f,clock-startAt); }
+    // seconds since the start, going on after the finish: the clock of the opponents still racing
+    float  clockTime() const { return std::max(0.f,clock-startAt); }
+    // seconds since the finish, 0 before it
+    float  sinceFinish() const { return state==Phase::Finished ? clockTime()-finishAt : 0.f; }
     // seconds into the current lap
     float  lapTime()   const { return time()-lapStart; }
     // the lap being driven, 1 .. laps(); laps() after the finish
@@ -64,6 +68,7 @@ class Race {
     float              clock    = 0;   // since restart(), the countdown included
     float              startAt  = EntryDelay+CountTime;
     float              lapStart = 0;   // time() when the current lap began
+    float              finishAt = 0;   // time() of the finish
     std::vector<float> times;
     bool               wrong    = false;
     float              wrongTime = 0;  // the wrong way timer

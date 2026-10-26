@@ -241,6 +241,8 @@ void Opponent::restart() {
   wheelTurn    = 0;
   steerAngle   = 0;
   finishTime   = -1;
+  lapAt        = 0;
+  bestLap      = -1;
   drownTimer   = 0;
   resets.reset();
   current      = profiles[0].pose(0);
@@ -663,7 +665,9 @@ Opponents::Opponents(PhysicsWorld& world, const Reader& read, const SbScene& car
     if(auto d = layout.drivers.find(o.driver); d!=layout.drivers.end()) {
       // the face picture names the driver: "MCJocker.tga"
       const std::string& f = d->second.face;
-      car->name = f.substr(0,f.rfind('.'));
+      car->name   = f.substr(0,f.rfind('.'));
+      car->face   = f;
+      car->driver = o.driver;
       car->skin = d->second.skin;
       }
     if(car->name.empty())
@@ -726,6 +730,13 @@ void Opponents::update(float dt, bool racing, const Vec3& playerPos, size_t play
       told.push_back({News::Drowned,i});
     if(back==Opponent::Back::Volume)
       told.push_back({News::Volume,i});
+    // 0x4eb2b0: the fastest lap
+    if(c->laps()>was) {
+      const float lap = raceTime-c->lapAt;
+      if(c->bestLap<0 || lap<c->bestLap)
+        c->bestLap = lap;
+      c->lapAt = raceTime;
+      }
     if(c->finishTime<0 && int(c->laps())>=laps) {
       c->finishTime = raceTime;
       told.push_back({News::Finished,i});
@@ -741,9 +752,9 @@ std::vector<Opponents::Standing> Opponents::standings(float playerFinish) const 
     float    progress;
     };
   std::vector<Entry> all;
-  all.push_back({{"",playerFinish,true},player.progress()});
-  for(auto& c:cars)
-    all.push_back({{c->name,c->finishTime,false},c->progress()});
+  all.push_back({{"",playerFinish,true,-1},player.progress()});
+  for(size_t i=0; i<cars.size(); ++i)
+    all.push_back({{cars[i]->name,cars[i]->finishTime,false,int(i)},cars[i]->progress()});
   std::stable_sort(all.begin(),all.end(),[](const Entry& a, const Entry& b) {
     const bool fa = a.s.time>=0, fb = b.s.time>=0;
     if(fa!=fb)

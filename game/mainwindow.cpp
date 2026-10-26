@@ -275,6 +275,7 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
     if(traffic)
       traffic->restart();
     playerFinish = -1;
+    finishShown  = false;
     odometer     = 0;
     devFlew      = false;
     paused       = false;
@@ -370,7 +371,6 @@ Hud::Info MainWindow::hudInfo() const {
   info.carForward = carPose.vector({0,0,1});
   if(opponents && opponents->size()>0) {
     info.place     = opponents->place(playerFinish);
-    info.standings = opponents->standings(playerFinish);
     for(size_t i=0; i<opponents->size(); ++i) {
       const rc::Mat4 p = (*opponents)[i].pose();
       info.opponents.push_back({p.translation(),p.vector({0,0,1})});
@@ -602,6 +602,14 @@ void MainWindow::menuCommand(Menu::Command c) {
         setupPhysics(true,true);
       paused = false;
       return;
+    case Menu::Command::Done:
+      // 0x4c4629: "Wyjdź" records the race in the player's file (0x4c56c0), "Jeszcze raz?" does not
+      if(level && playerFinish>=0 && !devFlew) {
+        const size_t trackId = Menu::trackIndex(level->name());
+        if(players->raceDone(int32_t(trackId),int32_t(carId),race->laps(),playerFinish,odometer))
+          tell(20101,-1,Hud::formatTime(playerFinish));
+        }
+      [[fallthrough]];
     case Menu::Command::Abort:
       // back to the main menu; the track stays loaded under it, silent
       sounds->stopAll();
@@ -773,7 +781,7 @@ void MainWindow::tick(float dt) {
       Log::i(hit==rc::Vehicle::Hit::Great ? "great hit" : "hit"," at ",Hud::formatTime(race->time()));
       }
     if(opponents)
-      opponents->update(dt,!race->holdCar(),carPose.translation(),checkpoints->laps(),playerFinish>=0,race->time(),
+      opponents->update(dt,!race->holdCar(),carPose.translation(),checkpoints->laps(),playerFinish>=0,race->clockTime(),
                         race->laps());
     if(objects)
       objects->update(dt);
@@ -820,9 +828,14 @@ void MainWindow::tick(float dt) {
       playerFinish = race->time();
       if(opponents && opponents->size()>0)
         Log::i("finished ",opponents->place(playerFinish),". of ",opponents->size()+1," in ",Hud::formatTime(playerFinish));
-      if(!devFlew && players->raceDone(int32_t(trackId),int32_t(carId),race->laps(),playerFinish,odometer))
-        tell(20101,-1,Hud::formatTime(playerFinish));
       }
+    // RCCars.sb LevelFinish ("3 ShowTable", 0x4a5100): the table 3 s after the finish
+    if(playerFinish>=0 && !finishShown && race->sinceFinish()>=3.f && !menu->active()) {
+      finishShown = true;
+      menu->open(Menu::Page::Finish);
+      }
+    if(menu->page()==Menu::Page::Finish)
+      menu->setFinish(finishRows());
     hud->event(ev);
     // 0x4eaa50: every lap but the last, with its number in words; 0x4eaad0: the finish
     if(ev==rc::Race::Event::Lap || ev==rc::Race::Event::BestLap)
@@ -942,11 +955,64 @@ void MainWindow::setFlying(bool on) {
     }
   }
 
+std::string MainWindow::opponentName(size_t i) const {
+  // AIPlayer<n>: Language/Game 40499+n ("MC Zgryw" ..., 0x4a9ce0)
+  const auto& o = (*opponents)[i];
+  if(o.driver>0) {
+    const auto t = hud->gameText(uint32_t(40499+o.driver));
+    if(!t.empty())
+      return std::string(t);
+    }
+  return o.name;
+  }
+
+std::vector<Menu::FinishRow> MainWindow::finishRows() const {
+  // 0x4c47e0 with the race's standings (0x4ea2d0): the finished by their times, then the others by how far they are;
+  // the time of one still racing is the race's clock, its speed the way along the route so far over it (for the
+  // first minute drawn from 7 m/s, 0x4eac90), of one finished the laps over its time
+  std::vector<Menu::FinishRow> rows;
+  const float clock = race->clockTime();
+  const float lap   = checkpoints->lapLength();
+  auto avg = [&](float way, float t, bool done) {
+    if(t<1e-6f)
+      return 0.f;
+    float v = (done ? lap*float(race->laps()) : way)/t;
+    if(!done && t<60.f)
+      v = (t/60.f)*v+(1.f-t/60.f)*7.f;
+    return v*3.6f;
+    };
+  const auto st = opponents ? opponents->standings(playerFinish)
+                            : std::vector<rc::Opponents::Standing>{{"",playerFinish,true,-1}};
+  for(auto& s:st) {
+    Menu::FinishRow r;
+    r.player = s.player;
+    if(s.player) {
+      auto* p   = players->current();
+      r.name    = p!=nullptr ? p->name : std::string(hud->gameText(40507));
+      r.time    = playerFinish>=0 ? playerFinish : clock;
+      r.bestLap = race->lapTimes().empty() ? -1.f : race->bestLap();
+      r.speed   = avg(opponents ? opponents->playerProgress() : 0.f,r.time,playerFinish>=0);
+      }
+    else {
+      const auto& o = (*opponents)[size_t(s.car)];
+      const bool done = o.finishTime>=0;
+      r.name    = opponentName(size_t(s.car));
+      r.faceKey = "AIPlayer:"+o.face;
+      r.face    = players->faceByName(o.face);
+      r.time    = done ? o.finishTime : clock;
+      r.bestLap = o.bestLap;
+      r.speed   = avg(o.progress(),r.time,done);
+      }
+    rows.push_back(std::move(r));
+    }
+  return rows;
+  }
+
 void MainWindow::tell(uint32_t id, int car, std::string_view what) {
   // the player's name: the one playing (Players\\<name>), the table's word for a player without one
   std::string who;
   if(car>=0 && opponents!=nullptr && size_t(car)<opponents->size())
-    who = (*opponents)[size_t(car)].name;
+    who = opponentName(size_t(car));
   else if(auto* p = players->current())
     who = p->name;
   else
@@ -1336,7 +1402,7 @@ void MainWindow::render() {
     const float    dt  = float(now-lastTick)/1000.f;
     lastTick = now;
     // the main menu and the quick race instead of the race; the race's menu over the stopped race
-    const bool front = menu->active() && menu->page()!=Menu::Page::InRace;
+    const bool front = menu->active() && menu->page()!=Menu::Page::InRace && menu->page()!=Menu::Page::Finish;
     menu->tick(std::min(dt,0.1f));
     menuCommand(menu->take());
     if(front) {

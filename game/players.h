@@ -41,6 +41,9 @@ class Players {
     void                      setFace(size_t player, size_t face);
     // the picture a player without one gets: face1.tga, or the first
     size_t                    defaultFace() const;
+    // the picture of that file (an AIPlayer<n> Face, 0x4e5a10), face1.tga's if there is none; nullptr if there are
+    // no faces at all
+    const std::vector<uint8_t>* faceByName(std::string_view file) const;
     // changes whenever a player's face does, for whoever keeps their pictures
     uint32_t                  faceVersion() const { return faceStamp; }
 

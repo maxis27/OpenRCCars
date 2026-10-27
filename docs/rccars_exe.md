@@ -944,6 +944,35 @@ zmienia się tylko środek (komunikaty 0x26f/0x270 chowają i pokazują kontrolk
   ↑ / ↓ i kółko przewijają. Trasa zamknięta wybrana na mapie w mistrzostwach ustępuje ostatniej otwartej po
   powrocie na stronę tras (jak 0x4be720).
 
+## Demo gry
+
+- **Start**: „Demo gry” (0x649) albo 180 s w menu głównym bez naciśniętego przycisku: pokazanie menu (komunikat
+  0x14, 0x4c9670) ustawia zegar komunikatu 0x26d na 180 s (nie w trybie deweloperskim sieci, 0x147d204),
+  przycisk (0x7c) i 0x89 go kasują. 0x26d (0x4c9d6b): tryb 6 (0x4a4c90), trasa 0 (0x4a4c50), zapis `RCCars.crs`,
+  potem 0x48c420("Beach_1", "DemoEntry"): mapa wczytywana ze skryptem wejścia `DemoEntry` zamiast `LevelEntry`.
+- **Skrypty** (kompilacja 0x4e1080, wykonanie 0x4e1c20, linia `<s> <polecenie> [argumenty]`): `DemoEntry` nie ma go
+  w `RCCars.sb`, tylko w „Scene Scripts” trzech tras: `beach_1` (`Set "NextDemoRace" = "Country_3"`, `EnterDemo`,
+  `SetActive/SetFocus/CameraFollow '$CAR' 2`, `StartRace`, `100 LoadMap "Country_3" "DemoEntry"`), `country_3`
+  (auto 3, dalej `Country_4` po 110 s) i `country_4` (auto 2, dalej `Beach_1` po 110 s). `EnterDemo` (31) ustawia
+  flagę 0x200 w 0x1499dd0. `'$CAR' n` to adres `$CAR` o numerze n (0x4e18b0 typ 9, 0x4e23f0 → `gmpFindAddress`);
+  bierzemy n jako numer auta w wyścigu od 0, czyli `Demo<n+1>`. Bez `Show3..Show1` wyścig rusza od razu.
+- **Auta** (0x4a5320, tryb 6): pięć aut rodzaju 3 (demo), numery 1..5, bez auta gracza. 0x4a9630 czyta z
+  `AIRace<n>` `Demo<i>Ref` (kierowca `AIPlayer<n>`, jego auto i skórka, 0x4a9ce0) i `Demo<i>Path` (nagranie
+  `CarProfiles\Demo1(Surf)\over1.dat` …, po jednym pliku). Gumka (0x4fd5e0) mierzy odległość od auta aktywnego
+  (0x4870c0), w demie od śledzonego.
+- **Klawisze** (0x4c89a0, komunikat 0x8c z tablicą 0x148fbf8: akcja 11 Enter i Enter numeryczny, 12 Esc): Esc
+  w demie zamyka mapę (0x48c500(2)) i wraca menu główne zamiast menu wyścigu; Enter wczytuje `NextDemoRace`
+  (0x4047e0) z `DemoEntry`. Pauzy nie ma (0x4ca960).
+- **Kokpit** (0x4afdc0): kokpit auta aktywnego; przez pierwsze 10 s (zegar 0x149dc14) w sekundach 1–2, 3–4, 5–6,
+  7–8 i 9–10 napis 41903 „Wciśnij <Enter>, aby załadować następne demo...” w prostokącie 0.3,0.125..0.7,0.183
+  ekranu (0x471380), do lewej.
+- **Inne**: zderzenie dwóch aut (kule 0x533740) ma w demie promienie ×1,1; stan auta 0x50acf0 w demie przechodzi
+  w 3 dopiero po 3 s. Wyniku w demie się nie zapisuje (flaga 0x200, 0x4c5583).
+- **U nas** (`MainWindow::startDemo`, `tickDemo`): `DemoEntry` czytany z `SCRI` trasy (`rc::GameScript`), auto
+  gracza trzymane nad trasą, poza wszystkim; kokpit pokazuje prędkość i okrążenie śledzonego auta, bez strzałki,
+  miejsca i komunikatów wyścigu. Kule ×1,1 i opóźnienie stanu 0x50acf0 nie są przeniesione (nasze zderzenia aut to
+  bryły Bullet).
+
 ## Opcje i twórcy
 
 Przyciski menu głównego mają identyfikatory ekranów 0x641.. (0x4c9500), a 0x4ca290 wybiera ekran: 0x642 „Wyjdź”

@@ -19,6 +19,11 @@ void Race::restart(const Mat4& start, bool again) {
   wrongTime = 0;
   }
 
+void Race::startNow() {
+  state   = Phase::Racing;
+  startAt = clock;
+  }
+
 float Race::bestLap() const {
   return times.empty() ? 0.f : *std::min_element(times.begin(),times.end());
   }

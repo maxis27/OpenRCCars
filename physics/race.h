@@ -29,6 +29,8 @@ class Race {
 
     // from the countdown again, the car standing at `start`; `again`: "Jeszcze raz", without the entry delay
     void   restart(const Mat4& start, bool again = false);
+    // racing at once, without the countdown: the demo's DemoEntry ("0 StartRace" with no Show3 .. Show1)
+    void   startNow();
     // `dt` seconds of game time with the car at `car` facing `heading` (its forward axis, world)
     Event  update(float dt, const Vec3& car, const Vec3& heading);
 

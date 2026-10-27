@@ -54,6 +54,7 @@ class Menu : public Canvas {
       RaceAgain,  // "Jeszcze raz?"
       Abort,      // "Przerwij": the race left for the main menu
       Done,       // "Wyjdź" of the finish table: the race recorded (0x4c56c0) and left for the main menu
+      Demo,       // "Demo gry", or 3 minutes on the main menu without a button pressed (message 0x26d)
       };
     // the game modes of 0x4a4ca0 that the menus start
     enum class Mode : uint8_t {
@@ -62,6 +63,7 @@ class Menu : public Canvas {
       MultiGhost   = 3,  // "Multi": against the ghosts of GhostRecords\ (flag 0x80)
       Training     = 4,  // "Trening" of the championship: 3 laps, the easy opponents, no fee and no prize
       Championship = 5,  // 5 laps, the expert opponents, the fee paid, the prize won (0x4e03b0)
+      Demo         = 6,  // the game's demo: the recorded cars on beach_1, country_3 and country_4 in turn
       };
     struct Setup {
       size_t  track   = 0;   // 0..9 in the game's order (Language/Game 40050..: Beach_1, Country_3 ...)
@@ -553,6 +555,10 @@ class Menu : public Canvas {
     float                   mouseX = -1, mouseY = -1;  // 800x600 units
     bool                    mouseIn = false;
     float                   time = 0;
+    // 0x4c9670: the main menu shown starts a 180 s timer whose message (0x26d) starts the demo; a button pressed
+    // (0x7c, 0x89) stops it until the menu is shown again. -1 stopped
+    static constexpr float  DemoIdle = 180.f;
+    float                   mainIdle = -1;
     float                   fade = 1;   // the opacity of what is drawn (the screen's controls changing)
     float                   wide = 0;   // how much wider than 800 units the window is
     float                   tall = 0;   // how much higher than 600 units it is (narrower than 4:3)

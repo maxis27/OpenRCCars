@@ -119,6 +119,7 @@ constexpr float ChatX     = 20,  ChatY = 260, ChatW = 400, ChatH = 170;
 constexpr size_t ChatLines = 5;
 constexpr float ChatLife  = 5.f, ChatSlide = 0.25f;
 constexpr float ChatSize  = 28.f;  // Smash20's cell: drawn 1:1
+constexpr uint32_t DemoHint = 41903; // "Wciśnij <Enter>, aby załadować następne demo..."
 constexpr float GateFlash  = 1.2f;                  // the checkpoint just passed flashes green
 constexpr float GateRange  = 150.f;                 // checkpoints farther away are not outlined
 
@@ -581,9 +582,10 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
   const auto  phase  = race.phase();
   const int   li     = (lang=="Polish") ? 0 : 1;
 
-  if(info.gates)
+  if(info.gates && !info.demo)
     gates(race,info.viewProj);
-  checkpointArrow(race,info.viewProj);
+  if(!info.demo)
+    checkpointArrow(race,info.viewProj);
 
   // top right: "okrążenie" and the lap number
   if(lapLabel.loaded) {
@@ -592,8 +594,9 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
          float(lapLabel.w)*scale,float(lapLabel.h)*scale,white4);
     // right after the picture's lettering (x 6..120, y 39..84 of 128), as in the original's screenshot: the Polish
     // one is wider than the English one, which "lapNumPosX" 725 is set for
-    const std::string lap = info.ghostRace ? std::to_string(race.lap())
-                                           : std::to_string(race.lap())+"/"+std::to_string(race.laps());
+    const int         now = info.demo ? std::clamp(info.lap,1,race.laps()) : race.lap();
+    const std::string lap = info.ghostRace ? std::to_string(now)
+                                           : std::to_string(now)+"/"+std::to_string(race.laps());
     numberText(lap,x+LapNumDX*scale,py(LapNumY),-1);
     }
   // top left: the place, when there are opponents
@@ -621,7 +624,7 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
         std::to_string(int(std::lround(info.speed))),Texts[li][1]);
 
   // the brackets around the arrow (overtaking.csi), the left one as drawn, the right one mirrored
-  if(overtaking!=nullptr && info.showArrow) {
+  if(overtaking!=nullptr && info.showArrow && !info.demo) {
     const float bw = (Bracket[2]-Bracket[0])*BracketScale*scale, bh = (Bracket[3]-Bracket[1])*BracketScale*scale;
     const float by = py(BracketY)-bh*0.5f;
     quad(*overtaking,128,128,{Bracket[0],Bracket[1],Bracket[2],Bracket[3]},px(BracketX-BracketDX)-bw*0.5f,by,bw,bh,
@@ -630,10 +633,22 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
          white4);
     }
   chatConsole();
+  // 0x4afdc0: the demo's hint in the box 0.3,0.125 .. 0.7,0.183 of the screen, left aligned
+  if(info.demoHint) {
+    // our stand-in of the original's font is wider: made smaller to fit the box
+    const std::string_view hint = texts.get(DemoHint);
+    const float boxW = float(scrW)*0.4f, boxH = float(scrH)*(0.1833f-0.125f);
+    const float wide = textWidth(font20,hint,ChatSize);
+    const float size = wide>boxW ? ChatSize*boxW/wide : ChatSize;
+    text(font20,hint,float(scrW)*0.3f,float(scrH)*0.125f+(boxH-size*scale)*0.5f,size,white4,-1);
+    }
 
   // one message in the middle at a time
   const float my = py(MessageY);
-  if(info.paused) {
+  if(info.demo) {
+    // none of the race's messages: the demo's cars are not the player's
+    }
+  else if(info.paused) {
     sprite(msgPause,{0,0,float(msgPause.w),float(msgPause.h)},px(400),my,1,white4);
     }
   else if(phase==rc::Race::Phase::Countdown && race.countdown()<=rc::Race::CountTime) {

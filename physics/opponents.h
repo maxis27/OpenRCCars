@@ -211,9 +211,11 @@ class Opponents {
     using Params = std::function<CarParams(int32_t car)>;   // car: 1 Overkill, 2 Buggy, 3 Hummer
 
     // `carScene` is RCCarsDB/Car.sb; `route` the track's checkpoints (must outlive this); `params` the driving
-    // parameters of a knocked car (CarParams::load), defaults without it
+    // parameters of a knocked car (CarParams::load), defaults without it. `demo`: the game's demo (mode 6,
+    // RCCars.exe 0x4a5320): the track's Demo1 .. Demo5 instead of the opponents, every one of them racing, the
+    // car of its driver (AIPlayer<n> Car, 0x4a9ce0) without upgrades; see follow()
     Opponents(PhysicsWorld& world, const Reader& read, const SbScene& carScene, const std::string& track,
-              const Checkpoints& route, Level level, const Params& params = {});
+              const Checkpoints& route, Level level, const Params& params = {}, bool demo = false);
     ~Opponents();
 
     // the track's collision box and reset volumes, for putting the cars back on the track (Opponent::trackRules)
@@ -235,6 +237,11 @@ class Opponents {
                                 float raceTime, int laps);
     // what update() has seen
     const std::vector<News>& news() const { return told; }
+    // the demo: the car `i` is the active one (the script's SetActive '$CAR' <i>) instead of the player: the
+    // rubber band measures the others against it (RCCars.exe 0x4fd5e0 takes the active car, 0x4870c0) and it is
+    // the one that sees whether a car stuck behind it may be put back; -1 the player again
+    void                 follow(int i) { focus = i; }
+    int                  followed() const { return focus; }
 
     size_t               size() const { return cars.size(); }
     Opponent&            operator[](size_t i) { return *cars[i]; }
@@ -275,6 +282,7 @@ class Opponents {
     RouteTracker                           player;
     std::vector<std::unique_ptr<Opponent>> cars;
     std::vector<News>                      told;
+    int                                    focus = -1;     // follow()
   };
 
 }

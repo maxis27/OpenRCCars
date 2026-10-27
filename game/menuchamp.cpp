@@ -247,7 +247,7 @@ void Menu::refreshButtons() {
   const size_t car   = std::min<size_t>(choice.car,2);
   const bool   owned = p.cars[car].bought;
   for(auto& b:right) {
-    if(b.kind==Button::Race && (current==Page::Main || current==Page::QuickRace))
+    if(b.kind==Button::Race && (current==Page::Main || raceSetup()))
       b.enabled = quickAllowed();
     if(current==Page::Champ && b.id==C_Training)
       b.enabled = players->trackOpen(choice.track,true);
@@ -876,9 +876,12 @@ int32_t Menu::finishBonus() const {
   }
 
 Menu::Page Menu::afterRace() const {
-  // 0x4e07c0: the quick race's screen, the championship's, its congratulations after the last track
+  // 0x4e07c0: the quick race's screen, the ghost race's, the championship's, its congratulations after the last
+  // track
   if(choice.mode==Mode::Quick)
     return Page::QuickRace;
+  if(choice.ghost())
+    return Page::GhostRace;
   if(choice.mode==Mode::Championship && championWon)
     return Page::ChampWin;
   return Page::Champ;

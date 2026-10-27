@@ -48,6 +48,10 @@ class Players {
     // changes whenever a player's face does, for whoever keeps their pictures
     uint32_t                  faceVersion() const { return faceStamp; }
 
+    // the ghost race's kind (RCCars.crs Player/GhostMode, 0x4d3620 / 0x4d3e60): 0 "Zwykły", 1 "Multi"
+    int32_t                   ghostMode() const;
+    void                      setGhostMode(int32_t mode);
+
     // the race begins (0x4c9f70): its track, car, laps and skill remembered for the next time
     void                      raceStarted(int32_t track, int32_t car, int32_t laps, int32_t skill);
     // a lap of the player's (0x4c5560); true if it is the player's best on the track

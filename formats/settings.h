@@ -60,6 +60,9 @@ class ConfigFile {
     // with `capacity`; nothing else of the file changes
     static std::vector<uint8_t> withString(const std::vector<uint8_t>& data, std::string_view section,
                                            std::string_view key, std::string_view value, uint16_t capacity = 16);
+    // the same for the integer `key` (0x4049d0: "Player", "GhostMode")
+    static std::vector<uint8_t> withInteger(const std::vector<uint8_t>& data, std::string_view section,
+                                            std::string_view key, int32_t value);
 
   private:
     std::map<std::string,int32_t,std::less<>>     ints;      // "section/key"

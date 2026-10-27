@@ -73,6 +73,7 @@ add_library(rcphysics STATIC
   physics/race.h        physics/race.cpp
   physics/props.h       physics/props.cpp
   physics/opponents.h   physics/opponents.cpp
+  physics/ghosts.h      physics/ghosts.cpp
   physics/characters.h  physics/characters.cpp
   physics/traffic.h     physics/traffic.cpp
   physics/aiemu.h       physics/aiemu.cpp

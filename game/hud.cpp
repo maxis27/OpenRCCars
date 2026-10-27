@@ -592,7 +592,8 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
          float(lapLabel.w)*scale,float(lapLabel.h)*scale,white4);
     // right after the picture's lettering (x 6..120, y 39..84 of 128), as in the original's screenshot: the Polish
     // one is wider than the English one, which "lapNumPosX" 725 is set for
-    const std::string lap = std::to_string(race.lap())+"/"+std::to_string(race.laps());
+    const std::string lap = info.ghostRace ? std::to_string(race.lap())
+                                           : std::to_string(race.lap())+"/"+std::to_string(race.laps());
     numberText(lap,x+LapNumDX*scale,py(LapNumY),-1);
     }
   // top left: the place, when there are opponents
@@ -606,7 +607,7 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
 
   // top middle: the total time; under it a finished lap's time blinks for a while (the original shows no running
   // lap time)
-  numberText(formatTime(race.time()),px(400),py(TimeY),0);
+  numberText(formatTime(info.ghostRace ? race.lapTime() : race.time()),px(400),py(TimeY),0);
   if(clock-lapAt<LapBlink && !race.lapTimes().empty() && blink) {
     const bool best = race.lapTimes().back()<=race.bestLap();
     text(font,formatTime(race.lapTimes().back()),px(400),py(TimeLapY),26,best ? yellow : white4,0);

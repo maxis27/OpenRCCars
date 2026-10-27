@@ -27,6 +27,7 @@
 #include "physics/traffic.h"
 #include "physics/checkpoints.h"
 #include "physics/opponents.h"
+#include "physics/ghosts.h"
 #include "physics/race.h"
 #include "physics/resetvolumes.h"
 #include "physics/vehicle.h"
@@ -89,6 +90,14 @@ class MainWindow : public Tempest::Window {
     void shadeCars(float dt);                   // carShade, aiShades from the lightmaps under the cars
     void tickAntennas(float dt);                // the cars' springy antennas
     void setupOpponents();                      // the opponents of the track for aiLevel
+    // the ghost race's ghosts (raceMode Ghost, MultiGhost), none in the other races; those of the race before
+    // written first (Multi)
+    void setupGhosts();
+    void saveGhosts();
+    // the ghost race's "Wróć na start" and R (RCCars.exe 0x4f69e0): the car at the start, the lap from the beginning
+    void ghostBackToStart();
+    // the model of a car that looks so, made the first time it is asked for
+    CarModel& carModel(const rc::Ghosts::Look& look);
     // engines, checkpoint voice: once per frame after the physics
     void tickSounds(float dt);
     static std::vector<rc::Mat4> partPoses(const ModelMesh& mesh, const rc::CarGeometry& geom, const rc::CarRig::Pose& pose);
@@ -166,6 +175,8 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<rc::Opponents>    opponents;
     rc::Opponents::Level              aiLevel = rc::Opponents::Level::Normal; // O: off, easy, normal, hard
     std::map<std::array<int32_t,5>,std::unique_ptr<CarModel>> aiMeshes; // by car, skin and upgrades
+    std::unique_ptr<rc::Ghosts>       ghosts;    // the ghost race's
+    std::vector<rc::AiCarSound>       ghostSounds;
     float                             playerFinish = -1;  // race time of the player's finish
     bool                              finishShown  = false; // the finish table opened (3 s after it)
     float                             odometer = 0;       // the way the player's car went this race (car+0x5d38)

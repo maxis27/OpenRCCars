@@ -111,6 +111,29 @@ void Players::writeCurrent() {
     Log::e("Players: can't write RCCars.crs");
   }
 
+int32_t Players::ghostMode() const {
+  // 0x4e2660 makes it 0 for a new file; anything but 0 and 1 is refused (0x4d3620)
+  const auto data = readFile(res.gameDir()/"RCCars.crs");
+  if(data.empty())
+    return 0;
+  const int32_t m = rc::ConfigFile::parse(data).integer("Player","GhostMode",0);
+  return m==1 ? 1 : 0;
+  }
+
+void Players::setGhostMode(int32_t mode) {
+  const auto path = res.gameDir()/"RCCars.crs";
+  const auto data = readFile(path);
+  if(data.empty())
+    return;
+  const auto out = rc::ConfigFile::withInteger(data,"Player","GhostMode",mode==1 ? 1 : 0);
+  if(out==data)
+    return;
+  std::ofstream f(path,std::ios::binary|std::ios::trunc);
+  f.write(reinterpret_cast<const char*>(out.data()),std::streamsize(out.size()));
+  if(!f)
+    Log::e("Players: can't write RCCars.crs");
+  }
+
 Players::Result Players::create(std::string_view name, size_t& index) {
   if(find(name)!=None)
     return Result::Exists;

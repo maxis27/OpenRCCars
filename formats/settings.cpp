@@ -287,6 +287,43 @@ std::vector<uint8_t> ConfigFile::withString(const std::vector<uint8_t>& data, st
   return ret;
   }
 
+std::vector<uint8_t> ConfigFile::withInteger(const std::vector<uint8_t>& data, std::string_view section,
+                                             std::string_view key, int32_t value) {
+  const auto lay = crsLayout(data);
+  if(!lay.ok)
+    return data;
+  // a value record: [u16 1][u16 4][u16 0][u16 0], the integer, [u32 0]
+  std::vector<uint8_t> rec = {1,0,4,0,0,0,0,0};
+  for(int i=0; i<4; ++i)
+    rec.push_back(uint8_t(uint32_t(value)>>(8*i)));
+  rec.insert(rec.end(),4,0);
+  std::vector<uint8_t> ret = data;
+  auto bump = [&ret](size_t at) {
+    const uint16_t n = uint16_t((ret[at] | ret[at+1]<<8)+1);
+    ret[at]   = uint8_t(n&0xff);
+    ret[at+1] = uint8_t(n>>8);
+    };
+  const std::string path = std::string(section)+"/"+std::string(key);
+  if(auto v = lay.values.find(path); v!=lay.values.end()) {
+    ret.erase(ret.begin()+std::ptrdiff_t(v->second.at),ret.begin()+std::ptrdiff_t(v->second.end));
+    ret.insert(ret.begin()+std::ptrdiff_t(v->second.at),rec.begin(),rec.end());
+    return ret;
+    }
+  auto named = crsName(key);
+  named.insert(named.end(),rec.begin(),rec.end());
+  if(auto s = lay.sections.find(section); s!=lay.sections.end()) {
+    ret.insert(ret.begin()+std::ptrdiff_t(s->second.end),named.begin(),named.end());
+    bump(s->second.countAt);
+    return ret;
+    }
+  auto sec = crsName(section);
+  sec.insert(sec.end(),{1,0,0,0,0,0,0,0});
+  sec.insert(sec.end(),named.begin(),named.end());
+  ret.insert(ret.begin()+std::ptrdiff_t(lay.rootEnd),sec.begin(),sec.end());
+  bump(lay.rootCountAt);
+  return ret;
+  }
+
 KeySections KeySections::parse(std::string_view text) {
   KeySections ret;
   std::map<std::string,std::vector<float>,std::less<>>* cur = nullptr;

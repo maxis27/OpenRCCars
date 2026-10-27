@@ -116,6 +116,10 @@ class MainWindow : public Tempest::Window {
     // the race's news on the chat console (RCCars.exe 0x4ad140, Language/Game/*.tbl 20102 ..): `car` -1 is the
     // player, otherwise the opponent
     void                  tell(uint32_t id, int car, std::string_view what = {});
+    // an opponent's name as the game shows it
+    std::string           opponentName(size_t i) const;
+    // the cars of the finish table, as they stand now
+    std::vector<Menu::FinishRow> finishRows() const;
     void                  tellNews(float dt, const std::vector<rc::Characters::Car>& others);
     // the developer mode's typed codes (RCCars.exe 0x47a660 / 0x47a6b0), see DevCode
     bool                  devCodeKey(Tempest::Event::KeyType key);
@@ -160,6 +164,7 @@ class MainWindow : public Tempest::Window {
     rc::Opponents::Level              aiLevel = rc::Opponents::Level::Normal; // O: off, easy, normal, hard
     std::map<std::array<int32_t,5>,std::unique_ptr<CarModel>> aiMeshes; // by car, skin and upgrades
     float                             playerFinish = -1;  // race time of the player's finish
+    bool                              finishShown  = false; // the finish table opened (3 s after it)
     float                             odometer = 0;       // the way the player's car went this race (car+0x5d38)
     bool                              devFlew  = false;   // F9 or N this race: its times are not the player's
     rc::AiEmu                         aiEmu;              // what the opponents seem to run into

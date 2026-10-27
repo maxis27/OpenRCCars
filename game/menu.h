@@ -32,6 +32,7 @@ class Menu : public Canvas {
       QuickRace,  // "Szybki wyścig": dlgRACESUM
       InRace,     // Esc during a race: dlgINRACE
       Players,    // "Wybierz gracza": dlgPLRSCOMM (0x4d1c43)
+      Finish,     // the table after the player's finish, over the race: dlgFINISH (0x4c4f90)
       };
     // what the player chose, for MainWindow
     enum class Command : uint8_t {
@@ -42,6 +43,7 @@ class Menu : public Canvas {
       BackOnTrack,// "Wróć na tor": the car back to the last checkpoint
       RaceAgain,  // "Jeszcze raz?"
       Abort,      // "Przerwij": the race left for the main menu
+      Done,       // "Wyjdź" of the finish table: the race recorded (0x4c56c0) and left for the main menu
       };
     struct Setup {
       size_t  track   = 0;   // 0..9 in the game's order (Language/Game 40050..: Beach_1, Country_3 ...)
@@ -57,12 +59,25 @@ class Menu : public Canvas {
       float alpha = 1;   // fading in
       };
 
+    // a car of the finish table (0x4c47e0), in the order of the race
+    struct FinishRow {
+      std::string                 name;
+      std::string                 faceKey;          // whose picture `face` is, for keeping its texture
+      const std::vector<uint8_t>* face = nullptr;   // a .csi, nullptr none
+      float                       time    = 0;      // the finish, or the race's clock while still racing
+      float                       bestLap = -1;     // < 0 none yet
+      float                       speed   = 0;      // km/h on average
+      bool                        player  = false;
+      };
+
     static constexpr size_t TrackCount = 10;
 
     Menu(Tempest::Device& device, Resources& res, Sounds& sounds);
 
     // the players whose panel the main menu shows and who are chosen on Page::Players
     void    setPlayers(Players* p) { players = p; }
+    // the cars of Page::Finish, every frame while it is open
+    void    setFinish(std::vector<FinishRow> rows) { finishRows = std::move(rows); }
     // a text of Language/Game (Windows-1250), empty if there is none
     std::string_view gameText(uint32_t id) const { return str(id); }
 
@@ -224,6 +239,15 @@ class Menu : public Canvas {
     // the player's picture, name, rank, car, time, scores and money (0x4a7170), the main menu's or another's
     void   drawPanel(rc::PlayerProfile& p, bool main);
     const Tempest::Texture2d* face(rc::PlayerProfile& p);
+    // a picture (.csi) as a texture kept by `key`, made again when `version` changes
+    const Tempest::Texture2d* faceTexture(const std::string& key, const std::vector<uint8_t>& csi, uint32_t version);
+
+    // Page::Finish
+    void   drawFinish();
+    // a pill of Page::Finish pressed: the table fades out over 0.5 s, then its command (0x4c5500)
+    void   finishPill(Command cmd);
+    // where the pills of the page are drawn from (the race's menu along the bottom, the finish table in the middle)
+    float  pillShiftY() const { return current==Page::InRace ? tall : tall*0.5f; }
 
     // Page::Players (0x4d2400 ..)
     void   fillPlayers();
@@ -270,6 +294,11 @@ class Menu : public Canvas {
     std::vector<Enum>       enums;      // QuickRace: laps, skill
     Players*                players = nullptr;
     std::unordered_map<std::string,FaceTex> faces;   // by the player's name
+    // Page::Finish: its cars, the time it has been open, the time it has been going (< 0 not) and what then
+    std::vector<FinishRow>  finishRows;
+    float                   finishT   = 0;
+    float                   finishOut = -1;
+    Command                 finishCmd = Command::None;
     // Page::Players: the list's rows (players' indices in the order shown), the one chosen, the first shown
     std::vector<size_t>     rows;
     size_t                  selRow  = 0;

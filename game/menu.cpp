@@ -75,6 +75,9 @@ enum : uint32_t {
   T_Rank        = 41606, // "Ranga"
   T_PanelCar    = 41607, // "Samochód"
   T_BackOnTrack = 42000, // "Wróć na tor"
+  T_FinishHead  = 41300, // "Gracz", "Poz.", "Czas", "Dziura", "Najl. okr.", "śr. prędkość"
+  T_NoGap       = 41306, // "---"
+  T_Kmh         = 41307, // "km/h"
   T_StockPart   = 41800, // "Dom." (41800 booster, 41801 engine, 41802 tires)
   };
 
@@ -139,6 +142,18 @@ constexpr float MsgText[4]    = {211,227,589,309};
 constexpr float NameBox[4]    = {0.32f*800,0.44f*600,0.68f*800,0.47667f*600};
 constexpr size_t NameMax      = 10;
 
+// the finish table (dlgFINISH.ini, 0x4c5b50): the frame, the table (header 10 %, rows 15 % of it, the last column
+// what the six of the file leave), the pictures 0.009 of the screen in from the right of their column (tableMordaShift),
+// "Wyjdź" and "Jeszcze raz?" 15 units right of it as wide (0x4c5c88)
+constexpr float FinishFrame[4] = {5,20,5+788,20+570};
+constexpr float FinishTable[4] = {87,35,87+597,35+315};
+constexpr float FinishCols[7]  = {0.08f,0.19f,0.09f,0.16f,0.14f,0.14f,0.20f};
+constexpr float FinishHead     = 0.10f;
+constexpr float FinishRowH     = 0.15f;
+constexpr float FinishFaceIn   = 0.009f*800;
+constexpr float FinishExit[4]  = {244,535,244+150,535+33};
+constexpr float FinishAgain[4] = {244+150+15,535,244+150+15+150,535+33};
+constexpr float FinishFade     = 0.5f;   // in and out (0x4c4541, 0x4c46b7)
 constexpr float Grey  = 0xd0/255.f;  // text of a button, an enum (0xd0d0d0)
 constexpr float SlideTime = 0.5f;    // the change of screen
 
@@ -274,7 +289,8 @@ void Menu::layout(int w, int h) {
 void Menu::open(Page p) {
   if(p==current && slide==0)
     return;
-  if(current==Page::None || current==Page::InRace || p==Page::InRace || p==Page::None) {
+  if(current==Page::None || current==Page::InRace || current==Page::Finish || p==Page::InRace || p==Page::Finish ||
+     p==Page::None) {
     // into or out of a race: at once
     build(p);
     return;
@@ -414,6 +430,20 @@ void Menu::build(Page p) {
       pills = {abort,reset,back,again};
       return;
       }
+    case Page::Finish: {
+      // dlgFINISH (0x4c4f90): the table, "Wyjdź" (orange) and "Jeszcze raz?" (red; not in the championship)
+      headerText = 0;
+      Pill exit;   exit.box  = {FinishExit[0],FinishExit[1],FinishExit[2],FinishExit[3]};     exit.text  = T_Exit;
+      exit.command = Command::Done;
+      Pill again;  again.box = {FinishAgain[0],FinishAgain[1],FinishAgain[2],FinishAgain[3]}; again.text = T_RaceAgain;
+      again.red = true;
+      again.command = Command::RaceAgain;
+      pills     = {exit,again};
+      finishT   = 0;
+      finishOut = -1;
+      finishCmd = Command::None;
+      return;
+      }
     }
   // the new buttons come in
   slide  = 2;
@@ -460,6 +490,16 @@ void Menu::tick(float dt) {
     e.pushL = std::max(0.f,e.pushL-dt), e.pushR = std::max(0.f,e.pushR-dt);
 
   faceEnum.pushL = std::max(0.f,faceEnum.pushL-dt), faceEnum.pushR = std::max(0.f,faceEnum.pushR-dt);
+  if(current==Page::Finish) {
+    finishT += dt;
+    if(finishOut>=0) {
+      finishOut += dt;
+      if(finishOut>=FinishFade) {
+        finishOut = -1;
+        command   = std::exchange(finishCmd,Command::None);
+        }
+      }
+    }
   if(message.open)
     message.t += dt;
   if(nameEntry.open)
@@ -572,7 +612,7 @@ void Menu::mouseMove(int x, int y) {
       playControl(0);
     }
   for(auto& p:pills) {
-    const bool in = p.box.contains(mouseX-wide*0.5f,mouseY-tall);
+    const bool in = p.box.contains(mouseX-wide*0.5f,mouseY-pillShiftY());
     if(in && !p.hover)
       playControl(0);
     p.hover = in;
@@ -651,7 +691,10 @@ void Menu::mouseDown(int x, int y) {
   for(auto& p:pills)
     if(p.hover) {
       playControl(3);
-      command = p.command;
+      if(current==Page::Finish)
+        finishPill(p.command);
+      else
+        command = p.command;
       return;
       }
   if(current==Page::QuickRace) {
@@ -769,6 +812,11 @@ void Menu::keyDown(Event::KeyType key, uint32_t ch) {
     case Page::InRace:
       if(key==Event::K_ESCAPE)
         command = Command::Resume;
+      return;
+    case Page::Finish:
+      // 0x4c466d: the key of action 12 is "Wyjdź" (Esc; Enter, the default button, too)
+      if(key==Event::K_ESCAPE || key==Event::K_Return)
+        finishPill(Command::Done);
       return;
     case Page::Players:
       if(key==Event::K_Up && selRow>0)
@@ -1320,6 +1368,21 @@ const Texture2d* Menu::face(rc::PlayerProfile& p) {
   return f.tex.tex.isEmpty() ? nullptr : &f.tex.tex;
   }
 
+const Texture2d* Menu::faceTexture(const std::string& key, const std::vector<uint8_t>& csi, uint32_t version) {
+  auto& f = faces[key];
+  if(f.version!=version) {
+    f.version = version;
+    try {
+      f.tex = resources.decode(csi);
+      }
+    catch(const std::exception& e) {
+      Log::e("the face of ",key,": ",e.what());
+      f.tex = Resources::Texture();
+      }
+    }
+  return f.tex.tex.isEmpty() ? nullptr : &f.tex.tex;
+  }
+
 void Menu::drawPanel(rc::PlayerProfile& p, bool main) {
   // 0x4a7170: the picture, "Witaj, <name>" (the name alone elsewhere) on its line, three lines, then the scores
   // and the money on a line of their own, on the right
@@ -1419,6 +1482,152 @@ void Menu::drawPlayers() {
     }
   }
 
+void Menu::finishPill(Command cmd) {
+  if(finishOut>=0)
+    return;
+  finishOut = 0;
+  finishCmd = cmd;
+  }
+
+void Menu::drawFinish() {
+  // 0x4c4589 and 0x4de520: the race darkened (0x7f000020), the frame (0x4acb20: messagebox.csi, 32 units at the
+  // corners, the middle stretched), the race darkened again (0x5f000000) and then the table and the pills; all but
+  // the darkening fade in over 0.5 s and out when a pill is pressed
+  const float a = finishOut>=0 ? std::max(0.f,1.f-finishOut/FinishFade) : std::min(finishT/FinishFade,1.f);
+  fade = 1;
+  quad(*white,1,1,{0,0,1,1},0,0,float(scrW),float(scrH),{0,0,0x20/255.f,0x7f/255.f});
+  dx   = wide*0.5f;
+  dy   = tall*0.5f;
+  fade = a;
+  const Color white4 = {1,1,1,1}, grey = {Grey,Grey,Grey,1};
+  if(msgBox) {
+    const Box   f = {FinishFrame[0],FinishFrame[1],FinishFrame[2],FinishFrame[3]};
+    const float c = 32;
+    const float xs[4] = {f.x0,f.x0+c,f.x1-c,f.x1}, ys[4] = {f.y0,f.y0+c,f.y1-c,f.y1};
+    // 0x56cd38: the corners and the sides, the right ones mirrored, and a texel of the middle
+    const Uv uv[3][3] = {
+      {{0,0,0.125f,0.25f},   {0.125f,0,0.25f,0.25f},   {0.125f,0,0,0.25f}},
+      {{0,0.25f,0.125f,0.5f},{0.4f,0.4f,0.41f,0.41f},  {0.125f,0.25f,0,0.5f}},
+      {{0,0.75f,0.125f,1},   {0.125f,0.75f,0.25f,1},   {0.125f,0.75f,0,1}},
+      };
+    for(int y=0; y<3; ++y)
+      for(int x=0; x<3; ++x)
+        image(msgBox,{xs[x],ys[y],xs[x+1],ys[y+1]},uv[y][x],white4);
+    }
+  dx   = 0;
+  dy   = 0;
+  fade = 1;
+  quad(*white,1,1,{0,0,1,1},0,0,float(scrW),float(scrH),{0,0,0,0x5f/255.f});
+  dx   = wide*0.5f;
+  dy   = tall*0.5f;
+  fade = a;
+
+  // the table (class LST, 0x4bcc60, filled by 0x4c47e0): the header in Smash26 standing on its line, a row a car in
+  // Smash20, the player's white with the red marker, the others grey
+  const Box   b  = {FinishTable[0],FinishTable[1],FinishTable[2],FinishTable[3]};
+  const float h  = b.y1-b.y0;
+  const float ix = b.x0+(b.x1-b.x0)*ListInset;
+  const float iw = b.x1-ix;
+  auto columns = [&](float y0, float y1, auto&& cell) {
+    float x = ix;
+    for(size_t c=0; c<7; ++c) {
+      const float w = iw*FinishCols[c];
+      cell(c,Box{x,y0,x+w,y1});
+      x += w;
+      }
+    };
+  const float hy = b.y0+h*FinishHead;
+  columns(b.y0,hy,[&](size_t c, const Box& cb) {
+    // 0x4c5107: "Gracz" over the picture's column, nothing over the name's
+    if(c==1)
+      return;
+    label(font26,str(T_FinishHead+uint32_t(c==0 ? 0 : c-1)),cb,c==0 ? 0 : 1,2,white4);
+    });
+  underline(b.x0,b.x1,hy-0.0055f*600,grey);
+  const FinishRow* me = nullptr;
+  for(auto& r:finishRows)
+    if(r.player)
+      me = &r;
+  char buf[64];
+  for(size_t r=0; r<finishRows.size(); ++r) {
+    const float y0 = hy+float(r)*h*FinishRowH;
+    const float y1 = y0+h*FinishRowH;
+    if(y1>b.y1+0.01f)
+      break;
+    const auto& row = finishRows[r];
+    const Color& c  = row.player ? white4 : grey;
+    columns(y0,y1,[&](size_t col, const Box& cb) {
+      switch(col) {
+        case 0: {
+          // 0x4c59f0: the picture's framed part, as high as the row and 0.5948 of it wide (in screen fractions),
+          // in the middle of the column short of tableMordaShift
+          const Texture2d* t = nullptr;
+          if(row.player && players!=nullptr && players->current()!=nullptr)
+            t = face(*players->current());
+          else if(row.face!=nullptr)
+            t = faceTexture(row.faceKey,*row.face,0);
+          if(t==nullptr)
+            break;
+          float w  = (cb.x1-FinishFaceIn-cb.x0)/800.f, fh = (cb.y1-cb.y0)/600.f;
+          if(w>=fh*0.5948276f)
+            w = fh*0.5948276f;
+          if(fh>=w*1.6811594f)
+            fh = w*1.6811594f;
+          const float cx = (cb.x0+cb.x1-FinishFaceIn)*0.5f, cy = (cb.y0+cb.y1)*0.5f;
+          Tex ft;
+          ft.tex = t;
+          ft.w   = int(t->w());
+          ft.h   = int(t->h());
+          image(ft,{cx-w*400.f,cy-fh*300.f,cx+w*400.f,cy+fh*300.f},{0,0,1,FaceV},white4);
+          break;
+          }
+        case 1: {
+          // the name, underlined just under its letters
+          label(font20,row.name,cb,0,1,c);
+          const float ly = cb.y1-((cb.y1-cb.y0)-font20.cell)*0.5f-0.0055f*600;
+          underline(cb.x0,cb.x1,ly,c);
+          break;
+          }
+        case 2:
+          label(font20,std::to_string(r+1),cb,1,1,c);
+          break;
+        case 3:
+          label(font20,formatTime(row.time),cb,1,1,c);
+          break;
+        case 4: {
+          // against the player: "+" behind, "-" ahead (or level)
+          if(row.player || me==nullptr) {
+            label(font20,str(T_NoGap),cb,1,1,c);
+            break;
+            }
+          const std::string g = std::string(row.time>me->time ? "+" : "-")+formatTime(std::abs(row.time-me->time));
+          label(font20,g,cb,1,1,c);
+          break;
+          }
+        case 5:
+          // no lap yet: shown as the most there is (0x4c48a8 keeps it to 0 .. 599.99)
+          label(font20,formatTime(row.bestLap<0 ? 599.99f : std::min(row.bestLap,599.99f)),cb,1,1,c);
+          break;
+        case 6:
+          std::snprintf(buf,sizeof(buf),"%3.2f %s",double(row.speed),std::string(str(T_Kmh)).c_str());
+          label(font20,buf,cb,1,1,c);
+          break;
+        }
+      });
+    if(arrows) {
+      const float mx = (b.x0+ix)*0.5f, my = (y0+y1)*0.5f+0.006f*600;
+      image(arrows,{mx-7.2f,my-6.9f,mx+7.2f,my+6.9f},row.player ? Uv{0.5f,0,1,0.5f} : Uv{0.5f,0.5f,1,1},white4);
+      }
+    }
+  underline(b.x0,b.x1,b.y1-0.0055f*600,grey);
+
+  for(auto& p:pills)
+    drawPill(p);
+  dx   = 0;
+  dy   = 0;
+  fade = 1;
+  }
+
 void Menu::drawMessage() {
   // 0x4cb8c0: the screen darkened over 0.2 s, then the box: its left part, the right one mirrored, the middle
   // stretched between; the text in the middle over the pills
@@ -1471,6 +1680,12 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
   begin(w,h);
   layout(w,h);
   size_t at = size_t(-1);
+  if(current==Page::Finish) {
+    drawFinish();
+    drawCursor();
+    flush(enc,frame);
+    return;
+    }
   if(current==Page::InRace) {
     // over the race: the scene darkened
     quad(*white,1,1,{0,0,1,1},0,0,float(w),float(h),{0,0,0,0.5f});

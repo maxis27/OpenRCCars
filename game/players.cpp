@@ -164,6 +164,15 @@ size_t Players::defaultFace() const {
   return faces.empty() ? None : 0;
   }
 
+const std::vector<uint8_t>* Players::faceByName(std::string_view file) const {
+  const std::string n = lower(file);
+  for(auto& f:faces)
+    if(lower(f.name)==n)
+      return &f.csi;
+  const size_t d = defaultFace();
+  return d<faces.size() ? &faces[d].csi : nullptr;
+  }
+
 void Players::setFace(size_t player, size_t face) {
   if(player>=size() || face>=faces.size())
     return;

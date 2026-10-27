@@ -135,10 +135,14 @@ class Opponent {
 
     // race bookkeeping (Opponents)
     float                finishTime = -1;   // race time of the finish, < 0 before
+    float                lapAt      = 0;    // race time the lap being driven began
+    float                bestLap    = -1;   // its fastest lap, < 0 none yet
     float                sinceCar   = 1e3f; // s since a hit with another car began (Opponents::collide)
     float                shakeLeft  = 0;    // s left of the window judging how hard the player hit it ...
     Vec3                 shake;             // ... and its rotation in that window so far, own axes, rad
-    std::string          name;
+    std::string          name;              // the face picture's name ("MCJocker"), "AI<n>" without a driver
+    int32_t              driver = 0;        // AIPlayer<n>, 0 none: the name is Language/Game 40499+n (0x4a9ce0)
+    std::string          face;              // AIPlayer<n> Face: a picture of FacesSys ("MCJocker.tga")
     int32_t              car = 0;           // 0 Overkill, 1 Buggy, 2 Hummer
     int32_t              skin = 0;          // AIPlayer<n> Skin
     int32_t              boost = 0, reson = 0, tires = 0; // AIRace<n> AI<n>Boost, Reson, Tires: how it looks
@@ -251,6 +255,7 @@ class Opponents {
       std::string name;          // empty for the player
       float       time = -1;     // finish time, < 0 still racing
       bool        player = false;
+      int         car    = -1;   // the opponent's index, -1 for the player
       };
     // finished cars by their time, then the others by how far they have come
     std::vector<Standing> standings(float playerFinish) const;

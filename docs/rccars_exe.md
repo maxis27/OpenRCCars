@@ -270,8 +270,7 @@ z `Settings/cockpit.ini`.
   i setne sekundy: strzałka ma 1,46 m, znika bliżej niż 2,37 m od kamery, dalej niż 9 m trzyma rozmiar na ekranie
   (rośnie w górę od ziemi), klatka co 0,1 s (zgadnięte; kod gry, który to czyta, nie jest rozpracowany).
 - **Komunikaty**: odliczanie, „okrążenie”, „zły kierunek”, „najlepsze okrążenie”, „Łup!”, „Słaby sygnał” obrazkami
-  z `Language/<język>`. Tabela wyników na mecie ma na razie napisy wpisane w kod; oryginał ma osobny ekran mety
-  (`dlgFINISH`).
+  z `Language/<język>`. Tabela wyników to osobny ekran mety (`dlgFINISH`, niżej).
 - **Konsola czatu** (pole `chatRace` z `dlgMAIN.ini`: 5 linii po 5 s, czcionka `Smash20` z polskimi literami)
   pokazuje komunikaty z `Language/Game/<język>.tbl`: okrążenia i meta przeciwników, utonięcia, strefy resetu,
   trafienia z broni, kopnięcia i rzuty przez ludzi, pchanie aut z ulicy; przeciwnicy dostają je też z
@@ -305,8 +304,13 @@ z `Settings/cockpit.ini`.
   albo dociśnięte do przeszkody) cofa przez 1,5 s. Po 2 s wraca do odtwarzania, gdy jest 10 cm od punktu nagrania
   i jedzie w jego kierunku (do 10°), a po 5 s wraca od razu, jeśli gracz go nie widzi (u nas: dalej niż 50 m albo za
   graczem, zgadnięte). Powrót płynnie przechodzi w nagranie przez sekundę.
-- Kokpit pokazuje miejsce obrazkiem z gry (`place1..6.csi`: „1szy” … „6ty”), a meta tabelę wyników, w którą wpadają
+- Kokpit pokazuje miejsce obrazkiem z gry (`place1..6.csi`: „1szy” … „6ty”), a ekran mety tabelę, w którą wpadają
   czasy kolejnych kierowców.
+- **Imiona i twarze** (0x4a9ce0): kierowca `AIPlayer<n>` z `ailayouts.ini` ma imię z `Language/Game` 40499+n
+  („MC Zgryw”, „Maks Mad”, „Doktorek”, „Rekinek”, „Różyczka”, „Dakilla”, „Jasiu”; tak też w czacie) i twarz
+  `Face` szukaną po nazwie wśród `FacesSys\` i `Faces\` (0x4e5a10), bez niej `face1.tga`.
+- **Zegar**: czas wyścigu gracza staje na mecie, ale przeciwnicy liczą dalej (rekord wyników 0x4ea2d0, +0x14 rośnie
+  do ich mety); wcześniej dojeżdżający po graczu dostawali jego czas.
 
 ## Rekwizyty
 
@@ -742,11 +746,45 @@ Po wyścigu (szybki wyścig to tryb 1, 0x4d2dd5):
   Auto musi być kupione, inaczej gra bierze pierwsze kupione (u nas szybki wyścig pozwala na każde auto).
 - **Okrążenie** (0x4eb2b0 → 0x4c5560, tryby 1–5, 7, 8): lepsze od najlepszego na trasie staje się rekordem z autem,
   jego ulepszeniami z profilu i datą; czat 20100 „><imię> najlepsze okrążenie <czas>”.
-- **Meta** (0x4c56c0, 0,5 s po końcu): najlepszy wyścig na tyle okrążeń (czat 20101), czas wyścigu do trasy i do
+- **Meta** (0x4c56c0, po „Wyjdź” ekranu mety, niżej): najlepszy wyścig na tyle okrążeń (czat 20101), czas wyścigu do trasy i do
   „Czasu gry” (gra liczy tylko ukończone wyścigi), +1 wyścig, przejechane metry (licznik auta car+0x5d38, 0x4f1c80,
   nie liczy przestawienia na trasę) do trasy i do gracza, zapis pliku. Miejsce, nagrody i rekord mistrzostw (0x0279)
   tylko w mistrzostwach (tryb 5). Wyścigu nie zapisuje się przy fladze 0x200 (zdarzenie 31 skryptu; u nas: gdy
-  w wyścigu użyto F9 albo N z `-dev`).
+  w wyścigu użyto F9 albo N z `-dev`). „Jeszcze raz?” wyścigu nie zapisuje (0x4c46c6: tylko 0x27e, wyścig od
+  nowa); rekord okrążenia (0x4c5560) jest już w profilu.
+
+## Ekran mety
+
+`dlgFINISH` (tworzenie 0x4c4f90, obsługa 0x4c44e0, wypełnianie 0x4c47e0, układ 0x4c5b50, przyciski 0x4c5500):
+
+- **Kiedy**: gdy auto gracza skończy wyścig (stan 2, 0x4a5100), gra uruchamia skrypt `LevelFinish` z `RCCars.sb`
+  („3 ShowTable”), więc tabela pojawia się 3 s po mecie (zdarzenie 30 → 0x4de520 z 0x4c44e0; w trybach duchów 7, 8
+  inna, 0x4cc670). W mistrzostwach przy wygranej na ostatniej trasie skrypt to `ChampionshipWin`. Wyścig w tle
+  trwa: tabela co klatkę bierze kolejność z 0x4ea2d0 (skończeni po czasie, reszta po drodze).
+- **Rysowanie** (0x15): ekran przyciemniony `0x7f000020`, ramka 0x4acb20 (`messagebox.csi`: rogi 32 piksele,
+  UV 0x56cd38, prawe odbite, środek z teksela 0,4), potem ogólna obsługa okien 0x4de520 przyciemnia jeszcze raz
+  `0x5f000000` i rysuje kontrolki. Ramka i kontrolki pojawiają się w 0,5 s (alfa okna 0 → 255) i znikają w 0,5 s
+  po naciśnięciu przycisku.
+- **Układ** z `Settings\dlgFINISH.ini` (jednostki 800×600): ramka 5,20 788×570; tabela 87,35 597×315, nagłówek
+  10 %, wiersz 15 %, szerokości kolumn 8/19/9/16/14/14 % i reszta (20 %) dla ostatniej; „Wyjdź” (10004,
+  pomarańczowy) 244,535 150×33, „Jeszcze raz?” (10067, czerwony, w mistrzostwach ukryty) 15 jednostek na prawo,
+  tak samo szeroki (`buttonRaceAgainSX` w pliku ma 34, gra go nie czyta). Do tego tabela premii 0x170f i napisy
+  0x1710–0x1714 tylko w mistrzostwach.
+- **Tabela** (klasa LST, flagi 0x500000: linia pod nagłówkiem i pod tabelą, znaczniki): nagłówek `Smash26`
+  wyrównany do dołu, „Gracz” (41300) nad twarzą, nic nad imieniem (w sieci odwrotnie), dalej „Poz.”, „Czas”,
+  „Dziura”, „Najl. okr.”, „śr. prędkość” (41301–41305) na środku. Wiersze `Smash20`: twarz (0x4c59f0: górne 158/256
+  obrazka, wysoka na wiersz, szeroka na 0,5948 wysokości we frakcjach ekranu, na środku kolumny skróconej
+  o `tableMordaShift` 0,009), imię podkreślone, miejsce, czas (forma 3, `%i:%02i.%02i`), różnica do gracza
+  („+” za nim, „-” przed albo równo; u gracza „---”, 41306), najlepsze okrążenie (0..599,99) i średnia prędkość
+  `%3.2f km/h` (41307). Wiersz gracza biały z czerwonym znacznikiem, inne szare (0xd0d0d0).
+- **Średnia prędkość** (0x4eac90, ×3,6 w 0x4ea0f0): w trakcie (długość okrążenia × (okrążenie − 1) + droga na nim)
+  / czas, przez pierwszą minutę mieszana z 7 m/s (waga czas/60); po mecie długość okrążenia × okrążenia / czas.
+  Długość okrążenia (0x4e9560) to suma odcinków `cp_N` → `cp_N_M` … → `cp_1`.
+- **Przyciski**: „Wyjdź” i klawisz akcji 12 (Esc; u nas też Enter) wygaszają okno i wysyłają 0x26b: okno się
+  zamyka, wyścig się kończy (0x48c500(3)) i zapisuje (0x4c56c0). „Jeszcze raz?” wysyła 0x26d: okno się zamyka
+  i 0x27e startuje wyścig od nowa.
+- **Nie przeniesione**: premie i nagrody mistrzostw (41308–41320, `Currency`), tabela duchów (0x4ccb40) i sieci
+  (`dlgMULTI_FINISH`).
 
 ## Tryb deweloperski
 

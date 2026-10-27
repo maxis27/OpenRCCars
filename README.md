@@ -50,7 +50,8 @@ plików w [docs/formaty.md](docs/formaty.md).
   woda, reszta różni się kurzem i śladami. W głębokiej wodzie auto tonie i wraca na ostatni punkt kontrolny; tak
   samo po R, po wyjechaniu poza pudło kolizji trasy i w strefach `car_reset_volume_*` („Słaby sygnał”).
 - **Wyścig**: odliczanie z dźwiękami startu, 3, 5 albo 7 okrążeń, punkty kontrolne `cp_N` zaliczane jak w
-  oryginale, korytarz trasy, „zły kierunek”, czasy okrążeń, meta z tabelą wyników i „jeszcze raz”.
+  oryginale, korytarz trasy, „zły kierunek”, czasy okrążeń, ekran mety jak w oryginale (`dlgFINISH`: twarze,
+  czasy, różnice, najlepsze okrążenia, średnie prędkości, „Wyjdź” i „Jeszcze raz?”).
 - **Kokpit** z obrazków i czcionek gry (`Language/Polish` albo `Language/English`) w miejscach z
   `Settings/cockpit.ini`: metaliczne cyfry `cock_num`, zegary dopalacza i prędkości, mapa trasy, miejsce w wyścigu,
   strzałka kierunku 3D z `cockpit.sb`, animowane strzałki nad następnym punktem, „Łup!”/„Wielkie Łup!” i konsola
@@ -183,7 +184,7 @@ Klawisze jak w instrukcji oryginału (`Instrukcja.pdf`):
 | Shift | dopalacz (zużywa turbo, ok. 10 s z pełnego zbiornika) |
 | B | zablokuj koła (tylne, do poślizgu) |
 | R | powrót do ostatniego głównego punktu kontrolnego (przed pierwszym: na start) |
-| Enter | wyścig od nowa, od odliczania („Jeszcze raz”) |
+| Enter | wyścig od nowa, od odliczania („Jeszcze raz”); na ekranie mety „Wyjdź”, jak Esc |
 | P, Pause | pauza |
 | Esc | menu wyścigu: Przerwij (do menu głównego), Wróć na tor, Zastosuj (dalej), Jeszcze raz? |
 | F12 | licznik FPS (nasz klawisz; jak w oryginale włącza go też `Set ShowFPS 1` w `Config.gm` albo `Autoexec.gm`) |
@@ -371,7 +372,7 @@ Zrobione są wszystkie elementy pojedynczego szybkiego wyścigu. Brakuje:
 - **Grafika i świat**: przyciemnianie postaci i rekwizytów w cieniu (`feat_lmshd.ini`), dźwięk zahaczenia anteny
   (`Antenna_scratch`).
 - **Opakowanie gry**: mistrzostwa z `championship.ini` ze sklepem i ulepszeniami (z nimi miejsca, forsa i wyniki
-  graczy), wyścig z duchami (`GhostRecords`), ekran mety jak w oryginale (`dlgFINISH`), reszta menu
+  graczy), wyścig z duchami (`GhostRecords`), reszta menu
   (opcje, informacje o trasie, autorzy), demo, intro, dwóch graczy na podzielonym ekranie, gra przez sieć.
 
 ## Licencja

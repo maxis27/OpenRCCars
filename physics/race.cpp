@@ -13,6 +13,7 @@ void Race::restart(const Mat4& start, bool again) {
   clock    = 0;
   startAt  = (again ? 0.f : EntryDelay)+CountTime;
   lapStart = 0;
+  finishAt = 0;
   times.clear();
   wrong     = false;
   wrongTime = 0;
@@ -23,8 +24,10 @@ float Race::bestLap() const {
   }
 
 Race::Event Race::update(float dt, const Vec3& car, const Vec3& heading) {
-  if(state==Phase::Finished)
+  if(state==Phase::Finished) {
+    clock += dt;
     return Event::None;
+    }
 
   const float was = clock;
   clock += dt;
@@ -69,7 +72,8 @@ Race::Event Race::update(float dt, const Vec3& car, const Vec3& heading) {
   times.push_back(lap);
   lapStart = time();
   if(int(times.size())>=lapCount) {
-    state = Phase::Finished;
+    finishAt = time();
+    state    = Phase::Finished;
     wrong = false;
     return Event::Finish;
     }

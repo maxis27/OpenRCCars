@@ -328,9 +328,11 @@ void Menu::leave(Page to, Command cmd) {
   // the buttons go out (0x268), then the next screen comes (0x267)
   if(slide==1)
     return;
-  // the options' page shown writes what it has (its message 0xf)
-  if(current==Page::Options)
+  // the options' page shown writes what it has (its message 0xf), so do the two players' pages (0x4a4e30)
+  if(optionsOn())
     saveOptions();
+  if(current==Page::TwoPlayers || current==Page::TwoCars)
+    saveTwo();
   next    = to;
   nextCmd = cmd;
   slide   = 1;
@@ -375,7 +377,7 @@ void Menu::build(Page p) {
       add(0,T_Championship,Button::Tab,Command::None,Page::Champ,players!=nullptr);
       add(1,T_QuickRace,   Button::Tab,Command::None,Page::QuickRace,true);
       add(2,T_GhostRace,   Button::Tab,Command::None,Page::GhostRace,true);
-      add(3,T_Multiplayer, Button::Tab,Command::None,Page::None,false);
+      add(3,T_Multiplayer, Button::Tab,Command::None,Page::Multi,true);
       add(4,T_ChangePlayer,Button::Tab,Command::None,Page::Players,players!=nullptr);
       add(5,T_Options,     Button::Tab,Command::None,Page::Options,true);
       add(6,T_Demo,        Button::Tab,Command::Demo,Page::None,true);
@@ -520,6 +522,15 @@ void Menu::build(Page p) {
       buildCredits();
       add(8,T_MainMenu,Button::Back,Command::None,Page::Main,true);
       break;
+    case Page::Multi:
+      buildMulti();
+      break;
+    case Page::TwoPlayers:
+      buildTwo();
+      break;
+    case Page::TwoCars:
+      buildTwoCars();
+      break;
     case Page::ChampWin:
       // 0x4c13a0: the congratulations, back to the main menu
       headerText  = T_Championship;
@@ -570,6 +581,9 @@ void Menu::tick(float dt) {
     e->pushL = std::max(0.f,e->pushL-dt), e->pushR = std::max(0.f,e->pushR-dt);
   for(auto& e:enums)
     e.pushL = std::max(0.f,e.pushL-dt), e.pushR = std::max(0.f,e.pushR-dt);
+  for(auto& p:twoCars)
+    for(auto& e:p)
+      e.pushL = std::max(0.f,e.pushL-dt), e.pushR = std::max(0.f,e.pushR-dt);
 
   faceEnum.pushL = std::max(0.f,faceEnum.pushL-dt), faceEnum.pushR = std::max(0.f,faceEnum.pushR-dt);
   if(current==Page::Finish) {
@@ -586,7 +600,8 @@ void Menu::tick(float dt) {
     message.t += dt;
   if(nameEntry.open)
     nameEntry.t += dt;
-  if(raceSetup() || current==Page::Garage || current==Page::ChampWin) {
+  if(raceSetup() || current==Page::Garage || current==Page::ChampWin || current==Page::TwoCars ||
+     (current==Page::Multi && multiShowCar)) {
     carYaw   = std::fmod(carYaw+dt*60.f,360.f);
     carAlpha = std::min(1.f,carAlpha+dt/0.5f);
     }
@@ -605,8 +620,9 @@ void Menu::tick(float dt) {
     }
   refreshButtons();
   infoTick(dt);
-  if(current==Page::Options)
+  if(optionsOn())
     optionsTick(dt);
+  multiTick(dt);
   // 0x4c3e40: the pages go on once the screen has come, and at the last one's end back to the main menu
   if(current==Page::Credits && slide==0 && !creditsTick(dt))
     leave(Page::Main,Command::None);
@@ -638,6 +654,10 @@ void Menu::changeEnum(Enum& e, int step) {
       }
   if(&e==&trackEnum) {
     choice.track = e.at;
+    return;
+    }
+  if(current==Page::TwoPlayers || current==Page::TwoCars) {
+    changeTwoEnum(e);
     return;
     }
   if(&e==&carEnum) {
@@ -779,8 +799,10 @@ void Menu::mouseMove(int x, int y) {
     }
   if(current==Page::Garage)
     hoverEnum(garagePage==0 ? garageCar : upgradeEnum);
-  if(current==Page::Options)
+  if(optionsOn())
     optionsHover(mouseX-contentShift(),mouseY-tall*0.5f);
+  for(auto* e:twoEnums())
+    hoverEnum(*e);
   if(infoFrame() && infoPage!=0) {
     for(auto& e:infoEnums)
       hoverEnum(e);
@@ -858,10 +880,15 @@ void Menu::mouseDown(int x, int y) {
         command = pills[i].command;
       return;
       }
-  if(current==Page::Options) {
+  if(optionsOn()) {
     optionsClick(mouseX-contentShift(),mouseY-tall*0.5f);
     return;
     }
+  for(auto* e:twoEnums())
+    if(e->hoverL || e->hoverR) {
+      changeEnum(*e,e->hoverL ? -1 : 1);
+      return;
+      }
   if(current==Page::Garage) {
     Enum& e = garagePage==0 ? garageCar : upgradeEnum;
     if(e.hoverL || e.hoverR)
@@ -1073,6 +1100,26 @@ void Menu::keyDown(Event::KeyType key, uint32_t ch) {
         return;
       if(key==Event::K_ESCAPE)
         leave(Page::Main,Command::None);
+      return;
+    case Page::Multi:
+      if(key==Event::K_ESCAPE)
+        leave(Page::Main,Command::None);
+      return;
+    case Page::TwoPlayers:
+      if(optionsOn() && optionsKey(key,ch))
+        return;
+      if(twoTab==0 && (key==Event::K_Left || key==Event::K_Right))
+        changeEnum(trackEnum,key==Event::K_Left ? -1 : 1);
+      if(key==Event::K_Return)
+        twoAction(0x1069);
+      if(key==Event::K_ESCAPE)
+        leave(Page::Multi,Command::None);
+      return;
+    case Page::TwoCars:
+      if(key==Event::K_Return)
+        twoAction(0x15e1);
+      if(key==Event::K_ESCAPE)
+        leave(Page::TwoPlayers,Command::None);
       return;
     }
   }
@@ -1299,8 +1346,43 @@ std::string Menu::clock(float seconds) {
   return buf;
   }
 
-std::optional<Menu::Preview> Menu::carPreview() const {
-  // dlgRACESUM animCar, dlgCARSCOMM animCarPreview, the congratulations' (0x4c1790)
+std::vector<Menu::Preview> Menu::carPreviews() const {
+  // dlgRACESUM animCar, dlgCARSCOMM animCarPreview, the congratulations' (0x4c1790), dlgMULTIPLAYER animPrevCar
+  // and the two players' (dlgCARSCOMM_SPLIT animCarPreviewSplit, the second one shift2 lower)
+  auto place = [this](Preview p, const Box& b) {
+    p.x = px(b.x0+contentShift());
+    p.y = py(b.y0+tall*0.5f);
+    p.w = (b.x1-b.x0)*scale;
+    p.h = (b.y1-b.y0)*scale;
+    p.yaw   = carYaw;
+    p.alpha = carAlpha;
+    if(slide==1)
+      p.alpha = std::min(p.alpha,slideT/SlideTime);
+    return p;
+    };
+  if(current==Page::Multi) {
+    if(!multiShowCar)
+      return {};
+    Preview p;   // stock (0x50bb60)
+    p.car = multiCar;
+    return {place(p,{188,197,188+320,197+240})};
+    }
+  if(current==Page::TwoCars) {
+    std::vector<Preview> r;
+    for(int i=0; i<2; ++i) {
+      const auto& c = choice.riders[size_t(i)];
+      Preview p;
+      p.car       = std::min<size_t>(c.car,2);
+      p.boost     = c.boost;
+      p.resonator = c.resonator;
+      p.tires     = c.tires;
+      p.skin      = c.skin;
+      p.slot      = i;
+      const float d = float(i)*202;
+      r.push_back(place(p,{45,50+d,45+300,50+240+d}));
+      }
+    return r;
+    }
   Box b;
   if(raceSetup())
     b = {306,254,306+374,254+304};
@@ -1309,7 +1391,7 @@ std::optional<Menu::Preview> Menu::carPreview() const {
   else if(current==Page::ChampWin)
     b = {291,255,694,577};
   else
-    return std::nullopt;
+    return {};
   Preview p = carLook(choice.car);
   if(current==Page::Garage && blinkT>=0 && blinkPage>0) {
     // 0x4d4a00: every other 0.2 s the car as it was before the upgrade
@@ -1318,15 +1400,7 @@ std::optional<Menu::Preview> Menu::carPreview() const {
       l = std::max(0,l-1);
       }
     }
-  p.x = px(b.x0+contentShift());
-  p.y = py(b.y0+tall*0.5f);
-  p.w = (b.x1-b.x0)*scale;
-  p.h = (b.y1-b.y0)*scale;
-  p.yaw   = carYaw;
-  p.alpha = carAlpha;
-  if(slide==1)
-    p.alpha = std::min(p.alpha,slideT/SlideTime);
-  return p;
+  return {place(p,b)};
   }
 
 // drawing
@@ -1596,26 +1670,33 @@ void Menu::drawShot(size_t track, int shot, const Box& b, float alpha, const Box
   image(t,box,uv,{1,1,1,alpha});
   }
 
-void Menu::drawMain() {
-  // dlgMAIN: the tracks in a row, the chosen one large in the middle (shotListTracks)
+void Menu::drawShotRow(size_t at, float scroll) {
+  // dlgMAIN, dlgMULTIPLAYER: the tracks in a row, the chosen one large in the middle (shotListTracks)
   const Box   clip = {12,0,632,600};
   const float side = 100.f+3.f;
-  const float sc   = shotScroll*side;
+  const float sc   = scroll*side;
   for(int k=-3; k<=3; ++k) {
     if(k==0)
       continue;
-    const size_t e  = (shotAt+TrackCount*4*2+size_t(k))%(TrackCount*4);
+    const size_t e  = (at+TrackCount*4*2+size_t(k))%(TrackCount*4);
     const float  x0 = (k<0 ? 223.f-3.f+float(k)*side : 223.f+199.f+3.f+float(k-1)*side)+sc;
     drawShot(e/4,int(e%4),{x0,303,x0+100,379},1.f,&clip);
     }
-  const float cross = 1.f-std::min(1.f,std::abs(shotScroll));
-  drawShot(shotAt/4,int(shotAt%4),{223,269,223+199,269+152},std::max(0.25f,cross));
+  const float cross = 1.f-std::min(1.f,std::abs(scroll));
+  drawShot(at/4,int(at%4),{223,269,223+199,269+152},std::max(0.25f,cross));
+  }
 
+void Menu::drawShowcase(std::string_view head, std::string_view info) {
   // staticInfoHeader (Smash26, on its line), staticInfo (Smash20)
   const Color white = {1,1,1,1};
-  label(font26,str(T_TrackName+uint32_t(choice.track)),{233,417,233+174,417+30},0,2,white);
+  label(font26,head,{233,417,233+174,417+30},0,2,white);
   underline(233,233+174,417+30,white);
-  lines(font20,str(T_TrackBlurb+uint32_t(choice.track)),{234,452,234+240,452+140},0,22.5f,white);
+  lines(font20,info,{234,452,234+240,452+140},0,22.5f,white);
+  }
+
+void Menu::drawMain() {
+  drawShotRow(shotAt,shotScroll);
+  drawShowcase(str(T_TrackName+uint32_t(choice.track)),str(T_TrackBlurb+uint32_t(choice.track)));
   }
 
 void Menu::drawQuickRace() {
@@ -1859,7 +1940,8 @@ void Menu::drawFinish() {
           // 0x4c59f0: the picture's framed part, as high as the row and 0.5948 of it wide (in screen fractions),
           // in the middle of the column short of tableMordaShift
           const Texture2d* t = nullptr;
-          if(row.player && players!=nullptr && players->current()!=nullptr)
+          // (none on the split screen: 0x4a5970 leaves the two without one)
+          if(row.player && !choice.two() && players!=nullptr && players->current()!=nullptr)
             t = face(*players->current());
           else if(row.face!=nullptr)
             t = faceTexture(row.faceKey,*row.face,0);
@@ -2037,7 +2119,8 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
     }
   drawBackground();
 
-  if(raceSetup() || current==Page::Garage || current==Page::ChampWin)
+  if(raceSetup() || current==Page::Garage || current==Page::ChampWin || current==Page::TwoCars ||
+     current==Page::Multi)
     at = mark();
   // the screen's own controls fade out and in with the change of screen
   fade = slide==0 ? 1.f : std::clamp(slideT/SlideTime,0.f,1.f);
@@ -2077,10 +2160,28 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
     dy = tall*0.5f;
     drawGarage();
     }
-  if(current==Page::Options) {
+  if(optionsOn()) {
     dx = contentShift();
     dy = tall*0.5f;
     drawOptions();
+    }
+  if(current==Page::Multi) {
+    dx = contentShift();
+    dy = tall*0.5f;
+    drawMulti();
+    if(players!=nullptr)
+      if(auto* p = players->current())
+        drawPanel(*p,true);
+    }
+  if(current==Page::TwoPlayers && twoTab==0) {
+    dx = contentShift();
+    dy = tall*0.5f;
+    drawTwo();
+    }
+  if(current==Page::TwoCars) {
+    dx = contentShift();
+    dy = tall*0.5f;
+    drawTwoCars();
     }
   if(current==Page::Credits)
     drawCredits();

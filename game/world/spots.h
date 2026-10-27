@@ -26,7 +26,7 @@ class SpotView {
 
     explicit SpotView(Tempest::Device& device);
 
-    // `frameId`: the frame in flight (0, 1)
+    // `frameId`: the frame in flight (0, 1), plus 2 for the split screen's second view
     void draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frameId, const std::vector<Spot>& spots,
               const rc::Mat4& viewProj, const LevelMesh::Push& frame, const rc::CollisionMesh& track);
 
@@ -45,7 +45,7 @@ class SpotView {
 
     Tempest::Device&                device;
     Tempest::RenderPipeline         psoShadow, psoGlow;
-    Tempest::VertexBuffer<Vertex>   vbo[2];
+    Tempest::VertexBuffer<Vertex>   vbo[4];   // by the frame in flight and the view (two in the split screen)
     std::vector<rc::fx::MarkVertex> tris;
     std::vector<Vertex>             verts;
     std::vector<Batch>              batches;

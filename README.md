@@ -80,6 +80,9 @@ plików w [docs/formaty.md](docs/formaty.md).
   i kół, które zmieniają wygląd i jazdę auta.
 - **Wyścig duchów**: „Zwykły” (z duchem najlepszego okrążenia tego wyścigu) i „Multi” (duchy wszystkich trzech aut
   z plików `GhostRecords/track<n>/Track<n>_Car<m>.scg` oryginału, zapisywane po wyścigu).
+- **Dwóch graczy** na podzielonym ekranie („Wielu graczy” → „Dwóch graczy”): wyścig na okrążenia albo na przewagę
+  („Opóźnienia”), dowolne auta i ulepszenia, osobne zegary, mapa i pasek postępu jak w oryginale, drugi gracz na
+  klawiszach Klaw.2 (Tab, W A S D, Alt, Z, C) albo własnych z opcji.
 - **Gracze**: pliki `Players/*.scp` oryginału (czytane i zapisywane bajt w bajt), wybrany gracz w `RCCars.crs`;
   po wyścigu zapisują się najlepsze okrążenie i wyścig, czas gry, liczba wyścigów i przejechane metry.
 - **Narzędzia**: `rcinfo` (inspekcja i eksport danych, testy bez GPU) i `rcshot` (render offscreen do PNG).
@@ -194,7 +197,8 @@ układ „Klaw.1”:
 | B | zablokuj koła (tylne, do poślizgu) |
 | R | powrót do ostatniego głównego punktu kontrolnego (przed pierwszym: na start); w wyścigu duchów na start |
 
-Układ „Klaw.2” to W / S / A / D, Tab (dopalacz), Alt (skok), Z (hamulec), C (powrót).
+Układ „Klaw.2” to W / S / A / D, Tab (dopalacz), Alt (skok), Z (hamulec), C (powrót); to domyślne klawisze
+drugiego gracza na podzielonym ekranie.
 
 | Klawisz | Akcja |
 |---|---|

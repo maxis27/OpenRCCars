@@ -60,6 +60,16 @@ class Hud : public Canvas {
       int   lap       = 0;
       bool  demoHint  = false;
       rc::Mat4 viewProj;       // the camera, for the debug spheres and the checkpoint arrows
+      // the split screen's race of the gap (mode 10): the lap without the race's laps
+      bool  endless   = false;
+      };
+    // the bar between the split screen's views (RCCars.exe 0x4b09a0), drawn with the upper view's cockpit
+    struct Split {
+      bool  lag  = false;   // mode 10: where the two are against each other, not along the race
+      float at[2] = {};     // the players' marks along it, 0..1 ([0] the upper view's)
+      float lo = 0, hi = 0; // red from 0 to lo, yellow from lo to hi
+      int   laps = 0;       // mode 9: a notch at every lap's end
+      float time = 0;       // the race's time, in the capsule on the left
       };
 
     Hud(Tempest::Device& device, Resources& res);
@@ -79,6 +89,13 @@ class Hud : public Canvas {
     std::string_view gameText(uint32_t id) const { return texts.get(id); }
     // `dt` seconds of real time (messages and blinking)
     void tick(float dt) { clock += dt; }
+    // the split screen's view this cockpit belongs to (RCCars.exe 0x4afdc0 with the view): -1 the whole screen, 0 the
+    // upper view, 1 the lower one (the <name>_0 / _1 positions of cockpit.ini, cockpit_time.ini, map.ini and
+    // cockpit_split.ini). A view's cockpit is drawn over the whole window, its 3D parts through `Info::viewProj`
+    // into the view; the upper one also draws `split`'s bar
+    void setView(int v) { view = v; }
+    int  splitView() const { return view; }
+    void setSplit(const Split& s) { bar = s; }
     // `frame` is the frame in flight (its vertex buffer is rewritten)
     void draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frame, int w, int h, const rc::Race& race,
               const Info& info);
@@ -87,6 +104,8 @@ class Hud : public Canvas {
     enum class Message { None, Go, BestLap, Finish };
 
     void   chatConsole();
+    // the one message of the race shown (countdown, "Jazda!", "Łup!" ..) at `cx`, `cy`, `k` times its size
+    void   messages(const rc::Race& race, const Info& info, float cx, float cy, float k);
 
     // a world-space line of the given thickness in pixels, cut at the camera's near plane
     void   line3d(const rc::Mat4& viewProj, const rc::Vec3& a, const rc::Vec3& b, float width, const Color& c);
@@ -95,6 +114,10 @@ class Hud : public Canvas {
     // `reach` (value..1): how far the car can get, the gauge is grey beyond it
     void   gauge(bool right, float value, float reach, const std::string& number, std::string_view label);
     void   trackMap(const rc::Race& race, const Info& info);
+    // the split screen: a view's cockpit, its dial (split_sp1 .. split_sp4, 0x4b3100, 0x4b32f0), the middle bar
+    void   drawView(const rc::Race& race, const Info& info);
+    void   splitGauge(const Info& info);
+    void   splitBar();
     void   checkpointArrow(const rc::Race& race, const rc::Mat4& viewProj);
     // the gauges' numbers: white to grey, outlined
     // the cockpit's numbers (time, lap, gauges) in cock_num, 1:1; `y` is the top of its 64 high cells
@@ -119,6 +142,13 @@ class Hud : public Canvas {
     // the track's map: world (x,z) -> map texels u+iv = k*(x+iz)+offset
     const Tempest::Texture2d*        map       = nullptr;
     std::array<float,2>              mapK      = {}, mapOffset = {};
+
+    const Tempest::Texture2d*        splitSp[4] = {};    // split_sp1 .. 4: the dial, red, yellow, the cap and clamp
+    const Tempest::Texture2d*        splitNode  = nullptr; // split_uzel: the capsule's end on the bar
+    const Tempest::Texture2d*        splitArrows = nullptr; // split_arrows: the bar's colours, notches, the marks
+    int                              view       = -1;
+    Split                            bar;
+    float                            mapShift   = 0;     // map.ini mapPosY_1 - mapPosY_0 for the lower view
 
     float                            clock      = 0;
     struct ChatLine {

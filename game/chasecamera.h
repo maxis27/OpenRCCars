@@ -46,6 +46,10 @@ class ChaseCamera {
       float angleUpSpd = 29.39f;   // CDT_AngleUpSpeed, degrees/s
       float dirAdd     = 13.13f;   // CDT_AngleUp_DIR_ADD, degrees
       float dirAddSpd  = 1.51f;    // CDT_AngleUp_SPEED_DIR_ADD, degrees/s
+      // the split screen's views (0x4a5d90 -> 0x405e80): splitScrAngle degrees from their top to their bottom, and
+      // splitScrAspect / 100 the height over the width the picture is made for (0.45, on views of 640x235)
+      float splitFov    = 62.f;
+      float splitAspect = 0.45f;
 
       // defaults above if the file is missing
       static Settings load(const std::function<std::vector<uint8_t>(const std::string&)>& read);
@@ -73,6 +77,7 @@ class ChaseCamera {
     explicit ChaseCamera(const Settings& s) : cfg(s) {}
 
     const Settings& settings() const { return cfg; }
+    float           splitFov() const { return cfg.splitFov; }
 
     // starts over right behind the car (RCCars.exe passes dt = 2e6 for that, 0x508b50)
     void reset(const Car& car);

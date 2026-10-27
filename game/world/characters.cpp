@@ -211,7 +211,7 @@ void CharacterView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, Resources& 
     }
   if(verts.empty())
     return;
-  vbo[frame%2] = device.vbo(BufferHeap::Upload,verts);
+  vbo[frame%4] = device.vbo(BufferHeap::Upload,verts);
   std::stable_sort(draws.begin(),draws.end(),[](const Draw& a, const Draw& b){
     return (a.mode==rc::AlphaMode::Translucent) < (b.mode==rc::AlphaMode::Translucent);
     });
@@ -232,6 +232,6 @@ void CharacterView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, Resources& 
     enc.setBinding(3,*d.tex);
     enc.setBinding(4,pso.noWater);
     enc.setBinding(5,res.white());
-    enc.draw(vbo[frame%2],d.first,d.count);
+    enc.draw(vbo[frame%4],d.first,d.count);
     }
   }

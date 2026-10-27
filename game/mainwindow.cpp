@@ -175,7 +175,10 @@ void MainWindow::loadCar(size_t id) {
 
 void MainWindow::fitCar() {
   ModelMesh::CarLook look;
-  look.boost = look.resonator = look.tires = upgrade;
+  look.boost     = boostLevel;
+  look.resonator = resonatorLevel;
+  look.tires     = tiresLevel;
+  look.skin      = skin;
   look.antenna = !antennaView->has(carId);
   carAntenna.reset();
   car = std::make_unique<CarModel>(device,resources,carScene,carId,look);
@@ -255,7 +258,7 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
   if(opponents!=nullptr && opponents->playerStart(grid))
     carPose = grid;
   const auto geom = rc::carGeometry(carScene,Cars[carId]);
-  const auto prm  = rc::CarParams::load(resources.pack(),int32_t(carId+1),upgrade);
+  const auto prm  = rc::CarParams::load(resources.pack(),int32_t(carId+1),boostLevel,resonatorLevel,tiresLevel);
   vehicle  = std::make_unique<rc::Vehicle>(*physics,geom,prm,carPose);
   flying   = false;
   arrow->reset();
@@ -285,7 +288,7 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
   lastCarPos = carPose.translation();
   resetVolumes.reset();
   chase.reset(chaseCar());
-  Log::i("car ",Cars[carId],", upgrade ",upgrade,": top speed ",prm.topSpeed*3.6f," km/h, grip ",prm.gripFront);
+  Log::i("car ",Cars[carId],", upgrades ",boostLevel,"/",resonatorLevel,"/",tiresLevel,": top speed ",prm.topSpeed*3.6f," km/h, grip ",prm.gripFront);
   }
 
 void MainWindow::respawnCar() {
@@ -491,7 +494,8 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     loadCar(size_t(e.key-Event::K_1));
   // U - next upgrade level (boosters, resonators and tires together)
   if(devMode && e.key==Event::K_U) {
-    upgrade = (upgrade+1)%4;
+    tiresLevel = (tiresLevel+1)%4;
+    boostLevel = resonatorLevel = tiresLevel;
     device.waitIdle();
     fitCar();
     const rc::Mat4 at = carPose;
@@ -608,6 +612,14 @@ void MainWindow::menuCommand(Menu::Command c) {
         const size_t trackId = Menu::trackIndex(level->name());
         if(players->raceDone(int32_t(trackId),int32_t(carId),race->laps(),playerFinish,odometer))
           tell(20101,-1,Hud::formatTime(playerFinish));
+        // and in the championship its prize; the last track won makes the champion (0x14a3a88)
+        if(raceMode==Menu::Mode::Championship) {
+          const int32_t place = menu->finishPlace();
+          const int32_t prize = players->championshipDone(int32_t(trackId),int32_t(carId),place,menu->finishBonus());
+          Log::i("championship: ",place+1,". place, $",prize);
+          if(place==0 && trackId+1==Menu::TrackCount)
+            menu->setChampionWon();
+          }
         }
       [[fallthrough]];
     case Menu::Command::Abort:
@@ -618,7 +630,7 @@ void MainWindow::menuCommand(Menu::Command c) {
       for(auto& s:aiSounds)
         s.stop();
       paused = false;
-      menu->open(Menu::Page::Main);
+      menu->open(c==Menu::Command::Done ? menu->afterRace() : Menu::Page::Main);
       return;
     }
   }
@@ -641,14 +653,44 @@ void MainWindow::startRace() {
   const Menu::Setup st    = menu->setup();
   const std::string track = Menu::trackName(st.track);
   menu->close();
-  // 0x4c9f70: the player's race to come back to
-  players->raceStarted(int32_t(st.track),int32_t(st.car),st.laps,st.skill);
+  // 0x4c9f70: the player's quick race to come back to
+  raceMode = st.mode;
+  if(st.mode==Menu::Mode::Quick)
+    players->raceStarted(int32_t(st.track),int32_t(st.car),st.laps,st.skill);
   presentLoading(st.track,0.f);
-  laps    = st.laps;
-  aiLevel = st.skill<=0 ? rc::Opponents::Level::Easy :
-            st.skill==1 ? rc::Opponents::Level::Normal : rc::Opponents::Level::Hard;
-  const bool sameCar = car!=nullptr && carId==st.car && upgrade==st.upgrade;
-  upgrade = st.upgrade;
+  // 0x4a4ca0 modes: the quick race's laps and skill; the training's 3 laps against the easy ones, the
+  // championship's 5 against the experts (0x4a9770, 0x4e03b0)
+  switch(st.mode) {
+    case Menu::Mode::Quick:
+      laps    = st.laps;
+      aiLevel = st.skill<=0 ? rc::Opponents::Level::Easy :
+                st.skill==1 ? rc::Opponents::Level::Normal : rc::Opponents::Level::Hard;
+      break;
+    case Menu::Mode::Training:
+      laps    = 3;
+      aiLevel = rc::Opponents::Level::Easy;
+      break;
+    case Menu::Mode::Championship:
+      laps    = 5;
+      aiLevel = rc::Opponents::Level::Hard;
+      break;
+    }
+  // the car as the player has it (0x4aca10)
+  int32_t b = 0, r = 0, t = 0, sk = 0;
+  if(auto* p = players->current()) {
+    const auto& c = p->cars[std::min<size_t>(st.car,2)];
+    if(c.bought) {
+      b  = c.boost;
+      r  = c.resonator;
+      t  = c.tires;
+      sk = c.skin;
+      }
+    }
+  const bool sameCar = car!=nullptr && carId==st.car && boostLevel==b && resonatorLevel==r && tiresLevel==t && skin==sk;
+  boostLevel     = b;
+  resonatorLevel = r;
+  tiresLevel     = t;
+  skin           = sk;
   if(level!=nullptr && level->name()==track) {
     // the track already there: only the field, the car and the race again
     if(!sameCar) {
@@ -691,13 +733,17 @@ void MainWindow::startRace() {
   }
 
 void MainWindow::drawCarPreview(Encoder<CommandBuffer>& enc, const Menu::Preview& p) {
-  const size_t id = std::min<size_t>(menu->setup().car,2);
-  if(previewCars[id]==nullptr || previewUpgrade[id]!=menu->setup().upgrade) {
+  const size_t id = std::min<size_t>(p.car,2);
+  const std::array<int32_t,4> want = {p.boost,p.resonator,p.tires,p.skin};
+  if(previewCars[id]==nullptr || previewLook[id]!=want) {
     ModelMesh::CarLook look;
-    look.boost = look.resonator = look.tires = menu->setup().upgrade;
+    look.boost     = p.boost;
+    look.resonator = p.resonator;
+    look.tires     = p.tires;
+    look.skin      = p.skin;
     device.waitIdle();
-    previewCars[id]    = std::make_unique<CarModel>(device,resources,carScene,id,look);
-    previewUpgrade[id] = menu->setup().upgrade;
+    previewCars[id] = std::make_unique<CarModel>(device,resources,carScene,id,look);
+    previewLook[id] = want;
     }
   if(p.alpha<=0)
     return;
@@ -835,7 +881,7 @@ void MainWindow::tick(float dt) {
       menu->open(Menu::Page::Finish);
       }
     if(menu->page()==Menu::Page::Finish)
-      menu->setFinish(finishRows());
+      menu->setFinish(finishRows(),vehicle->hits());
     hud->event(ev);
     // 0x4eaa50: every lap but the last, with its number in words; 0x4eaad0: the finish
     if(ev==rc::Race::Event::Lap || ev==rc::Race::Event::BestLap)

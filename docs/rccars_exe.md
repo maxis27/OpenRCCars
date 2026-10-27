@@ -743,7 +743,8 @@ ostatniego wyścigu. U nas, gdy `RCCars.crs` wskazuje gracza, którego nie ma, g
 Po wyścigu (szybki wyścig to tryb 1, 0x4d2dd5):
 
 - **Start** (0x4c9f70): graczowi zapisuje się trasa i auto, a w szybkim wyścigu także okrążenia i umiejętności.
-  Auto musi być kupione, inaczej gra bierze pierwsze kupione (u nas szybki wyścig pozwala na każde auto).
+  Auto musi być kupione: przycisk wyścigu szybkiego wyścigu jest wyłączony dla auta niekupionego i trasy
+  niedostępnej (0x4c9e70), opis auta pokazuje wtedy samo „Nie dostępny” (41106, 0x4d4100).
 - **Okrążenie** (0x4eb2b0 → 0x4c5560, tryby 1–5, 7, 8): lepsze od najlepszego na trasie staje się rekordem z autem,
   jego ulepszeniami z profilu i datą; czat 20100 „><imię> najlepsze okrążenie <czas>”.
 - **Meta** (0x4c56c0, po „Wyjdź” ekranu mety, niżej): najlepszy wyścig na tyle okrążeń (czat 20101), czas wyścigu do trasy i do
@@ -767,7 +768,7 @@ Po wyścigu (szybki wyścig to tryb 1, 0x4d2dd5):
   po naciśnięciu przycisku.
 - **Układ** z `Settings\dlgFINISH.ini` (jednostki 800×600): ramka 5,20 788×570; tabela 87,35 597×315, nagłówek
   10 %, wiersz 15 %, szerokości kolumn 8/19/9/16/14/14 % i reszta (20 %) dla ostatniej; „Wyjdź” (10004,
-  pomarańczowy) 244,535 150×33, „Jeszcze raz?” (10067, czerwony, w mistrzostwach ukryty) 15 jednostek na prawo,
+  pomarańczowy) 244,535 150×33, „Jeszcze raz?” (10067, czerwony, w mistrzostwach wyłączony) 15 jednostek na prawo,
   tak samo szeroki (`buttonRaceAgainSX` w pliku ma 34, gra go nie czyta). Do tego tabela premii 0x170f i napisy
   0x1710–0x1714 tylko w mistrzostwach.
 - **Tabela** (klasa LST, flagi 0x500000: linia pod nagłówkiem i pod tabelą, znaczniki): nagłówek `Smash26`
@@ -783,8 +784,80 @@ Po wyścigu (szybki wyścig to tryb 1, 0x4d2dd5):
 - **Przyciski**: „Wyjdź” i klawisz akcji 12 (Esc; u nas też Enter) wygaszają okno i wysyłają 0x26b: okno się
   zamyka, wyścig się kończy (0x48c500(3)) i zapisuje (0x4c56c0). „Jeszcze raz?” wysyła 0x26d: okno się zamyka
   i 0x27e startuje wyścig od nowa.
-- **Nie przeniesione**: premie i nagrody mistrzostw (41308–41320, `Currency`), tabela duchów (0x4ccb40) i sieci
-  (`dlgMULTI_FINISH`).
+- **Nie przeniesione**: tabela duchów (0x4ccb40) i sieci (`dlgMULTI_FINISH`). Premia mistrzostw opisana niżej.
+
+## Mistrzostwa i garaż
+
+Zasady są w `Scripts\championship.ini` (czytane do 0x149a670): `Common DefaultCash`, `Track<n>` (kolejność jak
+`AIRace<n>`: Surferzy … Ścieżka wojenna) z `IsOpened`, `AccessCash` (potrzebne wyniki), `RaceTariff` (opłata),
+`Place1..3` (nagrody), `Car<n>` z `IsEnabled` i `AccessCash` (cena) oraz `Boost-Car<n>`, `Resonator-Car<n>`,
+`Tires-Car<n>` z `Level1..3`. Tryby gry (0x4a4ca0, globalna 0x149a674): 1 szybki wyścig, 4 trening, 5 wyścig
+mistrzostw.
+
+- **Trasa otwarta** (0x4e84a0): poza mistrzostwami (flaga 0x100 z 0x1499dd0) wystarczy `IsOpened`; inaczej wyniki
+  ≥ `AccessCash`, a ostatnia trasa wymaga jeszcze wygranych (najlepsze miejsce 0) na wszystkich pozostałych (0x4e8580).
+- **Ramka mistrzostw** (0x4be150): nagłówek 10051; przyciski: „Mistrzostwa” (radio 0x76f), „Mapa i informacje”
+  i „Statystyki toru” (0x770, 0x771; u nas wyłączone, to osobne strony), „Garaż” (0x772), „Nowe mistrzostwa”
+  (0x773, pomarańczowy), „Trening” (0x774, pomarańczowy, aktywny, gdy trasa jest otwarta), „Menu główne”, „Wyścig”.
+- **Strona tras** (`dlgCHAMP`, 0x4be720, wypełnianie 0x4be0a0): panel gracza; tabela 88,233 440×227, nagłówek
+  16 %, wiersze 13 % (6 widocznych, pasek przewijania), kolumny 0,2/0,2/0,17/0,12/reszta, nagłówki 40900–40904
+  Smash26; komórki Smash20: nazwa podkreślona, `AccessCash`, opłata (kwota), miejsce („xxx” 40905 dla zamkniętej,
+  „bd” 40906 bez wyścigów albo poza 0..5, inaczej I–III 40912–14, IV–VI 40922–24), nagrody `%i/%i/%i`.
+  Pod tabelą nazwa trasy (115,455 413×40, Smash26, podkreślona) i trzy linie do prawej (114,497 413×91): 40930
+  (wyniki, opłata), 40931 (nagrody), a w trzeciej 40933 z miejscem albo 40932, dla zamkniętej 40935 (ostatnia trasa
+  bez wygranych) albo 40934. Wejście na stronę z zamkniętą trasą wybiera ostatnią otwartą licząc od pierwszej.
+- **Wyścig** (0x76d): zamknięta trasa → 40929 (ostatnia, nie wszystko wygrane) albo 40928; za mało forsy na
+  opłatę → 40919; auto niekupione → 10883; inaczej okno opłaty. **Trening** (0x774): auto niekupione → 40916,
+  inaczej od razu wyścig: 3 okrążenia, łatwi przeciwnicy, bez opłaty i nagród. Wyścig mistrzostw ma 5 okrążeń
+  i przeciwników „Ekspert” (maska 4 w `ailayouts.ini`, 0x4a9770; szybki wyścig: umiejętność 0 → 1, 1 → 2, 2 → 4).
+- **Nowe mistrzostwa** (0x773): pytanie 40927 „Tak”/„Anuluj”, potem 0x4e8320: forsa `DefaultCash`, wyniki 0, auta
+  z `IsEnabled` bez ulepszeń, skórka 0; miejsca i rekordy tras zostają. Następnie wybrane auto to ostatnie kupione,
+  trasa to ostatnia otwarta od pierwszej; zapis (błąd: 10884).
+- **Okno opłaty** (`dlgCHRACE`, 0x4c0610, tabela 0x4c0b80, obsługa 0x4c0b10): menu przyciemnione `0x5f000000`,
+  ramka 10,18 782×573; tabela 79,109 604×318 (nagłówek 10 %, wiersze 15 %, kolumny 0,09/0,19/0,21/0,17/0,17/reszta,
+  `tableMordaShift` 0,008): „Gracz” (41405) nad twarzą, pusto nad imieniem, „Samochód”, „Silnik”, „Dopalacz”,
+  „Koła” (41406–41409). Pierwszy wiersz to gracz (imię Smash26), dalej przeciwnicy AI1..AI5 trasy z bitem HARD:
+  imię kierowcy (40499+numer), twarz, auto i poziomy („poziom %i” 41410, „brak” 41411; silnik to rezonator).
+  Napisy (wszystkie 520×60 od x 140): 140,44 `%s: "%s"` (41402 i nazwa trasy, środek), 140,48 `%s: %s` (41403,
+  `Place1`, do prawej i dołu), 140,416 `%s: %s` (41400, opłata), 140,446 `(%s: %s)` (41401, forsa po opłacie,
+  Smash20). Pigułki „Wyścig” (czerwona, 257,530 134×36: opłata pobrana i zapisana, wyścig) i „Wróć” (414,530).
+- **Po wyścigu** (0x4e07c0): z szybkiego wyścigu na jego stronę, z treningu i mistrzostw na stronę tras, po
+  wygranej ostatniej trasy (flaga 0x14a3a88) na gratulacje (0x4c13a0, 0x4c1790): panel gracza, auto 291,255–694,577,
+  „Gratulacje, %s” (44852, 112,253–522,286, Smash26 podkreślony, szary) i 44853 (112,340–330,515, Smash20),
+  „Wróć” do menu głównego. Skryptu `ChampionshipWin`, który `LevelFinish` uruchamia w takim wypadku, w `RCCars.sb`
+  nie ma (błąd oryginału: tabela się nie pokazuje); u nas tabela mety jest zawsze, a gratulacje po niej.
+- **Nagroda** (0x4c56c0, tryb 5): miejsce < 3 daje `Place<miejsce+1>` + premię do forsy i do wyników; najlepsze
+  miejsce to minimum; rekord mistrzostw (0x0279) zapisuje się, gdy go nie ma albo jego „czas” (obcięty do int)
+  jest mniejszy od nagrody, a „czasem” jest nagroda.
+- **Premia** (0x4c47e0, wynik w 0x14a3fa4, zerowana przy otwarciu tabeli): gdy gracz jest wśród trzech pierwszych
+  i nie ostatni: 5 za każde uderzenie, które dało dopalacz, i 5 za każdą sekundę (zaokrągloną) przewagi nad
+  następnym, razem najwyżej `Place3`. Na ekranie mety: tabela 85,399 611×55 (dwa wiersze po 0,5, w pierwszym:
+  41314 z liczbą uderzeń, punkty, 41316 z sekundami, punkty; kolumny 0,32/0,08/0,13/0,39/0,08, Smash20), 41318
+  z kwotą `Place3` (Smash26, środek), 173,320 456×108 `%s: %s` (41308 i nagroda miejsca; bez nagrody 41320),
+  na dole „Wynik rajdu:” (41309, Smash26), suma nagrody i premii czcionką liczb kokpitu (`cock_num`) i „$/punktów”
+  (`Currency` 0, 41404, Smash20), całość na środku ekranu. Polskie teksty 41314 i 41318 nie mają `%i`/`%s`, więc
+  liczby się w nich nie pokazują (angielskie mają).
+- **Garaż** (0x4c5f00, wspólne `dlgCARSCOMM`): nagłówek 10052, „Wróć” na poprzednią stronę (mistrzostwa albo
+  szybki wyścig), bez przycisku wyścigu; radio „Wybierz samochód” (10059), „Ulepsz dopalacz” (10057), „Ulepsz
+  silnik” (10058), „Ulepsz koła” (10056), ulepszenia wyłączone dla auta niekupionego. Wspólne: auto obracane
+  0,19 504×403, „Forsa” (41501) i kwota, „Samochód” (41500), opis auta (40102+4·auto, 339,198 205×240, do prawej,
+  szary). Auto pokazuje ulepszenia i skórkę gracza (0x4aca10), niekupione bez nich (0x50bb60).
+- **Strona auta** (`dlgSETCAR`, 0x4d5330, 0x4d54f0): strzałki z autami (290,121 280×25; wybrane auto to auto
+  wyścigu), „Posiadane ulepszenia” (40800), 40816 i 40817 z długimi nazwami ulepszeń („Dom.” 41800–41802 dla 0),
+  cena 40809 (kupno) albo 40810 (sprzedaż: auto i ulepszenia), stan 40807/40808 dla niekupionego. Przyciski:
+  „Następna skóra” (10012, 4 skórki `car_askin<auto><skórka>`), „Kup samochód” (10013: za mało forsy 40814, inaczej
+  pytanie 40815 „Tak”/„Nie”), „Sprzedaj samochód” (10060: gdy to jedyne auto, a forsa po sprzedaży nie starczy na
+  najtańsze inne, 40806; inaczej pytanie 40801; skórka zostaje).
+- **Strony ulepszeń** (`dlgSETDETAIL`, 0x4d4690, stan 0x4d4f50, obsługa 0x4d4d40 i dwie podobne): auto bez strzałek,
+  obrazek `upgr_boost|reson|tires<poziom>_<auto>` (350,412 197×149, UV 0,109–0,887 × 0,211–0,793), strzałki
+  poziomu pod nim (na start min(poziom, 2)), nazwa części 40700–40702, opis: długa nazwa i opis poziomu (40112,
+  40140, 40170 + 2·(3·auto + poziom − 1), opis +1). Wobec oglądanego poziomu v: posiadany < v „Nie dostępne”
+  (40704, półprzezroczyste); = v cena (40703) i „Ulepsz” aktywne; = v+1 „ZAINSTALOWANE” (40705) i wartość
+  sprzedaży (40706) i „Sprzedaj” aktywne; większy 40707. „Ulepsz”: 40710 gdy już jest, 40712 za mało forsy,
+  inaczej pytanie 40709 z forsą po zakupie; kupione ulepszenie miga na aucie 5 s (co 0,2 s stare, 0x4d4a00).
+  „Sprzedaj”: inny poziom niż oglądany → 40713 (strona kół na tym kończy, dopalacz i silnik idą dalej do pytania).
+- **Ceny**: sprzedaż to `int(cena × 0,9f)` ($50 → $44). Silnik i koła mają ceny z `Resonator-Car<n>` (0x4d6840
+  i 0x4d7130 pytają 0x4a0990); `Tires-Car<n>` czyta tylko konsola. Zostawiamy jak w oryginale.
 
 ## Tryb deweloperski
 

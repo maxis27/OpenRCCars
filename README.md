@@ -72,6 +72,10 @@ plików w [docs/formaty.md](docs/formaty.md).
 - **Menu**: menu główne z panelem gracza, szybki wyścig (trasa, auto, okrążenia, przeciwnicy), wybór gracza
   (zakładanie, usuwanie, zdjęcie, sortowanie), ekran wczytywania i menu Esc w wyścigu, z obrazkami, czcionkami
   i dźwiękami oryginału.
+- **Mistrzostwa** z `Scripts/championship.ini`: tabela tras (otwierane wynikami), opłata przed wyścigiem
+  z przeciwnikami „Ekspert”, trening, nagrody i premia za uderzenia i przewagę na ekranie mety, nowe mistrzostwa,
+  gratulacje po ostatniej trasie; garaż z kupowaniem i sprzedażą aut, skórkami i ulepszeniami dopalacza, silnika
+  i kół, które zmieniają wygląd i jazdę auta.
 - **Gracze**: pliki `Players/*.scp` oryginału (czytane i zapisywane bajt w bajt), wybrany gracz w `RCCars.crs`;
   po wyścigu zapisują się najlepsze okrążenie i wyścig, czas gry, liczba wyścigów i przejechane metry.
 - **Narzędzia**: `rcinfo` (inspekcja i eksport danych, testy bez GPU) i `rcshot` (render offscreen do PNG).
@@ -192,8 +196,10 @@ Klawisze jak w instrukcji oryginału (`Instrukcja.pdf`):
 Menu obsługuje się myszą. W menu głównym trasę wybiera się obrazkami (też ← / →); „Szybki wyścig” to tor, liczba
 okrążeń, umiejętności przeciwników i auto; zielony „Wyścig” rusza (też Enter), „Wyjdź” zamyka grę. W „Zmień gracza”
 lista graczy (też ↑ / ↓, kółko myszy), „Utwórz gracza” pyta o imię, „Zdjęcie” pozwala zmieniać zdjęcie strzałkami
-obok niego, „Kontynuuj” (też Enter, Esc) wybiera zaznaczonego gracza. Przyciski części, których jeszcze nie ma
-(mistrzostwa, opcje, autorzy …), są szare.
+obok niego, „Kontynuuj” (też Enter, Esc) wybiera zaznaczonego gracza. W „Mistrzostwach” trasę wybiera się w tabeli
+(też ↑ / ↓), „Wyścig” pokazuje opłatę i przeciwników, „Garaż” to auta (strzałki, kupno, sprzedaż, skórka)
+i ulepszenia (strzałki pod obrazkiem wybierają poziom). Szybki wyścig rusza tylko kupionym autem na otwartej
+trasie. Przyciski części, których jeszcze nie ma (opcje, autorzy …), są szare.
 
 Oryginał pokazuje menu zawsze w 800x600 (`RCCars.exe` 0x4a6840). U nas menu wypełnia całe okno: tło jest rozciągnięte
 na szerokość (w oknie węższym niż 4:3 na wysokość), przyciski po prawej trzymają się krawędzi i łuków tła, a obrazki,
@@ -371,8 +377,7 @@ Zrobione są wszystkie elementy pojedynczego szybkiego wyścigu. Brakuje:
 
 - **Grafika i świat**: przyciemnianie postaci i rekwizytów w cieniu (`feat_lmshd.ini`), dźwięk zahaczenia anteny
   (`Antenna_scratch`).
-- **Opakowanie gry**: mistrzostwa z `championship.ini` ze sklepem i ulepszeniami (z nimi miejsca, forsa i wyniki
-  graczy), wyścig z duchami (`GhostRecords`), reszta menu
+- **Opakowanie gry**: wyścig z duchami (`GhostRecords`), reszta menu
   (opcje, informacje o trasie, autorzy), demo, intro, dwóch graczy na podzielonym ekranie, gra przez sieć.
 
 ## Licencja

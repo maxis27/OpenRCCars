@@ -137,7 +137,10 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<CarModel> car;
     CarModel::Distances     lodDistances;
     size_t                  carId    = 0;   // 0..2: Car1..Car3
-    int32_t                 upgrade  = 0;   // 0..3, Scripts/upgrades.ini column
+    // the player's car as it is in the player's file: the upgrade levels 0..3 (Scripts/upgrades.ini columns) and
+    // the skin 0..3
+    int32_t                 boostLevel = 0, resonatorLevel = 0, tiresLevel = 0, skin = 0;
+    Menu::Mode              raceMode = Menu::Mode::Quick;
     rc::Mat4                carPose;
     // declared after `level`: the physics world refers to the level's collision mesh
     std::unique_ptr<rc::PhysicsWorld> physics;
@@ -178,8 +181,9 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<Menu>   menu;
     std::unique_ptr<Players> players;   // Players\ and the one playing
     bool                    raceRequested = false;  // "Wyścig": the loading screen at the next frame
-    std::array<std::unique_ptr<CarModel>,3> previewCars; // the quick race's car, by car
-    std::array<int32_t,3>   previewUpgrade = {-1,-1,-1};
+    std::array<std::unique_ptr<CarModel>,3> previewCars; // the menus' car, by car
+    std::array<std::array<int32_t,4>,3>     previewLook;  // and its upgrades and skin
+
     std::unique_ptr<DirectionArrow> arrow;
     std::unique_ptr<Effects>        effects;    // dust and spray of the cars
     rc::fx::LensFlare::Settings     flareSettings;

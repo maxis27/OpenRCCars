@@ -1384,7 +1384,7 @@ void Vehicle::hits(float dt) {
   if(prop && sinceProp>PropHitPause && vel.length()>PropHitSpeed) {
     lastHit   = Hit::Hit;
     sinceProp = 0;
-    addBoost(HitBoost);
+    addHitBoost();
     }
   }
 

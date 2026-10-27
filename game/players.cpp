@@ -3,6 +3,7 @@
 #include <Tempest/Log>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <fstream>
 
@@ -30,16 +31,8 @@ std::vector<uint8_t> readFile(const std::filesystem::path& p) {
 }
 
 Players::Players(Resources& res, std::string_view defaultName) : res(res) {
-  // Scripts\championship.ini: the money and the cars of a new player (0x4e8320)
-  if(auto* e = res.pack().find("Scripts\\championship.ini")) {
-    const auto d   = res.pack().read(*e);
-    const auto ini = rc::KeySections::parse(std::string_view(reinterpret_cast<const char*>(d.data()),d.size()));
-    if(auto& c = ini.get("Common","DefaultCash"); !c.empty())
-      defaultCash = int32_t(c[0]);
-    for(size_t i=0; i<defaultCars.size(); ++i)
-      if(auto& c = ini.get("Car"+std::to_string(i+1),"IsEnabled"); !c.empty())
-        defaultCars[i] = c[0]!=0;
-    }
+  // Scripts\championship.ini: also the money and the cars of a new player (0x4e8320)
+  champ = Championship::load(res.pack());
   loadFaces(res);
   list = rc::PlayerList::load(res.gameDir()/"Players");
   // no player at all: the default one made and written (0x4e7450)
@@ -122,8 +115,11 @@ Players::Result Players::create(std::string_view name, size_t& index) {
   if(find(name)!=None)
     return Result::Exists;
   const size_t face = defaultFace();
+  std::array<bool,3> cars = {};
+  for(size_t i=0; i<cars.size(); ++i)
+    cars[i] = champ.cars[i].enabled;
   auto* e = list.create(res.gameDir()/"Players",name,face<faces.size() ? faces[face].csi : std::vector<uint8_t>(),
-                        defaultCash,defaultCars);
+                        champ.defaultCash,cars);
   if(e==nullptr)
     return list.entries().size()>=rc::PlayerList::MaxPlayers ? Result::Failed : Result::NotSaved;
   // 0x4d1edb: a new player starts on the first track and car, 5 laps, the low skill
@@ -223,4 +219,109 @@ bool Players::raceDone(int32_t track, int32_t car, int32_t laps, float time, flo
   p->distance   += distance;
   save(chosen);
   return best;
+  }
+
+int32_t Players::championshipDone(int32_t track, int32_t car, int32_t place, int32_t bonus) {
+  auto* p = current();
+  if(p==nullptr || track<0 || size_t(track)>=rc::PlayerProfile::Tracks)
+    return 0;
+  auto&   t     = p->tracks[size_t(track)];
+  int32_t prize = 0;
+  if(place>=0 && place<3) {
+    prize = champ.tracks[size_t(track)].prize[size_t(place)]+bonus;
+    p->cash   += prize;
+    p->scores += prize;
+    }
+  t.bestPlace = std::min(t.bestPlace,place);
+  // the record of the most money won there; "time" holds the money (__ftol of it against the prize)
+  if(!t.champion.made() || int32_t(t.champion.time)<prize) {
+    t.champion      = p->record(0,car);
+    t.champion.time = float(prize);
+    }
+  save(chosen);
+  return prize;
+  }
+
+bool Players::trackOpen(size_t track, bool championshipRace) const {
+  const auto* p = chosen<size() ? &list.entries()[chosen].profile : nullptr;
+  return p!=nullptr && champ.open(*p,track,championshipRace);
+  }
+
+bool Players::payTariff(size_t track) {
+  auto* p = current();
+  if(p==nullptr || track>=Championship::Tracks || p->cash<champ.tracks[track].tariff)
+    return false;
+  p->cash -= champ.tracks[track].tariff;
+  save(chosen);
+  return true;
+  }
+
+void Players::newChampionship() {
+  auto* p = current();
+  if(p==nullptr)
+    return;
+  champ.restart(*p);
+  save(chosen);
+  }
+
+bool Players::buyCar(size_t car) {
+  auto* p = current();
+  if(p==nullptr || car>=Championship::Cars || p->cars[car].bought || p->cash<champ.cars[car].price)
+    return false;
+  p->cash -= champ.cars[car].price;
+  p->cars[car].bought = true;
+  save(chosen);
+  return true;
+  }
+
+bool Players::sellCar(size_t car) {
+  auto* p = current();
+  if(p==nullptr || car>=Championship::Cars || !p->cars[car].bought)
+    return false;
+  // 0x4d6120: the car and its upgrades, the skin kept
+  p->cash += champ.carSale(*p,car);
+  auto& c = p->cars[car];
+  c.bought = false;
+  c.boost = c.resonator = c.tires = 0;
+  save(chosen);
+  return true;
+  }
+
+static int32_t& partLevel(rc::PlayerProfile::Car& c, Championship::Part part) {
+  return part==Championship::Part::Boost ? c.boost : part==Championship::Part::Resonator ? c.resonator : c.tires;
+  }
+
+bool Players::buyUpgrade(size_t car, Championship::Part part) {
+  auto* p = current();
+  if(p==nullptr || car>=Championship::Cars)
+    return false;
+  int32_t&      level = partLevel(p->cars[car],part);
+  const int32_t price = champ.upgradePrice(car,part,level+1);
+  if(level>=3 || p->cash<price)
+    return false;
+  p->cash -= price;
+  level   += 1;
+  save(chosen);
+  return true;
+  }
+
+bool Players::sellUpgrade(size_t car, Championship::Part part) {
+  auto* p = current();
+  if(p==nullptr || car>=Championship::Cars)
+    return false;
+  int32_t& level = partLevel(p->cars[car],part);
+  if(level<=0)
+    return false;
+  p->cash += Championship::sale(champ.upgradePrice(car,part,level));
+  level   -= 1;
+  save(chosen);
+  return true;
+  }
+
+void Players::nextSkin(size_t car, int32_t skins) {
+  auto* p = current();
+  if(p==nullptr || car>=Championship::Cars || skins<=0)
+    return;
+  p->cars[car].skin = (p->cars[car].skin+1)%skins;
+  save(chosen);
   }

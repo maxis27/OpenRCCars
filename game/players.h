@@ -5,6 +5,7 @@
 #include <string_view>
 #include <vector>
 
+#include "championship.h"
 #include "formats/playerprofile.h"
 
 class Resources;
@@ -54,6 +55,23 @@ class Players {
     // the player's finish (0x4c56c0): the best race of that many laps, the time and the way driven; true if the
     // race is the best of that many laps
     bool                      raceDone(int32_t track, int32_t car, int32_t laps, float time, float distance);
+    // and then in the championship (game mode 5, 0x4c56c0): the prize of the first three places with the bonus
+    // to the money and the scores, the best place, the championship record; returns the prize
+    int32_t                   championshipDone(int32_t track, int32_t car, int32_t place, int32_t bonus);
+
+    const Championship&       championship() const { return champ; }
+    // the player playing may race there (0x4e84a0)
+    bool                      trackOpen(size_t track, bool championshipRace) const;
+    // the championship race's fee paid (0x4c0b10 -> 0x4e7e70); false without the money
+    bool                      payTariff(size_t track);
+    // "Nowe mistrzostwa" (0x4e8320) and written
+    void                      newChampionship();
+    // the garage (0x4d6090, 0x4d6120, 0x4d4508 .., 0x4d62a0), written at once; false if it can't be done
+    bool                      buyCar(size_t car);
+    bool                      sellCar(size_t car);
+    bool                      buyUpgrade(size_t car, Championship::Part part);
+    bool                      sellUpgrade(size_t car, Championship::Part part);
+    void                      nextSkin(size_t car, int32_t skins);
 
   private:
     struct Face {
@@ -68,6 +86,5 @@ class Players {
     std::vector<Face>         faces;
     size_t                    chosen    = None;
     uint32_t                  faceStamp = 0;
-    int32_t                   defaultCash = 100;
-    std::array<bool,3>        defaultCars = {true,false,false};
+    Championship              champ;
   };

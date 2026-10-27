@@ -74,7 +74,6 @@ class Hud : public Canvas {
     enum class Message { None, Go, BestLap, Finish };
 
     void   chatConsole();
-    void   loadNumbers(Resources& res);
 
     // a world-space line of the given thickness in pixels, cut at the camera's near plane
     void   line3d(const rc::Mat4& viewProj, const rc::Vec3& a, const rc::Vec3& b, float width, const Color& c);

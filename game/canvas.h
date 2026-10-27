@@ -72,6 +72,8 @@ class Canvas {
     // `extra`: also the file of the font's Polish letters (Smash<size>b), if the language has one
     void   loadFont(Resources& res, std::string_view name, Font& f, bool extra = false);
     void   loadGlyphs(Resources& res, std::string_view name, Font& f, uint8_t page);
+    // "cock_num" of RCCars.sb, the cockpit's numbers (RCCars.exe 0x4a16f0 makes it the font of 0x1499d50)
+    void   loadNumbers(Resources& res, Font& f);
 
     // a new frame of `w` x `h` pixels: nothing drawn yet
     void   begin(int w, int h);

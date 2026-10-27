@@ -31,12 +31,18 @@ Spline spline(PackFile& pack, const std::string& name) {
 }
 
 CarParams CarParams::load(PackFile& pack, int32_t car, int32_t upgrade) {
+  return load(pack,car,upgrade,upgrade,upgrade);
+  }
+
+CarParams CarParams::load(PackFile& pack, int32_t car, int32_t boost, int32_t resonator, int32_t tiresLevel) {
   static const char* const UpgradeKey[] = {"OverkillUpgrades","BuggyUpgrades","HummerUpgrades"};
   static const char* const Engine[]     = {"OVERKILL","BUGGY","HUMMER"};
 
   CarParams p;
   p.car     = std::clamp(car,1,3);
-  p.upgrade = std::clamp(upgrade,0,3);
+  p.upgrade        = std::clamp(tiresLevel,0,3);
+  p.boostLevel     = std::clamp(boost,0,3);
+  p.resonatorLevel = std::clamp(resonator,0,3);
   const std::string n = std::to_string(p.car);
 
   p.accel = spline(pack,Engine[p.car-1]);
@@ -53,8 +59,8 @@ CarParams CarParams::load(PackFile& pack, int32_t car, int32_t upgrade) {
     auto& v = up.get(section,std::string(UpgradeKey[c-1])+std::string(suffix));
     return size_t(u)<v.size() ? v[size_t(u)] : 1.f;
     };
-  p.resonator  = pick("RESONATORS",p.car,p.upgrade);
-  p.accelScale = pick("RESONATORS",p.car,p.upgrade,"_SPL_OY");
+  p.resonator  = pick("RESONATORS",p.car,p.resonatorLevel);
+  p.accelScale = pick("RESONATORS",p.car,p.resonatorLevel,"_SPL_OY");
   const float tires = pick("TIRES",p.car,p.upgrade);
 
   // engine<N>.ini: speedBaseMax 33/38/30 and speedBoostMax 38/45/37 km/h (the game adds 0.1), boostSpeedUp
@@ -68,7 +74,7 @@ CarParams CarParams::load(PackFile& pack, int32_t car, int32_t upgrade) {
     };
   // the tank holds 50 units for the slowest refill of all cars (Buggy, stock) .. 100 for the fastest (Hummer, top
   // boosters)
-  const float x = charge(p.car,p.upgrade), lo = charge(2,0), hi = charge(3,3);
+  const float x = charge(p.car,p.boostLevel), lo = charge(2,0), hi = charge(3,3);
   p.boostTank   = hi>lo ? std::round(50.f + 50.f*std::clamp((x-lo)/(hi-lo),0.f,1.f)) : 50.f;
   p.boostCharge = x*0.95f;
   p.boostDrain  = mapped(eng,"boostSpeedDown",1,10,5.f);

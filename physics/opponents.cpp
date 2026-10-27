@@ -875,7 +875,7 @@ Vehicle::Hit Opponents::collide(Vehicle& pl, float dt) {
     const auto  h  = (ax>3.f || az>5.f || al>7.f)   ? Vehicle::Hit::Great :
                      (ax>0.8f || az>1.f || al>2.f) ? Vehicle::Hit::Hit : Vehicle::Hit::None;
     if(h!=Vehicle::Hit::None) {
-      pl.addBoost(Vehicle::HitBoost);
+      pl.addHitBoost();
       got = std::max(got,h);
       }
     }

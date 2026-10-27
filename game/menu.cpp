@@ -59,6 +59,7 @@ enum : uint32_t {
   T_Laps        = 41104, // "Liczba okrążeń"
   T_Skill       = 41105, // "Umiejętności przeciwników"
   T_SkillLow    = 41107, // "Niskie", "Norma", "Ekspert", "Ultra"
+  T_NotAvailable= 41106, // "Nie dostępny"
   T_Loading     = 41920, // "Wczytywanie..."
   T_ListPlayer  = 41000, // "Gracz", "Wynik", "Forsa", "Czas"
   T_CantRemoveCurrent = 41004,
@@ -183,6 +184,7 @@ std::string shotPrefix(size_t track) {
 Menu::Menu(Device& device, Resources& res, Sounds& sounds) : Canvas(device,res), sounds(sounds) {
   loadFont(res,"Smash20",font20,true);
   loadFont(res,"Smash26",font26,true);
+  loadNumbers(res,numbers);
   if(!language().empty()) {
     try {
       const auto d = res.readFile(std::filesystem::path("Language")/"Game"/(lower(language())+".tbl"));
@@ -348,7 +350,7 @@ void Menu::build(Page p) {
       headerText = T_MainMenu;
       if(shotAt/4!=choice.track)
         shotAt = choice.track*4;
-      add(0,T_Championship,Button::Tab,Command::None,Page::None,false);
+      add(0,T_Championship,Button::Tab,Command::None,Page::Champ,players!=nullptr);
       add(1,T_QuickRace,   Button::Tab,Command::None,Page::QuickRace,true);
       add(2,T_GhostRace,   Button::Tab,Command::None,Page::None,false);
       add(3,T_Multiplayer, Button::Tab,Command::None,Page::None,false);
@@ -357,7 +359,7 @@ void Menu::build(Page p) {
       add(6,T_Demo,        Button::Tab,Command::None,Page::None,false);
       add(7,T_Credits,     Button::Tab,Command::None,Page::None,false);
       add(8,T_Exit,        Button::Back,Command::Quit,Page::None,true);
-      add(-1,T_Race,       Button::Race,Command::Race,Page::None,true);
+      add(-1,T_Race,       Button::Race,Command::Race,Page::None,quickAllowed());
       break;
     case Page::QuickRace: {
       // dlgRACESUM: its pages as radio buttons, the garage as a tab
@@ -365,9 +367,9 @@ void Menu::build(Page p) {
       add(0,T_Summary,   Button::Radio,Command::None,Page::None,true)->checked = true;
       add(1,T_MapInfo,   Button::Radio,Command::None,Page::None,false);
       add(2,T_TrackStats,Button::Radio,Command::None,Page::None,false);
-      add(3,T_Garage,    Button::Tab,  Command::None,Page::None,false);
+      add(3,T_Garage,    Button::Tab,  Command::None,Page::None,players!=nullptr)->id = 0x772;
       add(8,T_MainMenu,  Button::Back, Command::None,Page::Main,true);
-      add(-1,T_Race,     Button::Race, Command::Race,Page::None,true);
+      add(-1,T_Race,     Button::Race, Command::Race,Page::None,quickAllowed());
 
       // Settings\dlgRACESUM.ini
       trackEnum.box   = {71,191,71+273,191+25};
@@ -438,12 +440,35 @@ void Menu::build(Page p) {
       Pill again;  again.box = {FinishAgain[0],FinishAgain[1],FinishAgain[2],FinishAgain[3]}; again.text = T_RaceAgain;
       again.red = true;
       again.command = Command::RaceAgain;
+      again.enabled = choice.mode!=Mode::Championship;   // 0x4c4f90: not again in the championship
       pills     = {exit,again};
       finishT   = 0;
       finishOut = -1;
       finishCmd = Command::None;
       return;
       }
+    case Page::Champ:
+      buildChamp();
+      break;
+    case Page::ChampRace: {
+      // dlgCHRACE (0x4c0610): over the menu, its own pills only
+      headerText = 0;
+      Pill race; race.box = {257,530,257+134,530+36}; race.text = T_Race; race.red = true;
+      Pill back; back.box = {414,530,414+134,530+36}; back.text = T_Back;
+      pills = {race,back};
+      fillRivals();
+      return;
+      }
+    case Page::Garage:
+      blinkT = -1;
+      buildGarage(0);
+      break;
+    case Page::ChampWin:
+      // 0x4c13a0: the congratulations, back to the main menu
+      headerText  = T_Championship;
+      championWon = false;
+      add(8,T_Back,Button::Back,Command::None,Page::Main,true);
+      break;
     }
   // the new buttons come in
   slide  = 2;
@@ -484,7 +509,7 @@ void Menu::tick(float dt) {
       }
     b.pressT = std::max(0.f,b.pressT-dt);
     }
-  for(auto* e:{&trackEnum,&carEnum})
+  for(auto* e:{&trackEnum,&carEnum,&garageCar,&upgradeEnum})
     e->pushL = std::max(0.f,e->pushL-dt), e->pushR = std::max(0.f,e->pushR-dt);
   for(auto& e:enums)
     e.pushL = std::max(0.f,e.pushL-dt), e.pushR = std::max(0.f,e.pushR-dt);
@@ -504,10 +529,17 @@ void Menu::tick(float dt) {
     message.t += dt;
   if(nameEntry.open)
     nameEntry.t += dt;
-  if(current==Page::QuickRace) {
+  if(current==Page::QuickRace || current==Page::Garage || current==Page::ChampWin) {
     carYaw   = std::fmod(carYaw+dt*60.f,360.f);
     carAlpha = std::min(1.f,carAlpha+dt/0.5f);
     }
+  // 0x4d4a00: the upgrade just bought blinks for 5 s
+  if(blinkT>=0) {
+    blinkT += dt;
+    if(blinkT>5.f)
+      blinkT = -1;
+    }
+  refreshButtons();
   if(shotScroll!=0) {
     const float step = dt/0.3f;
     shotScroll = std::abs(shotScroll)<=step ? 0.f : shotScroll-std::copysign(step,shotScroll);
@@ -538,6 +570,16 @@ void Menu::changeEnum(Enum& e, int step) {
     carAlpha   = 0;
     return;
     }
+  if(&e==&garageCar) {
+    // 0x4d5330: the car chosen in the garage is the one raced
+    choice.car = e.at;
+    carAlpha   = 0;
+    blinkT     = -1;
+    buildGarage(garagePage);
+    return;
+    }
+  if(&e==&upgradeEnum)
+    return;
   if(&e==&faceEnum) {
     // 0x4d2710: the picture of the player whose picture is being chosen, written at once
     const size_t pl = selectedPlayer();
@@ -560,13 +602,17 @@ void Menu::pressButton(Button& b) {
     for(auto& o:right)
       if(o.kind==Button::Radio)
         o.checked = (&o==&b);
+    if(b.id!=0)
+      buttonAction(b.id);
     return;
     }
   if(b.id!=0) {
-    playerAction(b.id);
+    buttonAction(b.id);
     return;
     }
   if(b.command==Command::Race || b.command==Command::Quit) {
+    if(b.command==Command::Race)
+      choice.mode = Mode::Quick;
     command = b.command;
     return;
     }
@@ -612,7 +658,7 @@ void Menu::mouseMove(int x, int y) {
       playControl(0);
     }
   for(auto& p:pills) {
-    const bool in = p.box.contains(mouseX-wide*0.5f,mouseY-pillShiftY());
+    const bool in = p.enabled && p.box.contains(mouseX-wide*0.5f,mouseY-pillShiftY());
     if(in && !p.hover)
       playControl(0);
     p.hover = in;
@@ -640,6 +686,22 @@ void Menu::mouseMove(int x, int y) {
     hoverEnum(carEnum);
     for(auto& e:enums)
       hoverEnum(e);
+    }
+  if(current==Page::Garage)
+    hoverEnum(garagePage==0 ? garageCar : upgradeEnum);
+  if(current==Page::Champ) {
+    // the tracks' rows and the scroll bar's arrows
+    const Table t  = champTable();
+    const float mx = mouseX-contentShift(), my = mouseY-tall*0.5f;
+    champHover = tableRow(t,mx,my,TrackCount,champTop);
+    const float hy = t.box.y0+(t.box.y1-t.box.y0)*t.head;
+    const float sw = ScrollW;
+    const bool  up   = Box{t.box.x1,hy,t.box.x1+sw,hy+sw*1.1875f}.contains(mx,my);
+    const bool  down = Box{t.box.x1,t.box.y1-sw*1.1875f,t.box.x1+sw,t.box.y1}.contains(mx,my);
+    if((up && !hoverUp) || (down && !hoverDown))
+      playControl(1);
+    hoverUp   = up;
+    hoverDown = down;
     }
   if(current==Page::Players) {
     const size_t pl = selectedPlayer();
@@ -688,15 +750,39 @@ void Menu::mouseDown(int x, int y) {
       pressButton(b);
       return;
       }
-  for(auto& p:pills)
-    if(p.hover) {
+  for(size_t i=0; i<pills.size(); ++i)
+    if(pills[i].hover) {
       playControl(3);
       if(current==Page::Finish)
-        finishPill(p.command);
+        finishPill(pills[i].command);
+      else if(current==Page::ChampRace)
+        champRacePill(i);
       else
-        command = p.command;
+        command = pills[i].command;
       return;
       }
+  if(current==Page::Garage) {
+    Enum& e = garagePage==0 ? garageCar : upgradeEnum;
+    if(e.hoverL || e.hoverR)
+      changeEnum(e,e.hoverL ? -1 : 1);
+    return;
+    }
+  if(current==Page::Champ) {
+    if(hoverUp || hoverDown) {
+      const size_t vis = tableRows(champTable());
+      const size_t was = champTop;
+      champTop = size_t(std::clamp(int(champTop)+(hoverUp ? -1 : 1),0,int(TrackCount-std::min(vis,TrackCount))));
+      if(champTop!=was)
+        playControl(2);
+      return;
+      }
+    if(champHover>=0 && size_t(champHover)!=choice.track) {
+      playControl(2);
+      choice.track = size_t(champHover);
+      refreshButtons();
+      }
+    return;
+    }
   if(current==Page::QuickRace) {
     for(auto* e:{&trackEnum,&carEnum})
       if(e->hoverL || e->hoverR) {
@@ -744,6 +830,10 @@ void Menu::mouseUp(int, int) {
 void Menu::mouseWheel(int delta) {
   if(current==Page::Players && slide==0 && !message.open && !nameEntry.open)
     scrollRows(delta>0 ? -1 : 1);
+  if(current==Page::Champ && slide==0 && !message.open) {
+    const size_t vis = tableRows(champTable());
+    champTop = size_t(std::clamp(int(champTop)+(delta>0 ? -1 : 1),0,int(TrackCount-std::min(vis,TrackCount))));
+    }
   }
 
 void Menu::keyDown(Event::KeyType key, uint32_t ch) {
@@ -830,6 +920,38 @@ void Menu::keyDown(Event::KeyType key, uint32_t ch) {
         }
       if(key==Event::K_Return || key==Event::K_ESCAPE)
         playerAction(0x5e2);
+      return;
+    case Page::Champ:
+      if((key==Event::K_Up && choice.track>0) || (key==Event::K_Down && choice.track+1<TrackCount)) {
+        choice.track += key==Event::K_Up ? size_t(-1) : 1;
+        const size_t vis = tableRows(champTable());
+        if(choice.track<champTop)
+          champTop = choice.track;
+        if(choice.track>=champTop+vis)
+          champTop = choice.track+1-vis;
+        playControl(2);
+        refreshButtons();
+        }
+      if(key==Event::K_Return)
+        champAction(0x76d);
+      if(key==Event::K_ESCAPE)
+        leave(Page::Main,Command::None);
+      return;
+    case Page::ChampRace:
+      if(key==Event::K_Return)
+        champRacePill(0);
+      if(key==Event::K_ESCAPE)
+        champRacePill(1);
+      return;
+    case Page::Garage:
+      if(key==Event::K_Left || key==Event::K_Right)
+        changeEnum(garagePage==0 ? garageCar : upgradeEnum,key==Event::K_Left ? -1 : 1);
+      if(key==Event::K_ESCAPE)
+        leave(garageBack,Command::None);
+      return;
+    case Page::ChampWin:
+      if(key==Event::K_Return || key==Event::K_ESCAPE)
+        leave(Page::Main,Command::None);
       return;
     }
   }
@@ -964,9 +1086,10 @@ void Menu::playerAction(int id) {
     }
   }
 
-void Menu::showMessage(uint32_t text, Message::Action action) {
+void Menu::showMessage(uint32_t text, Message::Action action, std::string formatted, uint32_t cancelText) {
   message.open   = true;
   message.text   = text;
+  message.formatted = std::move(formatted);
   message.action = action;
   message.t      = 0;
   message.pills.clear();
@@ -981,7 +1104,7 @@ void Menu::showMessage(uint32_t text, Message::Action action) {
   else {
     ok.box = {MsgBox[0]+42,309,MsgBox[0]+42+135,345};
     Pill cancel;
-    cancel.text = T_Cancel;
+    cancel.text = cancelText;
     cancel.box  = {MsgBox[2]-42-135,309,MsgBox[2]-42,345};
     message.pills = {ok,cancel};
     }
@@ -989,8 +1112,12 @@ void Menu::showMessage(uint32_t text, Message::Action action) {
 
 void Menu::messageAnswer(bool ok) {
   message.open = false;
-  if(!ok || message.action!=Message::RemovePlayer || players==nullptr)
+  if(!ok || message.action==Message::None || players==nullptr)
     return;
+  if(message.action!=Message::RemovePlayer) {
+    champAnswer(message.action);
+    return;
+    }
   // 0x4d1dbf: the one chosen removed; if it was the one playing, nobody plays until another is chosen
   const size_t pl = selectedPlayer();
   if(pl==Players::None || players->size()<2) {
@@ -1048,14 +1175,28 @@ std::string Menu::clock(float seconds) {
   }
 
 std::optional<Menu::Preview> Menu::carPreview() const {
-  if(current!=Page::QuickRace)
+  // dlgRACESUM animCar, dlgCARSCOMM animCarPreview, the congratulations' (0x4c1790)
+  Box b;
+  if(current==Page::QuickRace)
+    b = {306,254,306+374,254+304};
+  else if(current==Page::Garage)
+    b = {0,19,504,19+403};
+  else if(current==Page::ChampWin)
+    b = {291,255,694,577};
+  else
     return std::nullopt;
-  // dlgRACESUM animCar
-  Preview p;
-  p.x = px(306+contentShift());
-  p.y = py(254+tall*0.5f);
-  p.w = 374.f*scale;
-  p.h = 304.f*scale;
+  Preview p = carLook(choice.car);
+  if(current==Page::Garage && blinkT>=0 && blinkPage>0) {
+    // 0x4d4a00: every other 0.2 s the car as it was before the upgrade
+    if(int(std::ceil(blinkT/0.2f))%2==0) {
+      int32_t& l = blinkPage==1 ? p.boost : blinkPage==2 ? p.resonator : p.tires;
+      l = std::max(0,l-1);
+      }
+    }
+  p.x = px(b.x0+contentShift());
+  p.y = py(b.y0+tall*0.5f);
+  p.w = (b.x1-b.x0)*scale;
+  p.h = (b.y1-b.y0)*scale;
   p.yaw   = carYaw;
   p.alpha = carAlpha;
   if(slide==1)
@@ -1233,6 +1374,9 @@ void Menu::drawPill(const Pill& p) {
     return;
   // 0x4cc2d0: the round ends kept, the middle stretched
   const auto& uv = PillUv[(p.red ? 0 : 2)+(p.hover ? 1 : 0)];
+  const float was = fade;
+  if(!p.enabled)
+    fade *= 0.5f;
   const float h  = p.box.y1-p.box.y0;
   const float cap = std::min((p.box.x1-p.box.x0)*0.5f,h*3.0303f*800.f/600.f*0.5f);
   const float um  = (uv[0]+uv[2])*0.5f;
@@ -1244,6 +1388,7 @@ void Menu::drawPill(const Pill& p) {
   const float c = p.hover ? 1.f : 0xaf/255.f;
   // the race's dialogs show their font larger than the menus
   label(font20,str(p.text),{p.box.x0,p.box.y0+0.00333f*600.f,p.box.x1,p.box.y1},1,1,{c,c,c,1},1.2f);
+  fade = was;
   }
 
 void Menu::drawEnum(const Enum& e, bool marker) {
@@ -1338,16 +1483,23 @@ void Menu::drawQuickRace() {
   drawEnum(carEnum,false);
   label(font26,str(T_Car),{115,387,115+194,387+25},0,2,white);
   underline(115,115+194,387+25,white);
-  const size_t car = std::min<size_t>(choice.car,2);
-  const int    up  = std::clamp(choice.upgrade,0,3);
-  auto part = [&](uint32_t stock, uint32_t base) {
+  // 0x4d4100: the player's car with its upgrades, "Nie dostępny" alone for a car the player has not got
+  const size_t car  = std::min<size_t>(choice.car,2);
+  const auto   look = carLook(car);
+  auto part = [&](uint32_t stock, uint32_t base, int32_t up) {
     // 0x49fd80 ..: "Dom." without an upgrade, then the car's three; the cars' bases go down by 3
-    return std::string(up==0 ? str(stock) : str(base-3*uint32_t(car)+uint32_t(up-1)));
+    return std::string(up<=0 ? str(stock) : str(base-3*uint32_t(car)+uint32_t(std::min(up,3)-1)));
     };
-  std::string info = std::string(str(T_CarName+4*uint32_t(car)));
-  info += "\n"+std::string(str(T_Booster))+": "+part(T_StockPart,40212);
-  info += "\n"+std::string(str(T_Engine)) +": "+part(T_StockPart+1,40203);
-  info += "\n"+std::string(str(T_Tires))  +": "+part(T_StockPart+2,40194);
+  std::string info;
+  if(players!=nullptr && players->current()!=nullptr && !players->current()->cars[car].bought) {
+    info = std::string(str(T_NotAvailable));
+    }
+  else {
+    info  = std::string(str(T_CarName+4*uint32_t(car)));
+    info += "\n"+std::string(str(T_Booster))+": "+part(T_StockPart,40212,look.boost);
+    info += "\n"+std::string(str(T_Engine)) +": "+part(T_StockPart+1,40203,look.resonator);
+    info += "\n"+std::string(str(T_Tires))  +": "+part(T_StockPart+2,40194,look.tires);
+    }
   lines(font20,info,{85,418,85+225,418+110},2,22.5f,white);
   }
 
@@ -1462,23 +1614,28 @@ void Menu::drawPlayers() {
     }
   underline(b.x0,b.x1,b.y1-0.0055f*600,grey);
 
+  drawScrollBar(b.x1,hy,b.y1,rows.size(),vis,topRow,hoverUp,hoverDown);
+  }
+
+void Menu::drawScrollBar(float x0, float y0, float y1, size_t rows, size_t vis, size_t top, bool up, bool down) {
   // the scroll bar (class VSB, 0x4bdb20, scrollbar.csi): the arrows grey while there is nothing to scroll, the
   // runner between them
-  if(scrollbar) {
-    const bool  can = rows.size()>vis;
-    const float x0 = b.x1, x1 = b.x1+ScrollW, ah = ScrollW*1.1875f;
-    image(scrollbar,{x0+ScrollW*0.25f,hy+ah*0.5f,x1-ScrollW*0.25f,b.y1-ah*0.5f},{0.9375f,0,1,1},white);
-    const float su = !can ? 0.f : hoverUp ? 0.25f : 0.125f;
-    const float sd = !can ? 0.375f : hoverDown ? 0.625f : 0.5f;
-    image(scrollbar,{x0,hy,x1,hy+ah},{su,0,su+0.125f,0.59375f},white);
-    image(scrollbar,{x0,b.y1-ah,x1,b.y1},{sd,0.40625f,sd+0.125f,1},white);
-    if(can) {
-      const float th   = ScrollW*2;
-      const float span = (b.y1-ah)-(hy+ah)-th;
-      const float k    = float(topRow)/float(rows.size()-vis);
-      const float ty   = hy+ah+span*k;
-      image(scrollbar,{x0,ty,x1,ty+th},{0.75f,0,0.875f,1},white);
-      }
+  if(!scrollbar)
+    return;
+  const Color white = {1,1,1,1};
+  const bool  can = rows>vis;
+  const float x1 = x0+ScrollW, ah = ScrollW*1.1875f;
+  image(scrollbar,{x0+ScrollW*0.25f,y0+ah*0.5f,x1-ScrollW*0.25f,y1-ah*0.5f},{0.9375f,0,1,1},white);
+  const float su = !can ? 0.f : up ? 0.25f : 0.125f;
+  const float sd = !can ? 0.375f : down ? 0.625f : 0.5f;
+  image(scrollbar,{x0,y0,x1,y0+ah},{su,0,su+0.125f,0.59375f},white);
+  image(scrollbar,{x0,y1-ah,x1,y1},{sd,0.40625f,sd+0.125f,1},white);
+  if(can) {
+    const float th   = ScrollW*2;
+    const float span = (y1-ah)-(y0+ah)-th;
+    const float k    = float(top)/float(rows-vis);
+    const float ty   = y0+ah+span*k;
+    image(scrollbar,{x0,ty,x1,ty+th},{0.75f,0,0.875f,1},white);
     }
   }
 
@@ -1500,20 +1657,7 @@ void Menu::drawFinish() {
   dy   = tall*0.5f;
   fade = a;
   const Color white4 = {1,1,1,1}, grey = {Grey,Grey,Grey,1};
-  if(msgBox) {
-    const Box   f = {FinishFrame[0],FinishFrame[1],FinishFrame[2],FinishFrame[3]};
-    const float c = 32;
-    const float xs[4] = {f.x0,f.x0+c,f.x1-c,f.x1}, ys[4] = {f.y0,f.y0+c,f.y1-c,f.y1};
-    // 0x56cd38: the corners and the sides, the right ones mirrored, and a texel of the middle
-    const Uv uv[3][3] = {
-      {{0,0,0.125f,0.25f},   {0.125f,0,0.25f,0.25f},   {0.125f,0,0,0.25f}},
-      {{0,0.25f,0.125f,0.5f},{0.4f,0.4f,0.41f,0.41f},  {0.125f,0.25f,0,0.5f}},
-      {{0,0.75f,0.125f,1},   {0.125f,0.75f,0.25f,1},   {0.125f,0.75f,0,1}},
-      };
-    for(int y=0; y<3; ++y)
-      for(int x=0; x<3; ++x)
-        image(msgBox,{xs[x],ys[y],xs[x+1],ys[y+1]},uv[y][x],white4);
-    }
+  drawFrame({FinishFrame[0],FinishFrame[1],FinishFrame[2],FinishFrame[3]});
   dx   = 0;
   dy   = 0;
   fade = 1;
@@ -1566,19 +1710,7 @@ void Menu::drawFinish() {
             t = face(*players->current());
           else if(row.face!=nullptr)
             t = faceTexture(row.faceKey,*row.face,0);
-          if(t==nullptr)
-            break;
-          float w  = (cb.x1-FinishFaceIn-cb.x0)/800.f, fh = (cb.y1-cb.y0)/600.f;
-          if(w>=fh*0.5948276f)
-            w = fh*0.5948276f;
-          if(fh>=w*1.6811594f)
-            fh = w*1.6811594f;
-          const float cx = (cb.x0+cb.x1-FinishFaceIn)*0.5f, cy = (cb.y0+cb.y1)*0.5f;
-          Tex ft;
-          ft.tex = t;
-          ft.w   = int(t->w());
-          ft.h   = int(t->h());
-          image(ft,{cx-w*400.f,cy-fh*300.f,cx+w*400.f,cy+fh*300.f},{0,0,1,FaceV},white4);
+          drawFaceCell(t,cb,FinishFaceIn);
           break;
           }
         case 1: {
@@ -1620,12 +1752,49 @@ void Menu::drawFinish() {
       }
     }
   underline(b.x0,b.x1,b.y1-0.0055f*600,grey);
+  if(choice.mode==Mode::Championship)
+    drawFinishBonus();
 
   for(auto& p:pills)
     drawPill(p);
   dx   = 0;
   dy   = 0;
   fade = 1;
+  }
+
+void Menu::drawFaceCell(const Texture2d* t, const Box& cb, float inset) {
+  // 0x4c59f0: the picture's framed part, as high as the row and 0.5948 of it wide (in screen fractions), in the
+  // middle of the column short of tableMordaShift
+  if(t==nullptr)
+    return;
+  float w  = (cb.x1-inset-cb.x0)/800.f, fh = (cb.y1-cb.y0)/600.f;
+  if(w>=fh*0.5948276f)
+    w = fh*0.5948276f;
+  if(fh>=w*1.6811594f)
+    fh = w*1.6811594f;
+  const float cx = (cb.x0+cb.x1-inset)*0.5f, cy = (cb.y0+cb.y1)*0.5f;
+  Tex ft;
+  ft.tex = t;
+  ft.w   = int(t->w());
+  ft.h   = int(t->h());
+  image(ft,{cx-w*400.f,cy-fh*300.f,cx+w*400.f,cy+fh*300.f},{0,0,1,FaceV},{1,1,1,1});
+  }
+
+void Menu::drawFrame(const Box& f) {
+  // 0x4acb20: messagebox.csi, 32 units at the corners, the middle stretched
+  if(!msgBox)
+    return;
+  const float c = 32;
+  const float xs[4] = {f.x0,f.x0+c,f.x1-c,f.x1}, ys[4] = {f.y0,f.y0+c,f.y1-c,f.y1};
+  // 0x56cd38: the corners and the sides, the right ones mirrored, and a texel of the middle
+  const Uv uv[3][3] = {
+    {{0,0,0.125f,0.25f},   {0.125f,0,0.25f,0.25f},   {0.125f,0,0,0.25f}},
+    {{0,0.25f,0.125f,0.5f},{0.4f,0.4f,0.41f,0.41f},  {0.125f,0.25f,0,0.5f}},
+    {{0,0.75f,0.125f,1},   {0.125f,0.75f,0.25f,1},   {0.125f,0.75f,0,1}},
+    };
+  for(int y=0; y<3; ++y)
+    for(int x=0; x<3; ++x)
+      image(msgBox,{xs[x],ys[y],xs[x+1],ys[y+1]},uv[y][x],{1,1,1,1});
   }
 
 void Menu::drawMessage() {
@@ -1642,7 +1811,12 @@ void Menu::drawMessage() {
   image(msgBox,{MsgBox[0],MsgBox[1],MsgBox[0]+side,MsgBox[3]},{0,0,0.49f,1},white4);
   image(msgBox,{MsgBox[0]+side,MsgBox[1],MsgBox[2]-side,MsgBox[3]},{0.48f,0,0.49f,1},white4);
   image(msgBox,{MsgBox[2]-side,MsgBox[1],MsgBox[2],MsgBox[3]},{0.49f,0,0,1},white4);
-  label(font20,str(message.text),{MsgText[0],MsgText[1],MsgText[2],MsgText[3]},1,1,white4);
+  // the lines of the text in the middle of its part
+  const std::string_view t = message.formatted.empty() ? str(message.text) : std::string_view(message.formatted);
+  const float step = 22.5f;
+  const float n    = float(std::count(t.begin(),t.end(),'\n')+1);
+  const float y0   = (MsgText[1]+MsgText[3])*0.5f-n*step*0.5f;
+  lines(font20,t,{MsgText[0],y0,MsgText[2],y0+n*step},1,step,white4);
   for(auto& p:message.pills)
     drawPill(p);
   dx = 0;
@@ -1686,6 +1860,15 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
     flush(enc,frame);
     return;
     }
+  if(current==Page::ChampRace) {
+    drawBackground();
+    drawChampRace();
+    if(message.open)
+      drawMessage();
+    drawCursor();
+    flush(enc,frame);
+    return;
+    }
   if(current==Page::InRace) {
     // over the race: the scene darkened
     quad(*white,1,1,{0,0,1,1},0,0,float(w),float(h),{0,0,0,0.5f});
@@ -1701,7 +1884,7 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
     }
   drawBackground();
 
-  if(current==Page::QuickRace)
+  if(current==Page::QuickRace || current==Page::Garage || current==Page::ChampWin)
     at = mark();
   // the screen's own controls fade out and in with the change of screen
   fade = slide==0 ? 1.f : std::clamp(slideT/SlideTime,0.f,1.f);
@@ -1725,6 +1908,24 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
     dx = contentShift();
     dy = tall*0.5f;
     drawPlayers();
+    }
+  if(current==Page::Champ && players!=nullptr && players->current()!=nullptr) {
+    dx = contentShift();
+    dy = tall*0.5f;
+    drawChamp();
+    }
+  if(current==Page::Garage && players!=nullptr && players->current()!=nullptr) {
+    dx = contentShift();
+    dy = tall*0.5f;
+    drawGarage();
+    }
+  if(current==Page::ChampWin && players!=nullptr && players->current()!=nullptr) {
+    dx = wide;
+    if(logo)
+      image(logo,{800-100,0,800,100},{0,0,1,1},{1,1,1,1});
+    dx = contentShift();
+    dy = tall*0.5f;
+    drawChampWin();
     }
   dx   = 0;
   dy   = 0;

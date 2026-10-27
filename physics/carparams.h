@@ -19,7 +19,9 @@ namespace rc {
 // accelerations.
 struct CarParams {
   int32_t car     = 1;
-  int32_t upgrade = 0;          // 0..3: column of Scripts\upgrades.ini (0 = stock)
+  int32_t upgrade = 0;          // 0..3: the tires' column of Scripts\upgrades.ini (0 = stock), their look in the effects
+  int32_t boostLevel = 0;       // 0..3: the BOOSTERS and RESONATORS columns, bought apart in the garage
+  int32_t resonatorLevel = 0;
 
   float   mass        = 1.f;    // kg (RCCars.exe)
 
@@ -113,6 +115,8 @@ struct CarParams {
   float   drownTime       = 2.f;   // s on the timer before the car counts as drowned
 
   static CarParams load(PackFile& pack, int32_t car, int32_t upgrade = 0);
+  // the three upgrades of the garage (the player's file, car+0x12c ..: boost, resonator, tires)
+  static CarParams load(PackFile& pack, int32_t car, int32_t boost, int32_t resonator, int32_t tires);
 
   // engine acceleration at forward speed `v` (m/s) with the throttle 0..1, upgrades included, resistance not
   float   acceleration(float v, float throttle = 1.f, bool boost = false) const;

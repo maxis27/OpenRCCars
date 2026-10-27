@@ -559,7 +559,7 @@ void Characters::person(State& s, float dt, Vehicle* player, std::vector<Car>& c
     if(sincePerson>HitPause) {
       sincePerson = 0;
       greatHit    = true;
-      player->addBoost(HitBoost);
+      player->addHitBoost();
       }
     }
   if(s.active)
@@ -747,7 +747,7 @@ void Characters::guard(State& s, float dt, Vehicle* player, std::vector<Car>& ca
   if(s.noHit<=0 && hitBy(s,player,GuardHitSpeed) && sinceGuard>HitPause) {
     sinceGuard = 0;
     greatHit   = true;
-    player->addBoost(HitBoost);
+    player->addHitBoost();
     }
   if(!attack(s,dt,player)) {
     // turns to face the car (0x510a40, 360 degrees per second) and shoots at it
@@ -1083,7 +1083,7 @@ void Characters::dog(State& s, float dt, Vehicle* player, std::vector<Car>& cars
     if(sinceDog>HitPause) {
       sinceDog = 0;
       greatHit = true;
-      player->addBoost(HitBoost);
+      player->addHitBoost();
       }
     }
 

@@ -257,3 +257,67 @@ void Canvas::flush(Encoder<CommandBuffer>& enc, uint8_t frame, const std::functi
   verts.clear();
   draws.clear();
   }
+
+// The cockpit's numbers are not in the Smash font: RCCars.exe draws them with "cock_num", a texture kept in
+// RCCars.sb itself (XTLG, not in the pack): 256x128, cells of 32x64 in rows of 8 holding "0123456789:'/.,", metal
+// grey digits with a soft edge and their shadow drawn in. In each cell two pairs of clear marker texels (row 47..48)
+// bound the character's box: the text advances by its width, so the digits stand 18 texels apart.
+void Canvas::loadNumbers(Resources& res, Font& f) {
+  constexpr std::string_view Chars = "0123456789:'/.,";
+  std::vector<uint8_t> sb;
+  try {
+    sb = res.readFile("RCCars.sb");
+    }
+  catch(const std::exception& e) {
+    Log::e(e.what(),": the cockpit's numbers fall back to the Smash font");
+    return;
+    }
+  static const char name[] = "cock_num";
+  auto at = std::search(sb.begin(),sb.end(),name,name+sizeof(name)-1);
+  if(at!=sb.end())
+    at = std::search(at,sb.end(),"MISC","MISC"+4);
+  if(at==sb.end()) {
+    Log::e("RCCars.sb: no cock_num texture, the cockpit's numbers fall back to the Smash font");
+    return;
+    }
+  rc::Image img;
+  try {
+    img = rc::decodeCsi(&*at,size_t(sb.end()-at));
+    }
+  catch(const std::exception& e) {
+    Log::e("RCCars.sb cock_num: ",e.what());
+    return;
+    }
+  Pixmap pm(img.w,img.h,TextureFormat::RGBA8);
+  std::memcpy(pm.data(),img.rgba.data(),img.rgba.size());
+  f.img.tex    = device.texture(pm,true);
+  f.img.w      = int(img.w);
+  f.img.h      = int(img.h);
+  f.img.loaded = true;
+  f.cell       = 64;
+  f.hard       = false;
+  auto px = [&](int x, int y) { return &img.rgba[(size_t(y)*img.w+size_t(x))*4]; };
+  for(size_t i=0; i<Chars.size(); ++i) {
+    const int cx = int(i%8)*32, cy = int(i/8)*64;
+    // the markers: clear but coloured texels in row 47
+    int first = -1, last = -1;
+    for(int x=0; x<32; ++x) {
+      const uint8_t* p = px(cx+x,cy+47);
+      if(p[3]<10 && (p[0]>200 || p[1]>200 || p[2]>200)) {
+        if(first<0)
+          first = x;
+        last = x;
+        }
+      }
+    if(first<0 || last-first<4)
+      continue;
+    // the box lies between the pairs: from after the left pair (2 texels) up to before the right one
+    Glyph g;
+    g.u0 = float(cx+first+2);
+    g.u1 = float(cx+last-1);
+    g.v0 = float(cy);
+    g.v1 = float(cy+64);
+    f.glyphs[uint8_t(Chars[i])] = g;
+    f.has[uint8_t(Chars[i])]    = true;
+    }
+  }

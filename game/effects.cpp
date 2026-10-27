@@ -18,7 +18,7 @@ namespace {
 
 // the car's wheels for the effects: hubs from the model's wheel poses, numbered as RCCars.exe does
 template<class Car>
-rc::fx::CarState carState(const Car& car, const rc::Mat4& pose, const rc::Vec3& velocity, int upgrade) {
+rc::fx::CarState carState(const Car& car, const rc::Mat4& pose, const rc::Vec3& velocity, int upgrade, int boost) {
   rc::fx::CarState s;
   s.pose     = pose;
   s.velocity = velocity;
@@ -40,7 +40,7 @@ rc::fx::CarState carState(const Car& car, const rc::Mat4& pose, const rc::Vec3& 
   s.body       = pose.point((g.bodyMin+g.bodyMax)*0.5f);
   s.bodyHeight = g.bodyMax.y-g.bodyMin.y;
   if(!g.exhausts.empty()) {
-    const auto& e = g.exhausts[size_t(std::clamp(upgrade,0,int(g.exhausts.size())-1))];
+    const auto& e = g.exhausts[size_t(std::clamp(boost,0,int(g.exhausts.size())-1))];
     s.exhaust = rc::fx::CarState::Exhaust{pose.point(e.pos),pose.vector(e.dir)};
     }
   return s;
@@ -146,7 +146,7 @@ void Effects::tick(float dt, const rc::Vehicle& car, const rc::Opponents* ai, co
     return;
   if(player==nullptr)
     player = std::make_unique<rc::fx::CarEffects>(settings,true);
-  auto state = carState(car,car.pose(),car.velocity(),car.params().upgrade);
+  auto state = carState(car,car.pose(),car.velocity(),car.params().upgrade,car.params().boostLevel);
   state.gas   = gas;
   state.brake = brake;
   state.boost = car.boosting();
@@ -177,7 +177,7 @@ void Effects::tick(float dt, const rc::Vehicle& car, const rc::Opponents* ai, co
       }
     fx.last   = at;
     fx.placed = true;
-    auto s = carState(o,pose,vel,0);
+    auto s = carState(o,pose,vel,0,0);
     s.gas = vel.length()>0.5f;
     s.sense(track);
     fx.fx->update(s,camera,dt,rnd);

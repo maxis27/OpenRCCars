@@ -189,6 +189,9 @@ class Vehicle {
     float                      boostTank() const { return tank; }
     // adds units to the turbo tank, up to a full one (the game gives CarParams::BoostPerCheckpoint per checkpoint)
     void                       addBoost(float units);
+    // a hit's HitBoost units, counted (car+0x5748, 0x4f65fe ..): the championship's bonus for hits
+    void                       addHitBoost() { addBoost(HitBoost); ++hitCount; }
+    int32_t                    hits() const { return hitCount; }
     bool                       boosting() const { return boostOn; }
     // what most of the wheels touching the ground stand on (Water when the car is in water), as of the last update
     Surface                    surface() const { return under; }
@@ -355,6 +358,7 @@ class Vehicle {
     float                                 touchFor   = 0;     // s touching it all along (0x5c80)
     float                                 jumpTimer = 0;
     float                                 tank = 0;
+    int32_t                               hitCount = 0;
     float                                 boostTimer = 0;     // s since the start or since the tank ran dry
     bool                                  boostLock = false;  // ran dry with the key held
     bool                                  boostOn = false;

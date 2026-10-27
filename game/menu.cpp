@@ -333,6 +333,8 @@ void Menu::build(Page p) {
   carAlpha = 0;
   message.open   = false;
   nameEntry.open = false;
+  infoPage = 0;
+  infoEnums.clear();
 
   auto add = [this](int slot, uint32_t text, Button::Kind kind, Command cmd, Page to, bool enabled) {
     Button b;
@@ -370,8 +372,11 @@ void Menu::build(Page p) {
       // dlgRACESUM: its pages as radio buttons, the garage as a tab; the ghost race's the same (0x4d3000)
       headerText = p==Page::GhostRace ? T_GhostRace : T_QuickRace;
       add(0,T_Summary,   Button::Radio,Command::None,Page::None,true)->checked = true;
-      add(1,T_MapInfo,   Button::Radio,Command::None,Page::None,false);
-      add(2,T_TrackStats,Button::Radio,Command::None,Page::None,false);
+      add(1,T_MapInfo,   Button::Radio,Command::None,Page::None,true);
+      add(2,T_TrackStats,Button::Radio,Command::None,Page::None,true);
+      // the frame's pages (0x56f58c): its own, dlgMAPINFO, dlgSTAT
+      for(int i=0; i<3; ++i)
+        right[size_t(i)].id = 0x76f+i;
       add(3,T_Garage,    Button::Tab,  Command::None,Page::None,players!=nullptr)->id = 0x772;
       add(8,T_MainMenu,  Button::Back, Command::None,Page::Main,true);
       add(-1,T_Race,     Button::Race, Command::Race,Page::None,quickAllowed());
@@ -559,6 +564,7 @@ void Menu::tick(float dt) {
       blinkT = -1;
     }
   refreshButtons();
+  infoTick(dt);
   if(shotScroll!=0) {
     const float step = dt/0.3f;
     shotScroll = std::abs(shotScroll)<=step ? 0.f : shotScroll-std::copysign(step,shotScroll);
@@ -580,6 +586,11 @@ void Menu::changeEnum(Enum& e, int step) {
   e.at = (e.at+e.values.size()+size_t(step+int(e.values.size())))%e.values.size();
   (step<0 ? e.pushL : e.pushR) = 0.5f;
   playControl(2);
+  for(auto& ie:infoEnums)
+    if(&ie==&e) {
+      changeInfoEnum(e,step);
+      return;
+      }
   if(&e==&trackEnum) {
     choice.track = e.at;
     return;
@@ -718,7 +729,12 @@ void Menu::mouseMove(int x, int y) {
     }
   if(current==Page::Garage)
     hoverEnum(garagePage==0 ? garageCar : upgradeEnum);
-  if(current==Page::Champ) {
+  if(infoFrame() && infoPage!=0) {
+    for(auto& e:infoEnums)
+      hoverEnum(e);
+    infoHover(mouseX-contentShift(),mouseY-tall*0.5f);
+    }
+  if(champPage()) {
     // the tracks' rows and the scroll bar's arrows
     const Table t  = champTable();
     const float mx = mouseX-contentShift(), my = mouseY-tall*0.5f;
@@ -796,7 +812,16 @@ void Menu::mouseDown(int x, int y) {
       changeEnum(e,e.hoverL ? -1 : 1);
     return;
     }
-  if(current==Page::Champ) {
+  if(infoFrame() && infoPage!=0) {
+    for(auto& e:infoEnums)
+      if(e.hoverL || e.hoverR) {
+        changeEnum(e,e.hoverL ? -1 : 1);
+        return;
+        }
+    infoClick(mouseX-contentShift(),mouseY-tall*0.5f);
+    return;
+    }
+  if(champPage()) {
     if(hoverUp || hoverDown) {
       const size_t vis = tableRows(champTable());
       const size_t was = champTop;
@@ -859,7 +884,9 @@ void Menu::mouseUp(int, int) {
 void Menu::mouseWheel(int delta) {
   if(current==Page::Players && slide==0 && !message.open && !nameEntry.open)
     scrollRows(delta>0 ? -1 : 1);
-  if(current==Page::Champ && slide==0 && !message.open) {
+  if(infoFrame() && infoPage==2 && slide==0 && !message.open)
+    scrollStats(delta>0 ? -1 : 1);
+  if(champPage() && slide==0 && !message.open) {
     const size_t vis = tableRows(champTable());
     champTop = size_t(std::clamp(int(champTop)+(delta>0 ? -1 : 1),0,int(TrackCount-std::min(vis,TrackCount))));
     }
@@ -922,6 +949,10 @@ void Menu::keyDown(Event::KeyType key, uint32_t ch) {
       return;
     case Page::QuickRace:
     case Page::GhostRace:
+      if(infoPage!=0 && key!=Event::K_Return && key!=Event::K_ESCAPE) {
+        infoKey(key);
+        return;
+        }
       if(key==Event::K_Left)   changeEnum(trackEnum,-1);
       if(key==Event::K_Right)  changeEnum(trackEnum,1);
       if(key==Event::K_Up)     changeEnum(carEnum,-1);
@@ -952,6 +983,10 @@ void Menu::keyDown(Event::KeyType key, uint32_t ch) {
         playerAction(0x5e2);
       return;
     case Page::Champ:
+      if(infoPage!=0 && key!=Event::K_Return && key!=Event::K_ESCAPE) {
+        infoKey(key);
+        return;
+        }
       if((key==Event::K_Up && choice.track>0) || (key==Event::K_Down && choice.track+1<TrackCount)) {
         choice.track += key==Event::K_Up ? size_t(-1) : 1;
         const size_t vis = tableRows(champTable());
@@ -1942,10 +1977,15 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
     dy = tall*0.5f;
     drawPlayers();
     }
-  if(current==Page::Champ && players!=nullptr && players->current()!=nullptr) {
+  if(champPage() && players!=nullptr && players->current()!=nullptr) {
     dx = contentShift();
     dy = tall*0.5f;
     drawChamp();
+    }
+  if(infoFrame() && infoPage!=0) {
+    dx = contentShift();
+    dy = tall*0.5f;
+    drawInfo();
     }
   if(current==Page::Garage && players!=nullptr && players->current()!=nullptr) {
     dx = contentShift();

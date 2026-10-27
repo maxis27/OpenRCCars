@@ -132,7 +132,7 @@ add_library(rcengine STATIC
   game/chasecamera.h       game/chasecamera.cpp
   game/resources.h         game/resources.cpp
   game/canvas.h            game/canvas.cpp
-  game/menu.h              game/menu.cpp game/menuchamp.cpp
+  game/menu.h              game/menu.cpp game/menuchamp.cpp game/menuinfo.cpp
   game/players.h           game/players.cpp
   game/championship.h      game/championship.cpp
   game/hud.h               game/hud.cpp

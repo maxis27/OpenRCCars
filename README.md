@@ -70,8 +70,8 @@ plików w [docs/formaty.md](docs/formaty.md).
   przeciwników, punkty kontrolne, turbo, hamulec, lot i lądowanie, nawierzchnie, uderzenia, buksowanie, woda, szum
   morza, wodospady, głosy ludzi, mew i psów, ruch uliczny i muzyka MP3 z `Tracks/` w kolejności z `Autoexec.gm`.
 - **Menu**: menu główne z panelem gracza, szybki wyścig (trasa, auto, okrążenia, przeciwnicy), wybór gracza
-  (zakładanie, usuwanie, zdjęcie, sortowanie), ekran wczytywania i menu Esc w wyścigu, z obrazkami, czcionkami
-  i dźwiękami oryginału.
+  (zakładanie, usuwanie, zdjęcie, sortowanie), „Mapa i informacje” (mapa trasy, zdjęcia, opis) i „Statystyki toru”
+  (wyniki wszystkich graczy), ekran wczytywania i menu Esc w wyścigu, z obrazkami, czcionkami i dźwiękami oryginału.
 - **Mistrzostwa** z `Scripts/championship.ini`: tabela tras (otwierane wynikami), opłata przed wyścigiem
   z przeciwnikami „Ekspert”, trening, nagrody i premia za uderzenia i przewagę na ekranie mety, nowe mistrzostwa,
   gratulacje po ostatniej trasie; garaż z kupowaniem i sprzedażą aut, skórkami i ulepszeniami dopalacza, silnika
@@ -201,7 +201,9 @@ lista graczy (też ↑ / ↓, kółko myszy), „Utwórz gracza” pyta o imię,
 obok niego, „Kontynuuj” (też Enter, Esc) wybiera zaznaczonego gracza. W „Mistrzostwach” trasę wybiera się w tabeli
 (też ↑ / ↓), „Wyścig” pokazuje opłatę i przeciwników, „Garaż” to auta (strzałki, kupno, sprzedaż, skórka)
 i ulepszenia (strzałki pod obrazkiem wybierają poziom). „Wyścig duchów” to tor, auto i typ wyścigu („Zwykły”,
-„Multi”). Szybki wyścig i wyścig duchów ruszają tylko kupionym autem na otwartej trasie. Przyciski części, których jeszcze nie ma (opcje, autorzy …), są szare.
+„Multi”). „Mapa i informacje” (zdjęcia strzałkami albo ← / →, trasa strzałkami albo ↑ / ↓) i „Statystyki toru”
+(rodzaj wyniku strzałkami albo ← / →, lista ↑ / ↓ i kółkiem) to strony szybkiego wyścigu, wyścigu duchów
+i mistrzostw. Szybki wyścig i wyścig duchów ruszają tylko kupionym autem na otwartej trasie. Przyciski części, których jeszcze nie ma (opcje, autorzy …), są szare.
 
 Oryginał pokazuje menu zawsze w 800x600 (`RCCars.exe` 0x4a6840). U nas menu wypełnia całe okno: tło jest rozciągnięte
 na szerokość (w oknie węższym niż 4:3 na wysokość), przyciski po prawej trzymają się krawędzi i łuków tła, a obrazki,
@@ -379,7 +381,7 @@ Zrobione są wszystkie elementy pojedynczego szybkiego wyścigu. Brakuje:
 
 - **Grafika i świat**: przyciemnianie postaci i rekwizytów w cieniu (`feat_lmshd.ini`), dźwięk zahaczenia anteny
   (`Antenna_scratch`).
-- **Opakowanie gry**: reszta menu (opcje, informacje o trasie, autorzy), demo, intro, dwóch graczy na podzielonym
+- **Opakowanie gry**: reszta menu (opcje, autorzy), demo, intro, dwóch graczy na podzielonym
   ekranie, gra przez sieć.
 
 ## Licencja

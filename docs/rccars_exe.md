@@ -22,6 +22,7 @@ w `RCCars.exe`. Miejsca, gdzie robimy inaczej albo zgadujemy, są wprost tak opi
 - [Mgła](#mgła)
 - [Kamera](#kamera)
 - [Dźwięk](#dźwięk)
+- [Gracze](#gracze)
 - [Tryb deweloperski](#tryb-deweloperski)
 
 ## Fizyka auta
@@ -694,6 +695,58 @@ nawierzchniach, uderzenia i otarcia, buksowanie (`car_motor_ws`, [obrót kół](
   i `car_cdt_bullet` przy każdym trafieniu kulą (0x508560); kanał `car_CDT&Boost` bierze najpierw kulę, potem auto,
   obiekt, nawierzchnię (0x50a620).
 - **Strzały**: `burst` przy broni na początku serii, `bullet` w miejscu trafienia pierwszej kuli.
+
+## Gracze
+
+Gracze to pliki `Players/*.scp` (format w [formaty.md](formaty.md#gracze-players-rccarscrs)), lista ładowana przy
+starcie (0x4e7450). Bez żadnego pliku gra zakłada gracza „Gracz” (Language/Game 40507) i od razu go zapisuje;
+błędy to teksty 403/404 z `Language/System`. Grający to 0x14ac16c, jego imię gra trzyma w `RCCars.crs`
+(„Player”/„Name”, 0x404a30). Wybranie gracza (0x4e8440) ustawia trasę, auto, okrążenia i umiejętności z jego
+ostatniego wyścigu. U nas, gdy `RCCars.crs` wskazuje gracza, którego nie ma, gra wybiera pierwszego z listy
+(oryginał zostawia wtedy pustkę; nie sprawdziliśmy, co robi z tym menu główne).
+
+- **Nowy gracz** (0x4e7c60, 0x4e8320): forsa `DefaultCash` z `Scripts/championship.ini` (100), auta z `Car<n>
+  IsEnabled`, wyniki 0, ostatnie okrążenia 3, wszystkie rekordy puste. Zdjęcia to wszystkie `*.tga` z `FacesSys/`
+  w archiwum i z `Faces/` w folderze gry, posortowane po nazwie pliku (0x4e5660); domyślne to `face1.tga` (0x4e5970).
+- **Panel gracza** (0x4a7170, układ 0x4a6f40 i `dlgPLRSCOMM.ini`): zdjęcie (górne 158 z 256 wierszy, w nim ramka),
+  w menu głównym „Witaj, <imię>”, gdzie indziej samo imię (Smash26, podkreślone), trzy linie Smash20 „Ranga”,
+  „Samochód” (wybrane auto) i „Czas gry” (`h:mm:ss`, 0x49ec00 forma 2), pod kreską Smash26 do prawej
+  „Wyniki: %i  Forsa: %s” (kwota z 0x4a98f0: „$”, tysiące oddzielone spacją).
+- **Ranga** (0x4e85d0): gdy wyniki i forsa są poniżej 50, a gracz jechał na więcej niż jednej trasie, „Opóźniony”;
+  inaczej według wyników: < 100, 250, 500, 1000, 2000, 4000, 7000, 10000 i więcej to teksty 40551–40559.
+- **Wybór gracza** (`dlgPLRSCOMM`, 0x4d1c43, obsługa 0x4d2400): bez przycisku wyścigu, „Kontynuuj” (0x5e2) wybiera
+  zaznaczonego, zapisuje go w `RCCars.crs` i wraca. Lista (klasa LST, 0x4bcc60) w (0,10625; 0,38833)–(0,64375;
+  0,85333) ekranu, wiersze od 0,06 jej szerokości, kolumny 0,3/0,2/0,3/0,2 („Gracz”, „Wynik”, „Forsa”, „Czas”),
+  nagłówek 0,12 wysokości listy Smash26, wiersze po 0,105 Smash20, zaznaczony biały, inne szare, kreski pod
+  nagłówkiem, pod każdym imieniem i pod listą, czerwony znacznik przed zaznaczonym (szary przed innymi). Zaznaczenie
+  ustawia ostatni wyścig tego gracza (0x4d25f0).
+- **Sortowanie** (0x5e5, porównanie 0x4d2110): stan 0x14a52f4 zaczyna od 0x11 (imię, rosnąco); każde naciśnięcie to
+  następny: wyniki, forsa, czas gry (malejąco), imię. Napis przycisku mówi, co będzie następne (10025–10028).
+- **Utwórz gracza** (0x5e3 → 0x4d2910): ekran przyciemnia się w 0,5 s, linia „Imię gracza:” (podział 0,46875), do
+  10 znaków bez `\ / * & ? | .`, pigułki „Tak”/„Anuluj”. Gdy imię już jest: 41007, gdy nie da się założyć: 41008,
+  gdy zapisać: 10884. Nowy gracz od razu gra, ma 5 okrążeń, a jego zdjęcie to pierwsze z listy, zmieniane strzałkami.
+- **Zdjęcie** (0x5e6): strzałki obok zdjęcia (0x5dc) działają dla zaznaczonego gracza; od razu dostaje on zdjęcie
+  wskazane przez strzałki i każda zmiana zapisuje plik (0x4d2710).
+- **Usuń gracza** (0x5e4): bez zaznaczenia 41006, przy jednym graczu 41005, inaczej pytanie 41009 z „Tak”/„Anuluj”;
+  usunięcie (0x4d1dbf, 0x4e8250) kasuje sam `.scp` (`.bak` zostaje), a gdy to był grający, nikt nie gra, dopóki
+  „Kontynuuj” kogoś nie wybierze.
+- **Okno komunikatu** (0x4cb830, 0x4cc0a0, rysowanie 0x4cb8c0): ekran ciemnieje w 0,2 s (do alfy 127), potem ramka
+  z `messagebox.csi` 378x146 na środku (lewa część 0,16 ekranu, prawa jej lustrem, środek rozciągnięty), tekst
+  Smash20 w górnych 82 jednostkach, pigułki 135x36: sama „Tak” na środku albo „Tak” i „Anuluj” 42 od boków.
+- **Pasek przewijania** (klasa VSB, 0x4bdb20, `scrollbar.csi`): strzałki, tor i suwak; wygląd tylko przybliżony
+  (u nas szare strzałki, gdy nie ma czego przewijać).
+
+Po wyścigu (szybki wyścig to tryb 1, 0x4d2dd5):
+
+- **Start** (0x4c9f70): graczowi zapisuje się trasa i auto, a w szybkim wyścigu także okrążenia i umiejętności.
+  Auto musi być kupione, inaczej gra bierze pierwsze kupione (u nas szybki wyścig pozwala na każde auto).
+- **Okrążenie** (0x4eb2b0 → 0x4c5560, tryby 1–5, 7, 8): lepsze od najlepszego na trasie staje się rekordem z autem,
+  jego ulepszeniami z profilu i datą; czat 20100 „><imię> najlepsze okrążenie <czas>”.
+- **Meta** (0x4c56c0, 0,5 s po końcu): najlepszy wyścig na tyle okrążeń (czat 20101), czas wyścigu do trasy i do
+  „Czasu gry” (gra liczy tylko ukończone wyścigi), +1 wyścig, przejechane metry (licznik auta car+0x5d38, 0x4f1c80,
+  nie liczy przestawienia na trasę) do trasy i do gracza, zapis pliku. Miejsce, nagrody i rekord mistrzostw (0x0279)
+  tylko w mistrzostwach (tryb 5). Wyścigu nie zapisuje się przy fladze 0x200 (zdarzenie 31 skryptu; u nas: gdy
+  w wyścigu użyto F9 albo N z `-dev`).
 
 ## Tryb deweloperski
 

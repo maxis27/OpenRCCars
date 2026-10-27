@@ -11,6 +11,7 @@ Co wiemy o plikach gry i jak je czytamy. Zachowanie gry, które z nich korzysta,
 - [Nagrania przeciwników (CarProfiles)](#nagrania-przeciwników-carprofiles)
 - [Ścieżki postaci i aut](#ścieżki-postaci-i-aut)
 - [Pliki obok archiwum (Language, Tracks)](#pliki-obok-archiwum-language-tracks)
+- [Gracze (Players, RCCars.crs)](#gracze-players-rccarscrs)
 - [Nazwy tras](#nazwy-tras)
 
 ## Układ współrzędnych i skala
@@ -179,6 +180,34 @@ szyku daje `PlayerPath` i `start.dat`.
   z tekstami zaszyfrowanymi XOR-em kluczem z `CSRC`, w Windows-1250 (polski) albo ASCII (`formats/texttable.h`,
   `RCCars.exe` 0x401920).
 - `Tracks/`: muzyka MP3; `Tracks/Intro.dat` (84 MB) to intro w nieznanym formacie.
+
+## Gracze (Players, RCCars.crs)
+
+`Players/<plik>.scp` to jeden gracz (czyta 0x4e7740, zapisuje 0x4e7e70, `formats/playerprofile.h`): drzewo elementów
+`[u8 id][u8 typ][u32 koniec]` jak w scenach, exe porównuje 16-bitowy znacznik `id | typ<<8`. Przed zapisem stary plik
+idzie do `<plik>.bak`, a plik, który się nie czyta, gra kasuje i czyta `.bak`. Nazwa pliku to imię z literami
+i cyframi (7 bitów, `isalnum`), każdy inny znak to losowa cyfra 0–8; najwyżej 20 graczy.
+
+- `0x5020` korzeń `[f32 1.0]`; `0x4021` imię (do 15 znaków, Windows-1250); `0x1422 [u32 160]` nagłówek `.csi`
+  zdjęcia i `0x1423 [u32 n]` jego piksele (128x256, ARGB, wiersze od góry); `0x5024` czas gry (s), `0x3025` forsa,
+  `0x3026` wyniki, `0x5027` przejechane metry.
+- `0x3230 [u32 auto 0..2]`: `0x0031` kupione (pusty element), `0x3032` dopalacz, `0x3033` silnik, `0x3034` koła,
+  `0x3035` malowanie.
+- `0x3240 [u32 trasa 0..9]`: `0x0270` najlepsze okrążenie, 20 × `0x3271 [u32 n]` najlepszy wyścig na n okrążeń,
+  `0x0279` najlepszy wyścig mistrzostw (w polu czasu jest wygrana kwota), `0x5044` czas jazdy (s), `0x3045` liczba
+  wyścigów, `0x3046` najlepsze miejsce (0 = pierwsze, `INT_MAX` = brak), `0x5047` przejechane metry.
+- Rekord: `0x5072` czas (2 000 000 = brak), `0x3073` auto, `0x3074`–`0x3076` jego ulepszenia, `0x2477 [u32 4]` dzień,
+  miesiąc, rok, 0 i `0x2478 [u32 4]` godzina, minuta, sekunda, ms.
+- Na końcu `0x3050`–`0x3053` ostatnia trasa, auto, okrążenia i umiejętności przeciwników, `0x4060` imię z chwili
+  założenia, `0x3061` liczba, której znaczenia nie znamy (zawsze 0).
+
+Nasz zapis daje bajt w bajt ten sam plik (`rcinfo <gra> scp Players/<plik>.scp` to sprawdza). Nagłówek zdjęcia ze
+starego pliku zawiera wskaźniki z pamięci gry; my przy nowym zdjęciu zostawiamy w tych miejscach zera.
+
+`RCCars.crs` (ustawienia, „CREAT Studio configuration”) to drzewo rekordów `CSRC [u32 długość][nazwa]`: sekcja ma
+`[u16 dzieci]` i 6 zer, wartość `[u16 typ][u16 rozmiar][u16 pojemność][u16 0]`, dane i `[u32 0]` (typ 1 liczba,
+2 napis, 3 struktura). Wybrany gracz to napis „Player”/„Name” (pojemność 16); zmieniamy tylko ten rekord
+(`rcinfo <gra> crs`).
 
 ## Nazwy tras
 

@@ -6,16 +6,21 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "canvas.h"
 #include "formats/settings.h"
 #include "formats/texttable.h"
+#include "resources.h"
 
+class Players;
 class Sounds;
+namespace rc { struct PlayerProfile; }
 
 // The game's front end as RCCars.exe draws it (its dialog framework, 0x43f250 and the window classes of
-// 0x4aa2e0 ..): the main menu, the quick race, the loading screen and the menu over a race (Esc). Laid out in
+// 0x4aa2e0 ..): the main menu, the quick race, the choice of the player, the loading screen and the menu over a
+// race (Esc). Laid out in
 // units of a 800x600 screen like the original, whose dialogs are fractions of the screen (it always shows its menus
 // in 800x600, RCCars.exe 0x4a6840); on wide screens the background is stretched to the whole window and the
 // controls keep their shape, by the edge or the part of the background they belong to.
@@ -26,6 +31,7 @@ class Menu : public Canvas {
       Main,       // "Menu główne" (RCCars.exe 0x4c9500)
       QuickRace,  // "Szybki wyścig": dlgRACESUM
       InRace,     // Esc during a race: dlgINRACE
+      Players,    // "Wybierz gracza": dlgPLRSCOMM (0x4d1c43)
       };
     // what the player chose, for MainWindow
     enum class Command : uint8_t {
@@ -55,6 +61,11 @@ class Menu : public Canvas {
 
     Menu(Tempest::Device& device, Resources& res, Sounds& sounds);
 
+    // the players whose panel the main menu shows and who are chosen on Page::Players
+    void    setPlayers(Players* p) { players = p; }
+    // a text of Language/Game (Windows-1250), empty if there is none
+    std::string_view gameText(uint32_t id) const { return str(id); }
+
     // the code of the track (e.g. "beach_1") at `index` in the game's order
     static std::string trackName(size_t index);
     // the index of a track code, TrackCount if it is none of them
@@ -74,7 +85,9 @@ class Menu : public Canvas {
     void    mouseMove(int x, int y);
     void    mouseDown(int x, int y);
     void    mouseUp(int x, int y);
-    void    keyDown(Tempest::Event::KeyType key);
+    // `ch`: the character typed (UTF-16), for the name of a new player
+    void    keyDown(Tempest::Event::KeyType key, uint32_t ch = 0);
+    void    mouseWheel(int delta);
 
     std::optional<Preview> carPreview() const;
 
@@ -115,6 +128,7 @@ class Menu : public Canvas {
       uint32_t text    = 0;
       Command  command = Command::None;
       Page     to      = Page::None;
+      int      id      = 0;      // the screen's own (the original's control id), handled by the screen
       bool     enabled = true;
       bool     checked = false;  // a Radio of the page shown
       // the focus: +0xa0 bits 1 (coming) and 2 (going) with +0x98 the time of it
@@ -140,6 +154,28 @@ class Menu : public Canvas {
       size_t                   at    = 0;
       bool                     hoverL = false, hoverR = false;
       float                    pushL = 0, pushR = 0;  // s since an arrow was pressed (0x5c8, 0x5c9)
+      };
+
+    // the message over a screen (0x4cb830): a text, "Tak" alone or with "Anuluj"; `action` what "Tak" does
+    struct Message {
+      enum Action : uint8_t { None, RemovePlayer };
+      bool     open   = false;
+      uint32_t text   = 0;
+      Action   action = None;
+      float    t      = 0;    // s since it came; it fades in over 0.2 s
+      std::vector<Pill> pills;
+      };
+    // the name of a new player (0x4d2910): a line to type in with "Tak" and "Anuluj"
+    struct NameEntry {
+      bool        open = false;
+      std::string text;       // Windows-1250
+      float       t    = 0;
+      std::vector<Pill> pills;
+      };
+    // a player's picture made into a texture, again when it changes
+    struct FaceTex {
+      uint32_t           version = uint32_t(-1);
+      Resources::Texture tex;
       };
 
     void   build(Page p);
@@ -185,6 +221,27 @@ class Menu : public Canvas {
     void   drawShot(size_t track, int shot, const Box& b, float alpha, const Box* clip = nullptr);
     void   drawMain();
     void   drawQuickRace();
+    // the player's picture, name, rank, car, time, scores and money (0x4a7170), the main menu's or another's
+    void   drawPanel(rc::PlayerProfile& p, bool main);
+    const Tempest::Texture2d* face(rc::PlayerProfile& p);
+
+    // Page::Players (0x4d2400 ..)
+    void   fillPlayers();
+    void   selectRow(size_t row);
+    void   playerAction(int id);
+    size_t selectedPlayer() const;
+    size_t visibleRows() const;
+    void   scrollRows(int step);
+    void   drawPlayers();
+    void   showMessage(uint32_t text, Message::Action action = Message::None);
+    void   messageAnswer(bool ok);
+    void   nameAnswer(bool ok);
+    void   drawMessage();
+    void   drawNameEntry();
+    // "$1 506" (0x4a98f0, Currency 0)
+    static std::string money(int32_t v);
+    // "1:23:38" (0x49ec00, form 2)
+    static std::string clock(float seconds);
     void   drawCursor();
 
     Sounds&                 sounds;
@@ -194,7 +251,7 @@ class Menu : public Canvas {
     std::array<Tex,4>       podl;        // Podl_LeftTop, Podl_RightTop, Podl_LeftBottom, Podl_RightBottom
     std::array<Tex,9>       plates;      // ButtonPodl_right_1..9
     Tex                     buttons, radio, raceBtn, backBtn, flare, header, arrows, msgBox, logo, cursor,
-                            progressor;
+                            progressor, scrollbar;
     Image                   desktop;     // Language/<language>/Desktop.csi: the loading screen
     rc::CurveSpline         focusIn, focusOut, blick, blickAlpha;
 
@@ -211,6 +268,19 @@ class Menu : public Canvas {
     std::vector<Button>     right;      // slots 0..7, then the back and race buttons
     std::vector<Pill>       pills;
     std::vector<Enum>       enums;      // QuickRace: laps, skill
+    Players*                players = nullptr;
+    std::unordered_map<std::string,FaceTex> faces;   // by the player's name
+    // Page::Players: the list's rows (players' indices in the order shown), the one chosen, the first shown
+    std::vector<size_t>     rows;
+    size_t                  selRow  = 0;
+    size_t                  topRow  = 0;
+    int                     sortBy  = 0x11;   // 0x14a52f4: 1 name, 2 scores, 4 money, 8 time; 0x10 the larger first
+    std::string             editing;          // 0x14a52f0: whose picture the "<  >" changes ("Zdjęcie")
+    Enum                    faceEnum;
+    int                     hoverRow = -1;
+    bool                    hoverUp = false, hoverDown = false;
+    Message                 message;
+    NameEntry               nameEntry;
     Enum                    trackEnum, carEnum;
     Setup                   choice;
     float                   carYaw   = 0;

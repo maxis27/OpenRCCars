@@ -134,9 +134,20 @@ float SliderFile::real(std::string_view key, float def) const {
   return s->fmin + (s->fmax-s->fmin)*k;
   }
 
-ConfigFile ConfigFile::parse(const std::vector<uint8_t>& data) {
-  ConfigFile ret;
-  size_t at = 0;
+namespace {
+
+// where the records of RCCars.crs are (ConfigFile::parse, withString)
+struct CrsLayout {
+  struct Value   { size_t at = 0, end = 0; };            // [u16 type] .. its trailing u32
+  struct Section { size_t countAt = 0, end = 0; };       // its [u16 children], the end of its last child
+  std::map<std::string,Value,std::less<>>   values;      // "section/key"
+  std::map<std::string,Section,std::less<>> sections;
+  size_t rootCountAt = 0, rootEnd = 0;
+  bool   ok = false;
+  };
+
+CrsLayout crsLayout(const std::vector<uint8_t>& data) {
+  CrsLayout ret;
   auto u16 = [&](size_t o) { return o+2<=data.size() ? uint32_t(data[o] | data[o+1]<<8) : 0u; };
   auto u32 = [&](size_t o) { uint32_t v = 0; if(o+4<=data.size()) std::memcpy(&v,data.data()+o,4); return v; };
   auto str = [&](size_t o, size_t n) {
@@ -148,35 +159,85 @@ ConfigFile ConfigFile::parse(const std::vector<uint8_t>& data) {
   // the root: "CSRC", a version, the application's name and the file's description, then the sections
   if(data.size()<12 || std::memcmp(data.data(),"CSRC",4)!=0)
     return ret;
-  at = 12+u32(8);
+  size_t at = 12+u32(8);
   at += 4+u32(at);
-  uint32_t count = u32(at);
+  if(at+8>data.size())
+    return ret;
+  ret.rootCountAt = at;
+  const uint32_t count = u16(at);
   at += 8;
 
-  std::vector<std::pair<std::string,uint32_t>> stack;   // the open sections and how many children are left
+  struct Open { std::string path; uint32_t left; };
+  std::vector<Open> stack;   // the open sections and how many children are left
   stack.push_back({"",count});
-  while(at+12<=data.size() && !stack.empty()) {
-    if(stack.back().second==0) {
+  while(!stack.empty()) {
+    if(stack.back().left==0) {
+      if(stack.size()>1)
+        ret.sections[stack.back().path].end = at;
       stack.pop_back();
       continue;
       }
-    --stack.back().second;
-    if(std::memcmp(data.data()+at,"CSRC",4)!=0)
-      break;
+    if(at+12>data.size() || std::memcmp(data.data()+at,"CSRC",4)!=0)
+      return ret;
+    --stack.back().left;
     const uint32_t len  = u32(at+4);
     const std::string name = str(at+8,len);
     at += 8+len;
+    const std::string path = stack.back().path.empty() ? name : stack.back().path+"/"+name;
     const uint32_t type = u16(at), size = u16(at+2), cap = u16(at+4);
     if(size==0 && cap==0) {
       // a section
-      std::string path = stack.back().first.empty() ? name : stack.back().first+"/"+name;
+      ret.sections[path].countAt = at;
       at += 8;
       stack.push_back({path,type});
       continue;
       }
-    if(type==1 && size==4)
-      ret.ints[(stack.back().first.empty() ? "" : stack.back().first+"/")+name] = int32_t(u32(at+8));
+    ret.values[path] = {at,at+8+size+4};
     at += 8+size+4;
+    }
+  ret.rootEnd = at;
+  ret.ok      = at<=data.size();
+  return ret;
+  }
+
+// a value record: [u16 2][u16 length with the zero][u16 capacity][u16 0], the string, [u32 0]
+std::vector<uint8_t> crsString(std::string_view value, uint16_t capacity) {
+  const uint16_t n = uint16_t(std::min<size_t>(value.size()+1,0xffff));
+  std::vector<uint8_t> r = {2,0,uint8_t(n&0xff),uint8_t(n>>8),uint8_t(capacity&0xff),uint8_t(capacity>>8),0,0};
+  r.insert(r.end(),value.begin(),value.begin()+(n-1));
+  r.insert(r.end(),5,0);
+  return r;
+  }
+
+std::vector<uint8_t> crsName(std::string_view name) {
+  std::vector<uint8_t> r = {'C','S','R','C'};
+  const uint32_t n = uint32_t(name.size()+1);
+  for(int i=0; i<4; ++i)
+    r.push_back(uint8_t(n>>(8*i)));
+  r.insert(r.end(),name.begin(),name.end());
+  r.push_back(0);
+  return r;
+  }
+
+}
+
+ConfigFile ConfigFile::parse(const std::vector<uint8_t>& data) {
+  ConfigFile ret;
+  const auto lay = crsLayout(data);
+  for(auto& [path,v]:lay.values) {
+    const uint32_t type = uint32_t(data[v.at] | data[v.at+1]<<8);
+    const uint32_t size = uint32_t(data[v.at+2] | data[v.at+3]<<8);
+    if(type==1 && size==4) {
+      int32_t i = 0;
+      std::memcpy(&i,data.data()+v.at+8,4);
+      ret.ints[path] = i;
+      }
+    if(type==2) {
+      std::string s;
+      for(size_t i=v.at+8; i<v.at+8+size && data[i]!=0; ++i)
+        s.push_back(char(data[i]));
+      ret.strings[path] = s;
+      }
     }
   return ret;
   }
@@ -184,6 +245,46 @@ ConfigFile ConfigFile::parse(const std::vector<uint8_t>& data) {
 int32_t ConfigFile::integer(std::string_view section, std::string_view key, int32_t def) const {
   auto it = ints.find(std::string(section)+"/"+std::string(key));
   return it==ints.end() ? def : it->second;
+  }
+
+std::string ConfigFile::string(std::string_view section, std::string_view key, std::string_view def) const {
+  auto it = strings.find(std::string(section)+"/"+std::string(key));
+  return it==strings.end() ? std::string(def) : it->second;
+  }
+
+std::vector<uint8_t> ConfigFile::withString(const std::vector<uint8_t>& data, std::string_view section,
+                                            std::string_view key, std::string_view value, uint16_t capacity) {
+  const auto lay = crsLayout(data);
+  if(!lay.ok)
+    return data;
+  std::vector<uint8_t> ret = data;
+  auto bump = [&ret](size_t at) {
+    const uint16_t n = uint16_t((ret[at] | ret[at+1]<<8)+1);
+    ret[at]   = uint8_t(n&0xff);
+    ret[at+1] = uint8_t(n>>8);
+    };
+  const std::string path = std::string(section)+"/"+std::string(key);
+  if(auto v = lay.values.find(path); v!=lay.values.end()) {
+    const uint16_t cap = uint16_t(data[v->second.at+4] | data[v->second.at+5]<<8);
+    const auto rec = crsString(value,std::max(cap,uint16_t(value.size()+1)));
+    ret.erase(ret.begin()+std::ptrdiff_t(v->second.at),ret.begin()+std::ptrdiff_t(v->second.end));
+    ret.insert(ret.begin()+std::ptrdiff_t(v->second.at),rec.begin(),rec.end());
+    return ret;
+    }
+  auto rec = crsName(key);
+  const auto val = crsString(value,std::max(capacity,uint16_t(value.size()+1)));
+  rec.insert(rec.end(),val.begin(),val.end());
+  if(auto s = lay.sections.find(section); s!=lay.sections.end()) {
+    ret.insert(ret.begin()+std::ptrdiff_t(s->second.end),rec.begin(),rec.end());
+    bump(s->second.countAt);
+    return ret;
+    }
+  auto sec = crsName(section);
+  sec.insert(sec.end(),{1,0,0,0,0,0,0,0});
+  sec.insert(sec.end(),rec.begin(),rec.end());
+  ret.insert(ret.begin()+std::ptrdiff_t(lay.rootEnd),sec.begin(),sec.end());
+  bump(lay.rootCountAt);
+  return ret;
   }
 
 KeySections KeySections::parse(std::string_view text) {

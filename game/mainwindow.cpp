@@ -61,6 +61,19 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   flareSettings = rc::fx::LensFlare::Settings::load([&res](const std::string& f){ return res.pack().read(f); });
   sounds   = std::make_unique<Sounds>(res);
   menu     = std::make_unique<Menu>(device,res,*sounds);
+  {
+    const auto name = menu->gameText(40507);
+    players = std::make_unique<Players>(res,name.empty() ? std::string_view("Gracz") : name);
+    menu->setPlayers(players.get());
+    // 0x4e8440: the one playing brings the race raced last
+    if(auto* p = players->current()) {
+      auto& st = menu->setup();
+      st.track = size_t(std::clamp(p->lastTrack,0,int(Menu::TrackCount)-1));
+      st.car   = size_t(std::clamp(p->lastCar,0,2));
+      st.laps  = std::clamp(p->lastLaps|1,3,7);
+      st.skill = std::clamp(p->lastSkill,0,2);
+      }
+  }
   characterView = std::make_unique<CharacterView>(device);
   trafficView   = std::make_unique<TrafficView>(device,res);
   carShadow     = std::make_unique<CarShadow>(res);
@@ -262,6 +275,8 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
     if(traffic)
       traffic->restart();
     playerFinish = -1;
+    odometer     = 0;
+    devFlew      = false;
     paused       = false;
     aiEmu.restart();
     sinceBumper.clear();
@@ -441,7 +456,7 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     return;
     }
   if(menu->active()) {
-    menu->keyDown(e.key);
+    menu->keyDown(e.key,e.code);
     return;
     }
   // Esc: the menu over the race (dlgINRACE), the race stopped meanwhile
@@ -507,6 +522,7 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
   // N (developer mode): straight to the next checkpoint, to try out laps and the finish
   if(devMode && e.key==Event::K_N && level && vehicle && !checkpoints->empty() && !race->holdCar()) {
     checkpoints->skipWay();
+    devFlew = true;
     const auto&    p   = checkpoints->route()[checkpoints->next()];
     const float    yaw = std::atan2(p.dir.x,p.dir.z)*180.f/3.14159265f;
     rc::Mat4       at  = rc::Mat4::translate(p.position)*rc::Mat4::rotate(1,yaw);
@@ -547,6 +563,11 @@ void MainWindow::mouseUpEvent(MouseEvent& e) {
 void MainWindow::mouseMoveEvent(MouseEvent& e) {
   if(menu->active())
     menu->mouseMove(e.x,e.y);
+  }
+
+void MainWindow::mouseWheelEvent(MouseEvent& e) {
+  if(menu->active())
+    menu->mouseWheel(e.delta);
   }
 
 void MainWindow::mouseDragEvent(MouseEvent& e) {
@@ -612,6 +633,8 @@ void MainWindow::startRace() {
   const Menu::Setup st    = menu->setup();
   const std::string track = Menu::trackName(st.track);
   menu->close();
+  // 0x4c9f70: the player's race to come back to
+  players->raceStarted(int32_t(st.track),int32_t(st.car),st.laps,st.skill);
   presentLoading(st.track,0.f);
   laps    = st.laps;
   aiLevel = st.skill<=0 ? rc::Opponents::Level::Easy :
@@ -781,10 +804,24 @@ void MainWindow::tick(float dt) {
     const rc::Vec3 at = carPose.translation();
     const size_t   was = checkpoints->next();
     const auto     ev  = race->update(dt,at,carPose.vector({0,0,1}));
+    // the way driven (0x4f1c80: every step, not while the car is put back); ours also not while it flies
+    if(!race->holdCar() && playerFinish<0 && !flying)
+      odometer += (at-lastCarPos).length();
+    const size_t trackId = Menu::trackIndex(level->name());
+    // the player's laps and race into the player's file (0x4c5560, 0x4c56c0), told in the chat when they are the
+    // best (Language/Game 20100, 20101)
+    if((ev==rc::Race::Event::Lap || ev==rc::Race::Event::BestLap || ev==rc::Race::Event::Finish) &&
+       !race->lapTimes().empty() && !devFlew) {
+      const float lap = race->lapTimes().back();
+      if(players->lapDone(int32_t(trackId),int32_t(carId),lap))
+        tell(20100,-1,Hud::formatTime(lap));
+      }
     if(ev==rc::Race::Event::Finish) {
       playerFinish = race->time();
       if(opponents && opponents->size()>0)
         Log::i("finished ",opponents->place(playerFinish),". of ",opponents->size()+1," in ",Hud::formatTime(playerFinish));
+      if(!devFlew && players->raceDone(int32_t(trackId),int32_t(carId),race->laps(),playerFinish,odometer))
+        tell(20101,-1,Hud::formatTime(playerFinish));
       }
     hud->event(ev);
     // 0x4eaa50: every lap but the last, with its number in words; 0x4eaad0: the finish
@@ -883,6 +920,7 @@ void MainWindow::setFlying(bool on) {
     return;
   flying = on;
   if(flying) {
+    devFlew = true;
     // 0x4f39e0, the first frame: upright where it is, facing where it went across the ground (or its nose)
     const rc::Vec3 v = vehicle->velocity();
     rc::Vec3       f = std::abs(v.x)+std::abs(v.z)>1e-3f ? rc::Vec3{v.x,0,v.z} : carPose.vector({0,0,1});
@@ -905,9 +943,14 @@ void MainWindow::setFlying(bool on) {
   }
 
 void MainWindow::tell(uint32_t id, int car, std::string_view what) {
-  // the player's name: the original's profile (Players\\<name>), ours is the table's word for a player
-  const std::string who = car<0 || opponents==nullptr || size_t(car)>=opponents->size()
-                        ? std::string(hud->gameText(40507)) : (*opponents)[size_t(car)].name;
+  // the player's name: the one playing (Players\\<name>), the table's word for a player without one
+  std::string who;
+  if(car>=0 && opponents!=nullptr && size_t(car)<opponents->size())
+    who = (*opponents)[size_t(car)].name;
+  else if(auto* p = players->current())
+    who = p->name;
+  else
+    who = std::string(hud->gameText(40507));
   hud->tell(id,who,what);
   }
 

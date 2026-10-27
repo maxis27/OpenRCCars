@@ -68,8 +68,11 @@ plików w [docs/formaty.md](docs/formaty.md).
 - **Dźwięk** według `RCCars.exe` we własnym mikserze: kanały `SNCH` z `RCCars.sb` i `Sound\*.wav`, silnik gracza i
   przeciwników, punkty kontrolne, turbo, hamulec, lot i lądowanie, nawierzchnie, uderzenia, buksowanie, woda, szum
   morza, wodospady, głosy ludzi, mew i psów, ruch uliczny i muzyka MP3 z `Tracks/` w kolejności z `Autoexec.gm`.
-- **Menu**: menu główne, szybki wyścig (trasa, auto, okrążenia, przeciwnicy), ekran wczytywania i menu Esc w
-  wyścigu, z obrazkami, czcionkami i dźwiękami oryginału.
+- **Menu**: menu główne z panelem gracza, szybki wyścig (trasa, auto, okrążenia, przeciwnicy), wybór gracza
+  (zakładanie, usuwanie, zdjęcie, sortowanie), ekran wczytywania i menu Esc w wyścigu, z obrazkami, czcionkami
+  i dźwiękami oryginału.
+- **Gracze**: pliki `Players/*.scp` oryginału (czytane i zapisywane bajt w bajt), wybrany gracz w `RCCars.crs`;
+  po wyścigu zapisują się najlepsze okrążenie i wyścig, czas gry, liczba wyścigów i przejechane metry.
 - **Narzędzia**: `rcinfo` (inspekcja i eksport danych, testy bez GPU) i `rcshot` (render offscreen do PNG).
 
 <details>
@@ -186,8 +189,10 @@ Klawisze jak w instrukcji oryginału (`Instrukcja.pdf`):
 | F12 | licznik FPS (nasz klawisz; jak w oryginale włącza go też `Set ShowFPS 1` w `Config.gm` albo `Autoexec.gm`) |
 
 Menu obsługuje się myszą. W menu głównym trasę wybiera się obrazkami (też ← / →); „Szybki wyścig” to tor, liczba
-okrążeń, umiejętności przeciwników i auto; zielony „Wyścig” rusza (też Enter), „Wyjdź” zamyka grę. Przyciski części,
-których jeszcze nie ma (mistrzostwa, opcje, autorzy …), są szare.
+okrążeń, umiejętności przeciwników i auto; zielony „Wyścig” rusza (też Enter), „Wyjdź” zamyka grę. W „Zmień gracza”
+lista graczy (też ↑ / ↓, kółko myszy), „Utwórz gracza” pyta o imię, „Zdjęcie” pozwala zmieniać zdjęcie strzałkami
+obok niego, „Kontynuuj” (też Enter, Esc) wybiera zaznaczonego gracza. Przyciski części, których jeszcze nie ma
+(mistrzostwa, opcje, autorzy …), są szare.
 
 Oryginał pokazuje menu zawsze w 800x600 (`RCCars.exe` 0x4a6840). U nas menu wypełnia całe okno: tło jest rozciągnięte
 na szerokość (w oknie węższym niż 4:3 na wysokość), przyciski po prawej trzymają się krawędzi i łuków tła, a obrazki,
@@ -251,6 +256,8 @@ rcinfo <folder_gry> csi "Textures.1\ang_dor.csi" ang_dor.tga
 rcinfo <folder_gry> drive RCCarsDB/beach_1.sb [auto 1-3] [ulepszenie 0-3]  # jazda testowa bez GPU (autopilot po punktach, z rekwizytami)
 rcinfo <folder_gry> objects RCCarsDB/beach_1.sb   # obiekty na trasie (INST): model, rodzaj, fizyka; test opadania rekwizytów
 rcinfo <folder_gry> race RCCarsDB/beach_1.sb [okrążenia]  # punkty kontrolne i test logiki wyścigu (bez fizyki)
+rcinfo <folder_gry> scp Players/Gracz.scp         # profil gracza: rekordy, auta, test zapisu bajt w bajt
+rcinfo <folder_gry> crs                           # wybrany gracz w RCCars.crs, test zapisu
 rcinfo <folder_gry> gates RCCarsDB/beach_1.sb [auto 1-3]  # każdy główny punkt kontrolny zaliczony autem z fizyką
 rcinfo <folder_gry> ai RCCarsDB/beach_1.sb [poziom 1-3] [okrążenia]  # przeciwnicy: nagrania, ich pętle i wyścig bez gracza
 rcinfo <folder_gry> ram RCCarsDB/beach_1.sb [przeciwnik] [s] [side]  # gracz wjeżdża w przeciwnika: wypadnięcie z nagrania, powrót, „Łup!”
@@ -295,7 +302,7 @@ formats/        formaty danych, czyste C++ bez zależności
   csi.*         tekstury
   scene.*       sceny .sb
   collision.*   siatka kolizji z węzła COLL, raycast, nawierzchnie, woda
-  settings.*    pliki suwaków Settings/*.ini i *.crs, Scripts/upgrades.ini, krzywe .bspl i .spl
+  settings.*    pliki suwaków Settings/*.ini i *.crs, RCCars.crs, Scripts/upgrades.ini, krzywe .bspl i .spl
   objects.*     modele obiektów z INST: w którym pliku leżą (stone.sb, people.sb, AIChars.sb, Roadcar.sb)
   carprofile.*  nagrane przejazdy przeciwników (CarProfiles/*.dat), Scripts/ailayouts.ini
   skeleton.*    szkielet modelu .sb: kości, sekwencje ASEQ, poza w chwili animacji
@@ -304,6 +311,7 @@ formats/        formaty danych, czyste C++ bez zależności
   fog.*         mgła z Settings/fog_<trasa>.ini
   soundbank.*   kanały dźwięku SNCH ze scen
   texttable.*   teksty gry Language/Game|System/<język>.tbl
+  playerprofile.* gracze Players/*.scp, zdjęcia z .tga
 physics/        fizyka jazdy i świat gry (RCCars.exe, Bullet dla rekwizytów, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
@@ -335,6 +343,7 @@ game/           gra (Tempest)
   fpscounter.*  licznik FPS (ShowFPS, F12)
   arrow.*       strzałka kierunku 3D z cockpit.sb
   menu.*        menu gry (Interface.sb, dlg*.ini)
+  players.*     gracze z Players\*.scp, wybrany w RCCars.crs, zdjęcia, wyniki wyścigów
   effects.*     efekty aut i trasy: sprite'y zwrócone do kamery, posortowane, z testem głębi
   sounds.*      dźwięki gry: kanały, silniki aut, otoczenie i muzyka na urządzeniu dźwięku Tempesta
   world/        Level (trasa), LevelMesh (geometria na GPU, batche po teksturach), ModelMesh i CarModel (auto,
@@ -361,8 +370,8 @@ Zrobione są wszystkie elementy pojedynczego szybkiego wyścigu. Brakuje:
 
 - **Grafika i świat**: przyciemnianie postaci i rekwizytów w cieniu (`feat_lmshd.ini`), dźwięk zahaczenia anteny
   (`Antenna_scratch`).
-- **Opakowanie gry**: profil gracza i zapis rekordów, mistrzostwa z `championship.ini` ze sklepem, ulepszeniami i
-  twarzami kierowców, wyścig z duchami (`GhostRecords`), ekran mety jak w oryginale (`dlgFINISH`), reszta menu
+- **Opakowanie gry**: mistrzostwa z `championship.ini` ze sklepem i ulepszeniami (z nimi miejsca, forsa i wyniki
+  graczy), wyścig z duchami (`GhostRecords`), ekran mety jak w oryginale (`dlgFINISH`), reszta menu
   (opcje, informacje o trasie, autorzy), demo, intro, dwóch graczy na podzielonym ekranie, gra przez sieć.
 
 ## Licencja

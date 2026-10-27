@@ -603,7 +603,8 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
          white4);
     }
   // under it the map
-  trackMap(race,info);
+  if(info.showMap)
+    trackMap(race,info);
 
   // top middle: the total time; under it a finished lap's time blinks for a while (the original shows no running
   // lap time)
@@ -620,7 +621,7 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
         std::to_string(int(std::lround(info.speed))),Texts[li][1]);
 
   // the brackets around the arrow (overtaking.csi), the left one as drawn, the right one mirrored
-  if(overtaking!=nullptr) {
+  if(overtaking!=nullptr && info.showArrow) {
     const float bw = (Bracket[2]-Bracket[0])*BracketScale*scale, bh = (Bracket[3]-Bracket[1])*BracketScale*scale;
     const float by = py(BracketY)-bh*0.5f;
     quad(*overtaking,128,128,{Bracket[0],Bracket[1],Bracket[2],Bracket[3]},px(BracketX-BracketDX)-bw*0.5f,by,bw,bh,

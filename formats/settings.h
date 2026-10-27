@@ -63,10 +63,20 @@ class ConfigFile {
     // the same for the integer `key` (0x4049d0: "Player", "GhostMode")
     static std::vector<uint8_t> withInteger(const std::vector<uint8_t>& data, std::string_view section,
                                             std::string_view key, int32_t value);
+    // the bytes of the structure `key` (type 3: "Player1", "Boost"), nullptr if it is missing
+    const std::vector<uint8_t>* structure(std::string_view section, std::string_view key) const;
+    // the same for a structure (the keys of the controls, written by 0x4e4f00)
+    static std::vector<uint8_t> withStruct(const std::vector<uint8_t>& data, std::string_view section,
+                                           std::string_view key, const std::vector<uint8_t>& value);
 
   private:
+    // `data` with the value record `rec` of `key` replaced or added
+    static std::vector<uint8_t> withRecord(const std::vector<uint8_t>& data, std::string_view section,
+                                           std::string_view key, const std::vector<uint8_t>& rec);
+
     std::map<std::string,int32_t,std::less<>>     ints;      // "section/key"
     std::map<std::string,std::string,std::less<>> strings;
+    std::map<std::string,std::vector<uint8_t>,std::less<>> structs;
   };
 
 // Scripts\upgrades.ini:

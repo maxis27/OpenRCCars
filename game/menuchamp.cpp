@@ -272,6 +272,12 @@ void Menu::buttonAction(int id) {
     playerAction(id);
     return;
     }
+  if(current==Page::Options && id>=0x6a7 && id<0x6a7+7) {
+    // "Opcje": the page shown writes RCCars.crs, the next one reads it
+    saveOptions();
+    buildOptions(id-0x6a7);
+    return;
+    }
   if(id>=C_Champ && id<=C_Stats && infoFrame()) {
     // the frame's radio buttons: its pages
     showInfo(id-C_Champ);
@@ -390,6 +396,7 @@ void Menu::champAnswer(Message::Action a) {
   switch(a) {
     case Message::None:
     case Message::RemovePlayer:
+    case Message::Quit:
       return;
     case Message::NewChampionship: {
       // 0x4e8320, then 0x4beab9: the last of the cars the player has and the last of the tracks open from the

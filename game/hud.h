@@ -49,6 +49,10 @@ class Hud : public Canvas {
       // the ghost race (RCCars.exe 0x4afdc0 with flags 0xc0): the lap without the laps of the race, which has no
       // end, and the time of the lap being driven instead of the race's
       bool  ghostRace = false;
+      // RCCars.crs [Cockpit] (the options' "Opcje kokpitu"): the map (0x4b77e1), the arrow with its brackets
+      // (0x4af22e, 0x4b1d03)
+      bool  showMap   = true;
+      bool  showArrow = true;
       rc::Mat4 viewProj;       // the camera, for the debug spheres and the checkpoint arrows
       };
 

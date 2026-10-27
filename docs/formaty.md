@@ -206,8 +206,9 @@ starego pliku zawiera wskaźniki z pamięci gry; my przy nowym zdjęciu zostawia
 
 `RCCars.crs` (ustawienia, „CREAT Studio configuration”) to drzewo rekordów `CSRC [u32 długość][nazwa]`: sekcja ma
 `[u16 dzieci]` i 6 zer, wartość `[u16 typ][u16 rozmiar][u16 pojemność][u16 0]`, dane i `[u32 0]` (typ 1 liczba,
-2 napis, 3 struktura). Wybrany gracz to napis „Player”/„Name” (pojemność 16); zmieniamy tylko ten rekord
-(`rcinfo <gra> crs`).
+2 napis, 3 struktura). Wybrany gracz to napis „Player”/„Name” (pojemność 16), a opcje zmieniają swoje rekordy
+(`rcinfo <gra> crs`). Struktura typu 3 to klawisze akcji w `Player1`/`Player2`: 44 bajty, `[u32 1]` i dwa klawisze
+`[urządzenie][liczba kodów][3 kody]` (pojemność równa rozmiarowi).
 
 ## Nazwy tras
 

@@ -217,6 +217,10 @@ i naciśnięciem klawisza (Delete czyści, Esc rezygnuje). „Demo gry” (albo 
 pokazuje nagrane wyścigi na Surferach, Rybakach i Silosie po kolei: Enter przechodzi do następnego, Esc wraca do
 menu. Przycisk gry wielu graczy, której jeszcze nie ma, jest szary.
 
+Na starcie gra pokazuje intro z `Tracks/Intro.dat` (logo 1C, logo Creat Studio i film; Esc przeskakuje bieżącą
+część), potem ekran startowy z logami podczas wczytywania. Intro wyłącza `Set "AutoRunIntro" 0` w `Config.gm`;
+nie gra też w trybie deweloperskim ani z `-l`.
+
 Oryginał pokazuje menu zawsze w 800x600 (`RCCars.exe` 0x4a6840). U nas menu wypełnia całe okno: tło jest rozciągnięte
 na szerokość (w oknie węższym niż 4:3 na wysokość), przyciski po prawej trzymają się krawędzi i łuków tła, a obrazki,
 napisy i auto zachowują proporcje.
@@ -358,13 +362,15 @@ fx/             efekty, bez GPU
   groundspots.* plamy cienia i światła położone na ścianach kolizji (cienie, reflektory ruchu ulicznego)
   carlight.*    jasność auta z lightmapy pod kołami (car_lmshd.ini, carLight.ini)
   worldfx.*     efekty trasy: rozbryzgi przy water_splash_N, fale przy water_wave_N, strzały strażników, ślady stóp
-audio/          dźwięk: mikser PCM, kanały SNCH, silnik auta, dźwięki otoczenia, muzyka MP3 (lib/dr_mp3)
+audio/          dźwięk: mikser PCM, kanały SNCH, silnik auta, dźwięki otoczenia, muzyka MP3 (lib/dr_mp3), film
+                intro MPEG-1 (lib/pl_mpeg)
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
   camera.*      kamera (oko, kierunek, rzutowanie)
   chasecamera.* kamera za autem według RCCars.exe i Settings/Camera.ini
   hud.*         kokpit wyścigu (obrazki i czcionka z Language/<język>), konsola czatu
   fpscounter.*  licznik FPS (ShowFPS, F12)
+  intro.*       intro (Tracks/Intro.dat) i ekran startowy
   arrow.*       strzałka kierunku 3D z cockpit.sb
   menu.*        menu gry (Interface.sb, dlg*.ini), menuoptions.cpp: opcje i twórcy
   controls.*    klawisze auta z RCCars.crs (układy, kody klawiszy gry)
@@ -379,6 +385,7 @@ shader/         GLSL kompilowany do SPIR-V i wbudowywany w plik wykonywalny
 tools/          rcinfo, rcshot
 lib/Tempest     silnik (submoduł git)
 lib/dr_mp3      dekoder MP3
+lib/pl_mpeg     dekoder MPEG-1 i MP2 (intro, licencja MIT)
 ```
 
 ## Dokumentacja
@@ -396,7 +403,7 @@ Zrobione są wszystkie elementy pojedynczego szybkiego wyścigu. Brakuje:
 
 - **Grafika i świat**: przyciemnianie postaci i rekwizytów w cieniu (`feat_lmshd.ini`), dźwięk zahaczenia anteny
   (`Antenna_scratch`).
-- **Opakowanie gry**: intro, dwóch graczy na podzielonym ekranie, gra przez sieć; z opcji działają w grze
+- **Opakowanie gry**: dwóch graczy na podzielonym ekranie, gra przez sieć; z opcji działają w grze
   tylko te, które ma nasz silnik (rozdzielczość, gamma, jakość grafiki i joysticki są tylko zapisywane).
 
 ## Licencja

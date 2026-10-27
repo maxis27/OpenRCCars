@@ -272,6 +272,18 @@ void Sounds::stopMusic() {
   mix.setMusic(nullptr);
   }
 
+void Sounds::startFilm(std::unique_ptr<rc::Stream> s) {
+  // IBasicAudio::put_Volume((SoundBkVolume - 100) * 40), -10000 (silence) from -3999 down
+  const float sys = master>0 ? 20.f*std::log10(float(master)/100.f) : -100.f;
+  mix.setMusicVolume(musicVolume>0 ? (float(musicVolume)-100.f)*0.4f+sys : -100.f);
+  mix.setMusic(std::move(s));
+  }
+
+void Sounds::stopFilm() {
+  mix.setMusic(nullptr);
+  applyVolumes();
+  }
+
 void Sounds::nextTrack() {
   // a track that cannot be read is skipped, but not forever
   for(size_t tries=0; tries<music.tracks().size(); ++tries) {

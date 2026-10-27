@@ -55,6 +55,27 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
     library([&res](const std::string& path){ return res.readFile(path); }), devMode(dev) {
   setWindowTitle("OpenRCCars");
   resetSwapchain();
+  sounds   = std::make_unique<Sounds>(res);
+  intro    = std::make_unique<Intro>(device,res);
+  // RCCars.exe 0x4a2ae4 step 0x0f: the intro, not in the developer mode (0x147d204), nor when AutoRunIntro is 0 (the
+  // game registers it as 1, 0x4902a2, Config.gm sets it to 1); not when going straight into a race either (ours)
+  float autoRun = 1;
+  for(const char* f:{"Config.gm","Autoexec.gm"})
+    autoRun = scriptValue(res,f,"AutoRunIntro",autoRun);
+  if(!devMode && name.empty() && autoRun!=0) {
+    applyOptions();
+    if(intro->start(*sounds)) {
+      lastTick = Application::tickCount();
+      return;
+      }
+    }
+  init(name);
+  }
+
+void MainWindow::init(const std::string& name) {
+  Resources& res = resources;
+  // the start screen while the game loads (0x4a2ae4 step 0x13)
+  presentStart();
   carScene = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
   hud      = std::make_unique<Hud>(device,res);
   fps      = std::make_unique<FpsCounter>(device,res);
@@ -65,7 +86,6 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   for(size_t i=0; i<antennaSettings.size(); ++i)
     antennaSettings[i] = rc::Antenna::Settings::load(res.pack(),i);
   flareSettings = rc::fx::LensFlare::Settings::load([&res](const std::string& f){ return res.pack().read(f); });
-  sounds   = std::make_unique<Sounds>(res);
   menu     = std::make_unique<Menu>(device,res,*sounds);
   {
     const auto name = menu->gameText(40507);
@@ -126,6 +146,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   menu->setDriverName(device.properties().name);
   applyOptions();
   sounds->startMusic();
+  intro.reset();
   lastTick = Application::tickCount();
   }
 
@@ -142,6 +163,7 @@ void MainWindow::applyOptions() {
   }
 
 MainWindow::~MainWindow() {
+  intro.reset();   // closed during the intro: its sound off while `sounds` is there
   saveGhosts();
   device.waitIdle();
   }
@@ -588,6 +610,12 @@ void MainWindow::resizeEvent(SizeEvent&) {
   }
 
 void MainWindow::keyDownEvent(KeyEvent& e) {
+  if(intro!=nullptr) {
+    // 0x4a2f10: Esc ends the part of the intro playing
+    if(e.key==Event::K_ESCAPE)
+      intro->skip();
+    return;
+    }
   keys[e.key] = true;
   if(devMode && e.key==Event::K_F11)
     Tempest::SystemApi::exit();
@@ -707,21 +735,29 @@ void MainWindow::keyUpEvent(KeyEvent& e) {
   }
 
 void MainWindow::mouseDownEvent(MouseEvent& e) {
+  if(intro!=nullptr)
+    return;
   if(menu->active())
     menu->mouseDown(e.x,e.y);
   }
 
 void MainWindow::mouseUpEvent(MouseEvent& e) {
+  if(intro!=nullptr)
+    return;
   if(menu->active())
     menu->mouseUp(e.x,e.y);
   }
 
 void MainWindow::mouseMoveEvent(MouseEvent& e) {
+  if(intro!=nullptr)
+    return;
   if(menu->active())
     menu->mouseMove(e.x,e.y);
   }
 
 void MainWindow::mouseWheelEvent(MouseEvent& e) {
+  if(intro!=nullptr)
+    return;
   if(menu->active())
     menu->mouseWheel(e.delta);
   }
@@ -808,6 +844,43 @@ void MainWindow::presentLoading(size_t track, float progress) {
     auto enc = cmd.startEncoding(device);
     enc.setFramebuffer({{swapchain[swapchain.currentImage()],Vec4(0,0,0,1),Tempest::Preserve}});
     menu->drawLoading(enc,frameId,int(w()),int(h()),track,progress);
+  }
+  sync = device.submit(cmd);
+  device.present(swapchain);
+  }
+
+void MainWindow::presentStart() {
+  frameId = uint8_t((frameId+1)%MaxFramesInFlight);
+  auto& sync = fence[frameId];
+  auto& cmd  = commands[frameId];
+  sync.wait();
+  {
+    auto enc = cmd.startEncoding(device);
+    enc.setFramebuffer({{swapchain[swapchain.currentImage()],Vec4(0,0,0,1),Tempest::Preserve}});
+    intro->drawStart(enc,frameId,int(w()),int(h()));
+  }
+  sync = device.submit(cmd);
+  device.present(swapchain);
+  }
+
+void MainWindow::renderIntro() {
+  const uint64_t now = Application::tickCount();
+  const float    dt  = float(now-lastTick)/1000.f;
+  lastTick = now;
+  intro->tick(dt);
+  if(!intro->playing()) {
+    // on to the start screen and the main menu
+    init(std::string());
+    return;
+    }
+  frameId = uint8_t((frameId+1)%MaxFramesInFlight);
+  auto& sync = fence[frameId];
+  auto& cmd  = commands[frameId];
+  sync.wait();
+  {
+    auto enc = cmd.startEncoding(device);
+    enc.setFramebuffer({{swapchain[swapchain.currentImage()],Vec4(0,0,0,1),Tempest::Preserve}});
+    intro->draw(enc,frameId,int(w()),int(h()));
   }
   sync = device.submit(cmd);
   device.present(swapchain);
@@ -1814,6 +1887,10 @@ void MainWindow::shadeCars(float dt) {
 
 void MainWindow::render() {
   try {
+    if(intro!=nullptr) {
+      renderIntro();
+      return;
+      }
     if(raceRequested) {
       raceRequested = false;
       startRace();

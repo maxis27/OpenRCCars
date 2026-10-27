@@ -20,6 +20,7 @@
 #include "effects.h"
 #include "fpscounter.h"
 #include "hud.h"
+#include "intro.h"
 #include "menu.h"
 #include "players.h"
 #include "physics/aiemu.h"
@@ -69,6 +70,11 @@ class MainWindow : public Tempest::Window {
     void mouseDragEvent (Tempest::MouseEvent& e) override;
     void mouseWheelEvent(Tempest::MouseEvent& e) override;
 
+    // everything but the intro: the game loaded under the start screen, then the main menu (or the race of `level`)
+    void init(const std::string& level);
+    void presentStart();
+    // a frame of the intro, init() after its end
+    void renderIntro();
     void resetSwapchain();
     // the menus: what the player chose, and the front end drawn instead of the race
     void menuCommand(Menu::Command c);
@@ -199,6 +205,7 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<Hud>    hud;
     std::unique_ptr<FpsCounter> fps;   // ShowFPS, F12
     std::unique_ptr<Menu>   menu;
+    std::unique_ptr<Intro>  intro;     // the intro and the start screen, until the main menu
     std::unique_ptr<Players> players;   // Players\ and the one playing
     bool                    raceRequested = false;  // "Wyścig": the loading screen at the next frame
     // the demo: what the track's DemoEntry script says (RCCars.sb of the track, "Scene Scripts")

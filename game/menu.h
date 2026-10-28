@@ -7,10 +7,12 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "canvas.h"
 #include "championship.h"
+#include "controls.h"
 #include "formats/settings.h"
 #include "formats/texttable.h"
 #include "resources.h"
@@ -39,6 +41,8 @@ class Menu : public Canvas {
       Garage,     // "Garaż" (0x4c5f00): the cars (dlgSETCAR, 0x4d5330) and their upgrades (dlgSETDETAIL, 0x4d43e0 ..)
       ChampWin,   // the last track won: the congratulations (0x4c13a0, 0x4c1790)
       GhostRace,  // "Wyścig duchów" (0x4d3000): dlgRACESUM with dlgRACESUM_GHOST's "Typ wyścigu" for the laps
+      Options,    // "Opcje" (0x4d1980): its seven pages as radio buttons (0x56f554), kept in RCCars.crs
+      Credits,    // "Autorzy" (0x4c3e40): the pages of the authors, one after another
       };
     // what the player chose, for MainWindow
     enum class Command : uint8_t {
@@ -105,6 +109,10 @@ class Menu : public Canvas {
     void    setChampionWon() { championWon = true; }
     // where a race's menus go back to (0x4e07c0): the quick race, the championship, its congratulations
     Page    afterRace() const;
+    // the name of the 3D device, for "Sprzętowy sterownik 3D" of the video options
+    void    setDriverName(std::string n) { driverName = std::move(n); }
+    // RCCars.crs has been written by the options since the last call
+    bool    takeOptionsChanged() { return std::exchange(optionsChanged,false); }
     // a text of Language/Game (Windows-1250), empty if there is none
     std::string_view gameText(uint32_t id) const { return str(id); }
 
@@ -192,6 +200,8 @@ class Menu : public Canvas {
     struct Enum {
       Box                      box;
       float                    split = 0;   // the label's share of the width (dlg*.ini <name>SE)
+      float                    inner = 1;   // the arrows' share of the rest, in its middle (0x4b59e0)
+      bool                     enabled = true;  // greyed and deaf when not
       uint32_t                 label = 0;
       std::vector<std::string> values;
       size_t                   at    = 0;
@@ -201,7 +211,7 @@ class Menu : public Canvas {
 
     // the message over a screen (0x4cb830): a text, "Tak" alone or with "Anuluj"; `action` what "Tak" does
     struct Message {
-      enum Action : uint8_t { None, RemovePlayer, NewChampionship, BuyCar, SellCar, BuyUpgrade, SellUpgrade };
+      enum Action : uint8_t { None, RemovePlayer, NewChampionship, BuyCar, SellCar, BuyUpgrade, SellUpgrade, Quit };
       bool     open   = false;
       uint32_t text   = 0;
       std::string formatted;   // the text with its values, when there is one
@@ -253,6 +263,8 @@ class Menu : public Canvas {
     void   label(const Font& f, std::string_view s, const Box& b, int ax, int ay, const Color& c, float k = 1);
     // several lines, one under another from the top of `b`
     void   lines(const Font& f, std::string_view s, const Box& b, int ax, float step, const Color& c);
+    // how much smaller `s` has to be to fit `room` units, 1 if it fits
+    float  fit(const Font& f, std::string_view s, float room) const;
     // the line under a label (0x4ac6e0)
     void   underline(float x0, float x1, float y, const Color& c);
 
@@ -261,6 +273,8 @@ class Menu : public Canvas {
     void   drawButton(const Button& b);
     void   drawPill(const Pill& p);
     void   drawEnum(const Enum& e, bool marker);
+    // where the arrows of `e` are
+    static void enumArrows(const Enum& e, Box& l, Box& r);
     // shot_<track>_<shot> in `b`, its frame included, cut at `clip`'s left and right
     void   drawShot(size_t track, int shot, const Box& b, float alpha, const Box* clip = nullptr);
     void   drawMain();
@@ -365,6 +379,59 @@ class Menu : public Canvas {
     // a track not open shown on another page of the championship's frame: back to the last open one (0x4be720)
     void   champTrackFix();
 
+    // Page::Options (menuoptions.cpp): a line of a page, its label's text and its control id the original's
+    struct Option {
+      enum Kind : uint8_t {
+        Choice,   // "<  value  >" (class ENM)
+        Slider,   // class SLD (0x4b9fb0): the bar of sliderbar.csi
+        Keys,     // class HKY (0x4b67f0): an action's two keys
+        Text,     // class EDT (0x4b3540): a line to type in
+        };
+      Kind        kind    = Choice;
+      int         id      = 0;
+      const char* section = nullptr;   // where RCCars.crs keeps it
+      const char* key     = nullptr;
+      uint32_t    help    = 0;         // "Zaawansowane": what it does (0x277f)
+      Enum        e;                   // the box, the label and its share; a Choice's values
+      std::vector<int32_t> stored;     // a Choice: what each of its values is in RCCars.crs
+      bool        unknown = false;     // a Choice whose value in RCCars.crs is none of them: kept until changed
+      int32_t     min = 0, max = 100, step = 10, value = 0;   // a Slider
+      Controls::Action action = Controls::Boost;              // Keys: the action and its keys
+      Controls::Keys   keys;
+      int         hoverKey = -1;       // Keys: the key under the mouse
+      std::string text;                // Text (Windows-1250) and how long it may be
+      size_t      maxLen = 60;
+      };
+    void   buildOptions(int page);
+    // the page's values into RCCars.crs (each page's own, 0x4d1980 message 0xf)
+    void   saveOptions();
+    // the lines' greying, which follows other lines (sound off: its volume)
+    void   refreshOptions();
+    Option* option(int id);
+    void   changeOption(Option& o, int step);
+    void   setOptionValue(Option& o, int32_t v);
+    // "Dostosuj sterowanie": the player shown, the layout chosen
+    void   showControlsOf(int player);
+    void   changeLayout();
+    void   bindKey(Option& o, int slot, int32_t code);
+    void   optionsTick(float dt);
+    // in the units the page is drawn in
+    void   optionsHover(float mx, float my);
+    void   optionsClick(float mx, float my);
+    bool   optionsKey(Tempest::Event::KeyType key, uint32_t ch);
+    void   drawOptions();
+    void   drawSlider(const Option& o, bool focused);
+    void   drawKeys(const Option& o, bool focused);
+    void   drawText(const Option& o, bool focused);
+    // what is typed as the fonts have it (Windows-1250), -1 if they have not got it
+    static int typedChar(uint32_t ch);
+    // Page::Credits (0x4c4160 ..): the lines of the pages, the page shown and the next one (-1 none), the time
+    void   buildCredits();
+    // false when the last page has gone
+    bool   creditsTick(float dt);
+    void   drawCredits();
+    void   drawCreditsPage(int first, float alpha);
+
     // Page::ChampRace (0x4c0610, 0x4c0b80)
     void   fillRivals();
     void   champRacePill(size_t i);
@@ -430,6 +497,24 @@ class Menu : public Canvas {
     float                   infoShotScroll = 0;
     std::vector<size_t>     statRows;
     size_t                  statTop = 0;
+    // Page::Options: RCCars.crs as it is being changed, the page shown and its lines, the line under the mouse,
+    // the key waited for (its line and its column) and the line typed in; "Dostosuj sterowanie": the player shown,
+    // the players' own keys and layouts
+    std::vector<uint8_t>    optCrs;
+    int                     optPage  = 0;
+    std::vector<Option>     options;
+    int                     optFocus = -1;
+    int                     optWait  = -1, optWaitSlot = 0;
+    int                     optEdit  = -1;
+    float                   optFocusT = 0;    // s since the line under the mouse changed (the preview's blinking)
+    int                     ctrlPlayer = 0;
+    std::array<Controls::Table,2> ctrlUser;
+    std::array<int32_t,2>   ctrlLayout = {Controls::Keys1,Controls::Keys2};
+    std::string             driverName;
+    bool                    optionsChanged = false;
+    std::vector<std::string> credits;
+    int                     creditsShown = -1, creditsNext = 0;
+    float                   creditsT = 0;
     // Page::ChampRace: the opponents of the race (AIRace<n> AI<n> of the expert races)
     struct Rival {
       std::string                 name;

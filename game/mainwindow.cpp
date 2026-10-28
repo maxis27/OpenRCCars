@@ -5,8 +5,11 @@
 #include <Tempest/Except>
 #include <Tempest/Log>
 
+#include <chrono>
 #include <cmath>
+#include <fstream>
 #include <iterator>
+#include <thread>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -118,8 +121,22 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
       menu->setup().track = t;
     loadLevel(name);
     }
+  menu->setDriverName(device.properties().name);
+  applyOptions();
   sounds->startMusic();
   lastTick = Application::tickCount();
+  }
+
+void MainWindow::applyOptions() {
+  std::ifstream f(resources.gameDir()/"RCCars.crs",std::ios::binary);
+  const std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)),std::istreambuf_iterator<char>());
+  const auto crs = rc::ConfigFile::parse(data);
+  controls.load(crs);
+  sounds->setOptions(crs);
+  // 0x48f206: the frame rate's limit, a timer of 1000 / limit ms the frames wait for (0x48bc04)
+  fpsLimit  = std::max(0,crs.integer("Video","FPS_Limit",0));
+  showMap   = crs.integer("Cockpit","ShowMap",1)!=0;
+  showArrow = crs.integer("Cockpit","DirectArrow",1)!=0;
   }
 
 MainWindow::~MainWindow() {
@@ -437,7 +454,7 @@ ChaseCamera::Car MainWindow::chaseCar() const {
   c.spin     = vehicle ? vehicle->localSpin().length() : 0.f;
   // RCCars.exe 0x500c1d: the boost and the gas keys, held
   const bool control = race && !race->holdCar() && zeroCam==ZeroCam::Off && !flying;
-  c.boost    = control && (keys[Event::K_LShift] || keys[Event::K_RShift]) && (keys[Event::K_W] || keys[Event::K_Up]);
+  c.boost    = control && held(Controls::Boost) && held(Controls::Forw);
   // a person picking the car up holds the camera still (RCCars.exe 0x4f3640)
   c.grabbed  = characters && characters->grabbedPlayer();
   c.held     = characters && characters->holdingPlayer();
@@ -455,6 +472,8 @@ Hud::Info MainWindow::hudInfo() const {
   info.carPos     = carPose.translation();
   info.carForward = carPose.vector({0,0,1});
   info.ghostRace  = ghosts!=nullptr;
+  info.showMap    = showMap;
+  info.showArrow  = showArrow;
   for(size_t i=0; ghosts && i<ghosts->size(); ++i) {
     const auto& g = (*ghosts)[i];
     if(g.visible && !g.lap.empty())
@@ -591,15 +610,15 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     if(vehicle)
       vehicle->reset(at);   // same place, standing still
     }
-  if(e.key==Event::K_Space && zeroCam==ZeroCam::Off && !flying)
+  if(controls.is(Controls::Jump,e.key) && zeroCam==ZeroCam::Off && !flying)
     jumpPressed = true;
   // our debug keys, only in the developer mode (-dev)
   if(devMode && e.key==Event::K_T && vehicle && !flying)
     vehicle->recover();
   if(devMode && e.key==Event::K_G)
     showGates = !showGates;
-  // R: back to the last checkpoint, as in the original
-  if(e.key==Event::K_R && level && !paused) {
+  // "Zresetuj" (R): back to the last checkpoint, as in the original
+  if(controls.is(Controls::Reset,e.key) && level && !paused) {
     // the ghost race's back to the start (0x4f6b20 -> 0x4f69e0)
     if(ghosts) {
       ghostBackToStart();
@@ -908,14 +927,15 @@ void MainWindow::tick(float dt) {
       in.handbrake = true;
       }
     else if(zeroCam==ZeroCam::Off && !flying) {
-      const bool up    = keys[Event::K_W] || keys[Event::K_Up];
-      const bool down  = keys[Event::K_S] || keys[Event::K_Down];
-      const bool left  = keys[Event::K_A] || keys[Event::K_Left];
-      const bool right = keys[Event::K_D] || keys[Event::K_Right];
+      // the keys of the options' "Dostosuj sterowanie" (RCCars.crs Player1 and its layout)
+      const bool up    = held(Controls::Forw);
+      const bool down  = held(Controls::Back);
+      const bool left  = held(Controls::Left);
+      const bool right = held(Controls::Right);
       in.throttle  = (up ? 1.f : 0.f) - (down ? 1.f : 0.f);
       in.steer     = (left ? 1.f : 0.f) - (right ? 1.f : 0.f);
-      in.handbrake = keys[Event::K_B];
-      in.boost     = keys[Event::K_LShift] || keys[Event::K_RShift];
+      in.handbrake = held(Controls::Brake);
+      in.boost     = held(Controls::Boost);
       in.jump      = jumpPressed;
       }
     jumpPressed = false;
@@ -1034,8 +1054,8 @@ void MainWindow::tick(float dt) {
     arrow->tick(dt,arrowInput());
     {
       const bool driving = !race->holdCar() && zeroCam==ZeroCam::Off && !flying;
-      const bool gas     = driving && (keys[Event::K_W] || keys[Event::K_Up]);
-      const bool brake   = driving && (keys[Event::K_S] || keys[Event::K_Down]);
+      const bool gas     = driving && held(Controls::Forw);
+      const bool brake   = driving && held(Controls::Back);
       effects->tick(dt,*vehicle,opponents.get(),level->collision(),camera.position,gas,brake);
       const rc::fx::View view = {camera.position,camera.viewProj(float(w())/float(std::max(1,h())))};
       std::vector<rc::fx::Footprints::Walker> walkers;
@@ -1394,14 +1414,14 @@ void MainWindow::tickSounds(float dt) {
 
   rc::CarSound::Input in;
   in.speed    = std::abs(fwd)*3.6f;
-  in.gas      = control && (keys[Event::K_W] || keys[Event::K_Up]);
-  in.back     = control && (keys[Event::K_S] || keys[Event::K_Down]);
-  in.braking  = (in.back && fwd*3.6f>1.f) || (control && keys[Event::K_B]);
+  in.gas      = control && held(Controls::Forw);
+  in.back     = control && held(Controls::Back);
+  in.braking  = (in.back && fwd*3.6f>1.f) || (control && held(Controls::Brake));
   in.rearSlip = vehicle->rearSlip();
   in.airborne = airborne>0.05f;
   in.racing   = racing;
   in.boost    = vehicle->boosting();
-  in.jump     = control && keys[Event::K_Space];
+  in.jump     = control && held(Controls::Jump);
   in.inWater  = vehicle->submerged()>0;
   in.ground   = vehicle->groundSound();
   in.contact  = {vehicle->contact().surface,vehicle->contact().hit,vehicle->contact().impact};
@@ -1583,6 +1603,13 @@ void MainWindow::render() {
       raceRequested = false;
       startRace();
       }
+    if(fpsLimit>0) {
+      const uint64_t period = 1000/uint64_t(fpsLimit);
+      const uint64_t t      = Application::tickCount();
+      if(frameDue>t)
+        std::this_thread::sleep_for(std::chrono::milliseconds(frameDue-t));
+      frameDue = std::max(frameDue,Application::tickCount()-period)+period;
+      }
     fps->frameStart();
     const uint64_t now = Application::tickCount();
     const float    dt  = float(now-lastTick)/1000.f;
@@ -1591,6 +1618,8 @@ void MainWindow::render() {
     const bool front = menu->active() && menu->page()!=Menu::Page::InRace && menu->page()!=Menu::Page::Finish;
     menu->tick(std::min(dt,0.1f));
     menuCommand(menu->take());
+    if(menu->takeOptionsChanged())
+      applyOptions();
     if(front) {
       sounds->tick();
       sounds->setPaused(false);
@@ -1708,7 +1737,7 @@ void MainWindow::render() {
         info.viewProj = viewProj;
         hud->draw(enc,frameId,int(w()),int(h()),*race,info);
         // the direction arrow over everything, in a depth buffer of its own
-        if(race->phase()!=rc::Race::Phase::Finished && !checkpoints->empty()) {
+        if(race->phase()!=rc::Race::Phase::Finished && !checkpoints->empty() && showArrow) {
           enc.setFramebuffer({{swapchain[swapchain.currentImage()],Tempest::Preserve,Tempest::Preserve}},
                              {zbuffer,1.f,Tempest::Discard});
           arrow->draw(enc,int(w()),int(h()));

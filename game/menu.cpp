@@ -39,6 +39,8 @@ enum : uint32_t {
   T_SortScores  = 10025, // "Sortuj wg. wyniku", "wg. gotówki", "wg. czasu", "wg. nazwy"
   T_Photo       = 10071, // "Zdjęcie"
   T_PlayerFileError = 10884, // "Nie można zapisać pliku gracza"
+  T_QuitQ       = 10854, // "Chcesz opuścić grę?"
+  T_No          = 10009, // "Nie"
   T_Options     = 10044, // "Opcje"
   T_GhostRace   = 10050, // "Wyścig duchów"
   T_Championship= 10051, // "Mistrzostwa"
@@ -316,6 +318,9 @@ void Menu::leave(Page to, Command cmd) {
   // the buttons go out (0x268), then the next screen comes (0x267)
   if(slide==1)
     return;
+  // the options' page shown writes what it has (its message 0xf)
+  if(current==Page::Options)
+    saveOptions();
   next    = to;
   nextCmd = cmd;
   slide   = 1;
@@ -361,9 +366,9 @@ void Menu::build(Page p) {
       add(2,T_GhostRace,   Button::Tab,Command::None,Page::GhostRace,true);
       add(3,T_Multiplayer, Button::Tab,Command::None,Page::None,false);
       add(4,T_ChangePlayer,Button::Tab,Command::None,Page::Players,players!=nullptr);
-      add(5,T_Options,     Button::Tab,Command::None,Page::None,false);
+      add(5,T_Options,     Button::Tab,Command::None,Page::Options,true);
       add(6,T_Demo,        Button::Tab,Command::None,Page::None,false);
-      add(7,T_Credits,     Button::Tab,Command::None,Page::None,false);
+      add(7,T_Credits,     Button::Tab,Command::None,Page::Credits,true);
       add(8,T_Exit,        Button::Back,Command::Quit,Page::None,true);
       add(-1,T_Race,       Button::Race,Command::Race,Page::None,quickAllowed());
       break;
@@ -487,6 +492,23 @@ void Menu::build(Page p) {
       blinkT = -1;
       buildGarage(0);
       break;
+    case Page::Options:
+      // 0x4d1980: the pages as radio buttons (0x6a7 ..), back to the main menu; RCCars.crs read anew
+      headerText = T_Options;
+      for(int i=0; i<7; ++i) {
+        static const uint32_t pages[7] = {10037,10031,10032,10034,10035,10038,10065};
+        auto* b = add(i,pages[i],Button::Radio,Command::None,Page::None,true);
+        b->id      = 0x6a7+i;
+        b->checked = i==0;
+        }
+      add(8,T_MainMenu,Button::Back,Command::None,Page::Main,true);
+      optCrs.clear();
+      buildOptions(0);
+      break;
+    case Page::Credits:
+      buildCredits();
+      add(8,T_MainMenu,Button::Back,Command::None,Page::Main,true);
+      break;
     case Page::ChampWin:
       // 0x4c13a0: the congratulations, back to the main menu
       headerText  = T_Championship;
@@ -565,6 +587,11 @@ void Menu::tick(float dt) {
     }
   refreshButtons();
   infoTick(dt);
+  if(current==Page::Options)
+    optionsTick(dt);
+  // 0x4c3e40: the pages go on once the screen has come, and at the last one's end back to the main menu
+  if(current==Page::Credits && slide==0 && !creditsTick(dt))
+    leave(Page::Main,Command::None);
   if(shotScroll!=0) {
     const float step = dt/0.3f;
     shotScroll = std::abs(shotScroll)<=step ? 0.f : shotScroll-std::copysign(step,shotScroll);
@@ -643,15 +670,20 @@ void Menu::pressButton(Button& b) {
     buttonAction(b.id);
     return;
     }
-  if(b.command==Command::Race || b.command==Command::Quit) {
-    if(b.command==Command::Race && current==Page::GhostRace) {
+  if(b.command==Command::Quit) {
+    // 0x4ca2a9: "Chcesz opuścić grę?" with "Tak" and "Nie"; "Tak" (0x64b) closes the game
+    showMessage(T_QuitQ,Message::Quit,{},T_No);
+    return;
+    }
+  if(b.command==Command::Race) {
+    if(current==Page::GhostRace) {
       // 0x4d31a0: GhostMode 0 the ghost race of mode 2, 1 of mode 3
       const bool multi = !enums.empty() && enums[0].at==1;
       choice.mode = multi ? Mode::MultiGhost : Mode::Ghost;
       if(players!=nullptr)
         players->setGhostMode(multi ? 1 : 0);
       }
-    else if(b.command==Command::Race)
+    else
       choice.mode = Mode::Quick;
     command = b.command;
     return;
@@ -703,17 +735,11 @@ void Menu::mouseMove(int x, int y) {
       playControl(0);
     p.hover = in;
     }
-  auto arrowsOf = [](const Enum& e, Box& l, Box& r) {
-    const float h  = e.box.y1-e.box.y0;
-    const float s  = h*1.2f;
-    const float cy = (e.box.y0+e.box.y1)*0.5f;
-    const float lx = e.box.x0+(e.box.x1-e.box.x0)*e.split;
-    l = {lx,cy-s*0.5f,lx+s,cy+s*0.5f};
-    r = {e.box.x1-s,cy-s*0.5f,e.box.x1,cy+s*0.5f};
-    };
   auto hoverEnum = [&](Enum& e) {
     Box l, r;
-    arrowsOf(e,l,r);
+    enumArrows(e,l,r);
+    if(!e.enabled)
+      l = r = Box{};
     const float mx = mouseX-contentShift(), my = mouseY-tall*0.5f;
     const bool  hl = l.contains(mx,my), hr = r.contains(mx,my);
     if((hl && !e.hoverL) || (hr && !e.hoverR))
@@ -729,6 +755,8 @@ void Menu::mouseMove(int x, int y) {
     }
   if(current==Page::Garage)
     hoverEnum(garagePage==0 ? garageCar : upgradeEnum);
+  if(current==Page::Options)
+    optionsHover(mouseX-contentShift(),mouseY-tall*0.5f);
   if(infoFrame() && infoPage!=0) {
     for(auto& e:infoEnums)
       hoverEnum(e);
@@ -806,6 +834,10 @@ void Menu::mouseDown(int x, int y) {
         command = pills[i].command;
       return;
       }
+  if(current==Page::Options) {
+    optionsClick(mouseX-contentShift(),mouseY-tall*0.5f);
+    return;
+    }
   if(current==Page::Garage) {
     Enum& e = garagePage==0 ? garageCar : upgradeEnum;
     if(e.hoverL || e.hoverR)
@@ -918,17 +950,7 @@ void Menu::keyDown(Event::KeyType key, uint32_t ch) {
       return;
       }
     // what is typed, as the fonts have it (Windows-1250); \/*&?|. are not taken (0x56f584)
-    static const std::pair<uint32_t,uint8_t> polish[] = {
-      {0x104,0xa5},{0x105,0xb9},{0x106,0xc6},{0x107,0xe6},{0x118,0xca},{0x119,0xea},{0x141,0xa3},{0x142,0xb3},
-      {0x143,0xd1},{0x144,0xf1},{0xd3,0xd3},{0xf3,0xf3},{0x15a,0x8c},{0x15b,0x9c},{0x179,0x8f},{0x17a,0x9f},
-      {0x17b,0xaf},{0x17c,0xbf},
-      };
-    int c = -1;
-    if(ch>=0x20 && ch<0x7f)
-      c = int(ch);
-    for(auto& [u,b]:polish)
-      if(ch==u)
-        c = b;
+    const int c = typedChar(ch);
     if(c>=0 && std::string_view("\\/*&?|.").find(char(c))==std::string_view::npos && nameEntry.text.size()<NameMax)
       nameEntry.text.push_back(char(c));
     return;
@@ -1016,6 +1038,16 @@ void Menu::keyDown(Event::KeyType key, uint32_t ch) {
       return;
     case Page::ChampWin:
       if(key==Event::K_Return || key==Event::K_ESCAPE)
+        leave(Page::Main,Command::None);
+      return;
+    case Page::Credits:
+      if(key==Event::K_ESCAPE || key==Event::K_Return)
+        leave(Page::Main,Command::None);
+      return;
+    case Page::Options:
+      if(optionsKey(key,ch))
+        return;
+      if(key==Event::K_ESCAPE)
         leave(Page::Main,Command::None);
       return;
     }
@@ -1177,6 +1209,10 @@ void Menu::showMessage(uint32_t text, Message::Action action, std::string format
 
 void Menu::messageAnswer(bool ok) {
   message.open = false;
+  if(ok && message.action==Message::Quit) {
+    command = Command::Quit;
+    return;
+    }
   if(!ok || message.action==Message::None || players==nullptr)
     return;
   if(message.action!=Message::RemovePlayer) {
@@ -1312,6 +1348,12 @@ void Menu::lines(const Font& f, std::string_view s, const Box& b, int ax, float 
       break;
     s.remove_prefix(n+1);
     }
+  }
+
+float Menu::fit(const Font& f, std::string_view s, float room) const {
+  // our stand-in fonts are wider than the original's in places: a label too long for its part is made smaller
+  const float w = scale>0 ? textWidth(f,s,f.cell)/scale : 0.f;
+  return w>room && room>0 ? room/w : 1.f;
   }
 
 void Menu::underline(float x0, float x1, float y, const Color& c) {
@@ -1456,13 +1498,27 @@ void Menu::drawPill(const Pill& p) {
   fade = was;
   }
 
+void Menu::enumArrows(const Enum& e, Box& l, Box& r) {
+  const float h  = e.box.y1-e.box.y0;
+  const float s  = h*1.2f;
+  const float cy = (e.box.y0+e.box.y1)*0.5f;
+  // the arrows at the ends of the part after the label, or of its middle `inner`
+  const float lx = e.box.x0+(e.box.x1-e.box.x0)*e.split;
+  const float in = (e.box.x1-lx)*(1.f-e.inner)*0.5f;
+  l = {lx+in,cy-s*0.5f,lx+in+s,cy+s*0.5f};
+  r = {e.box.x1-in-s,cy-s*0.5f,e.box.x1-in,cy+s*0.5f};
+  }
+
 void Menu::drawEnum(const Enum& e, bool marker) {
   const float w  = e.box.x1-e.box.x0;
   const float lx = e.box.x0+w*e.split;
+  const float was = fade;
+  if(!e.enabled)
+    fade *= 0.5f;
   const Color grey = {Grey,Grey,Grey,1};
   if(e.label!=0) {
     // the label on the left, standing on its line (0x4b4630, 0x4ac6e0)
-    label(font26,str(e.label),{e.box.x0,e.box.y0,lx,e.box.y1-3},0,2,grey);
+    label(font26,str(e.label),{e.box.x0,e.box.y0,lx,e.box.y1-3},0,2,grey,fit(font26,str(e.label),lx-e.box.x0-4));
     underline(e.box.x0,lx,e.box.y1-2,grey);
     if(marker && arrows) {
       // the small red arrow in front of it (0x4ac600)
@@ -1470,12 +1526,16 @@ void Menu::drawEnum(const Enum& e, bool marker) {
       image(arrows,{e.box.x0-16,cy-5,e.box.x0-6,cy+5},{0.5f,0,1,0.5f},{1,1,1,1});
       }
     }
-  if(!arrows)
+  if(!arrows) {
+    fade = was;
     return;
+    }
   // the arrows: a white one behind, the red one over it, moving when focused or pressed
   const float h  = e.box.y1-e.box.y0;
   const float s  = h*1.2f;
   const float cy = (e.box.y0+e.box.y1)*0.5f;
+  Box al, ar;
+  enumArrows(e,al,ar);
   const bool  many = e.values.size()>1;
   auto arrow = [&](float x0, bool left, bool hover, float push) {
     const float hv = hover ? 1.f : 0.f;
@@ -1488,10 +1548,11 @@ void Menu::drawEnum(const Enum& e, bool marker) {
     image(arrows,{x0-d*sh,cy-s*0.5f,x0-d*sh+s,cy+s*0.5f},back,{1,1,1,1});
     image(arrows,{x0+d*mv,cy-s*0.5f,x0+d*mv+s,cy+s*0.5f},red,{1,1,1,1});
     };
-  arrow(lx,true,e.hoverL,e.pushL);
-  arrow(e.box.x1-s,false,e.hoverR,e.pushR);
+  arrow(al.x0,true,e.hoverL,e.pushL);
+  arrow(ar.x0,false,e.hoverR,e.pushR);
   if(e.at<e.values.size() && !e.values[e.at].empty())
-    label(font26,e.values[e.at],{lx+s,e.box.y0-2,e.box.x1-s,e.box.y1-2},1,1,grey);
+    label(font26,e.values[e.at],{al.x1,e.box.y0-2,ar.x0,e.box.y1-2},1,1,grey);
+  fade = was;
   }
 
 void Menu::drawShot(size_t track, int shot, const Box& b, float alpha, const Box* clip) {
@@ -1992,6 +2053,13 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
     dy = tall*0.5f;
     drawGarage();
     }
+  if(current==Page::Options) {
+    dx = contentShift();
+    dy = tall*0.5f;
+    drawOptions();
+    }
+  if(current==Page::Credits)
+    drawCredits();
   if(current==Page::ChampWin && players!=nullptr && players->current()!=nullptr) {
     dx = wide;
     if(logo)

@@ -256,6 +256,14 @@ class MainWindow : public Tempest::Window {
     uint8_t                 frameId = 0;
 
     std::array<bool,256>    keys = {};
+    // the car's keys, the frame rate's limit (0 none) and the cockpit's parts, as RCCars.crs has them
+    Controls                controls;
+    int32_t                 fpsLimit  = 0;
+    uint64_t                frameDue  = 0;
+    bool                    showMap   = true, showArrow = true;
+    // RCCars.crs read again: the options the game follows
+    void                    applyOptions();
+    bool                    held(Controls::Action a) const { return controls.held(a,keys.data()); }
     uint64_t                lastTick = 0;
     float                   time     = 0; // seconds since start, animates the water
   };

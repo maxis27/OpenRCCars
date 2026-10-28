@@ -41,11 +41,14 @@ class MusicList {
     bool                      empty()  const { return list.empty(); }
     // the next track to play, nullptr if there are none
     const Track*              next();
+    // the style played (RCCars.crs Snd_Style): only the tracks of that "cycle", -1 any
+    void                      setStyle(int s) { only = s; }
 
   private:
     std::vector<Track> list;
     std::vector<bool>  played;
     int                lastStyle = -2;   // -2: none yet
+    int                only      = -1;
     std::mt19937       rnd{std::random_device{}()};
   };
 

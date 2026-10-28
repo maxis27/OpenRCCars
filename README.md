@@ -71,7 +71,9 @@ plików w [docs/formaty.md](docs/formaty.md).
   morza, wodospady, głosy ludzi, mew i psów, ruch uliczny i muzyka MP3 z `Tracks/` w kolejności z `Autoexec.gm`.
 - **Menu**: menu główne z panelem gracza, szybki wyścig (trasa, auto, okrążenia, przeciwnicy), wybór gracza
   (zakładanie, usuwanie, zdjęcie, sortowanie), „Mapa i informacje” (mapa trasy, zdjęcia, opis) i „Statystyki toru”
-  (wyniki wszystkich graczy), ekran wczytywania i menu Esc w wyścigu, z obrazkami, czcionkami i dźwiękami oryginału.
+  (wyniki wszystkich graczy), „Opcje” (wideo, kokpit, dźwięk, urządzenia, klawisze, zaawansowane, wiadomości,
+  zapisywane w `RCCars.crs`), „Twórcy”, ekran wczytywania i menu Esc w wyścigu, z obrazkami, czcionkami i dźwiękami
+  oryginału.
 - **Mistrzostwa** z `Scripts/championship.ini`: tabela tras (otwierane wynikami), opłata przed wyścigiem
   z przeciwnikami „Ekspert”, trening, nagrody i premia za uderzenia i przewagę na ekranie mety, nowe mistrzostwa,
   gratulacje po ostatniej trasie; garaż z kupowaniem i sprzedażą aut, skórkami i ulepszeniami dopalacza, silnika
@@ -174,36 +176,45 @@ Gra startuje w menu głównym jak oryginał. Opcje:
 | `-validation` | warstwy walidacji Vulkana |
 
 Okno albo pełny ekran wybiera ustawienie oryginału „Uruchom w oknie” z `RCCars.crs` w folderze gry
-(`[Video] VIDEO_RunInWindow`): w oknie gra ma 800x600 jak menu oryginału, bez tego ustawienia (domyślnie) pełny
+(`[Video] VIDEO_RunInWindow`, w grze „Opcje wideo” → „Uruchom w oknie”, od następnego startu): w oknie gra ma 800x600 jak menu oryginału, bez tego ustawienia (domyślnie) pełny
 ekran. Pełny ekran nie zmienia rozdzielczości monitora, choć oryginał przełącza go na 800x600.
 
 ## Sterowanie
 
-Klawisze jak w instrukcji oryginału (`Instrukcja.pdf`):
+Klawisze auta ustawia się w „Opcje” → „Dostosuj sterowanie” (zapisane w `RCCars.crs` jak w oryginale). Domyślny
+układ „Klaw.1”:
 
 | Klawisz | Akcja |
 |---|---|
-| W / ↑ | gaz |
-| S / ↓ | hamulec, po zatrzymaniu wsteczny |
-| A / ← , D / → | skręt w lewo / w prawo |
+| ↑ | gaz |
+| ↓ | hamulec, po zatrzymaniu wsteczny |
+| ← , → | skręt w lewo / w prawo |
 | Spacja | skok (przewrócone auto: na koła) |
 | Shift | dopalacz (zużywa turbo, ok. 10 s z pełnego zbiornika) |
 | B | zablokuj koła (tylne, do poślizgu) |
 | R | powrót do ostatniego głównego punktu kontrolnego (przed pierwszym: na start); w wyścigu duchów na start |
+
+Układ „Klaw.2” to W / S / A / D, Tab (dopalacz), Alt (skok), Z (hamulec), C (powrót).
+
+| Klawisz | Akcja |
+|---|---|
 | Enter | wyścig od nowa, od odliczania („Jeszcze raz”); na ekranie mety „Wyjdź”, jak Esc |
 | P, Pause | pauza |
 | Esc | menu wyścigu: Przerwij (do menu głównego, z wyścigu duchów na jego ekran), Wróć na tor (w wyścigu duchów Wróć na start), Zastosuj (dalej), Jeszcze raz? |
 | F12 | licznik FPS (nasz klawisz; jak w oryginale włącza go też `Set ShowFPS 1` w `Config.gm` albo `Autoexec.gm`) |
 
 Menu obsługuje się myszą. W menu głównym trasę wybiera się obrazkami (też ← / →); „Szybki wyścig” to tor, liczba
-okrążeń, umiejętności przeciwników i auto; zielony „Wyścig” rusza (też Enter), „Wyjdź” zamyka grę. W „Zmień gracza”
+okrążeń, umiejętności przeciwników i auto; zielony „Wyścig” rusza (też Enter), „Wyjdź” pyta, czy zamknąć grę. W „Zmień gracza”
 lista graczy (też ↑ / ↓, kółko myszy), „Utwórz gracza” pyta o imię, „Zdjęcie” pozwala zmieniać zdjęcie strzałkami
 obok niego, „Kontynuuj” (też Enter, Esc) wybiera zaznaczonego gracza. W „Mistrzostwach” trasę wybiera się w tabeli
 (też ↑ / ↓), „Wyścig” pokazuje opłatę i przeciwników, „Garaż” to auta (strzałki, kupno, sprzedaż, skórka)
 i ulepszenia (strzałki pod obrazkiem wybierają poziom). „Wyścig duchów” to tor, auto i typ wyścigu („Zwykły”,
 „Multi”). „Mapa i informacje” (zdjęcia strzałkami albo ← / →, trasa strzałkami albo ↑ / ↓) i „Statystyki toru”
 (rodzaj wyniku strzałkami albo ← / →, lista ↑ / ↓ i kółkiem) to strony szybkiego wyścigu, wyścigu duchów
-i mistrzostw. Szybki wyścig i wyścig duchów ruszają tylko kupionym autem na otwartej trasie. Przyciski części, których jeszcze nie ma (opcje, autorzy …), są szare.
+i mistrzostw. Szybki wyścig i wyścig duchów ruszają tylko kupionym autem na otwartej trasie. W „Opcjach” wartości
+zmienia się strzałkami (też ← / → dla wskazanego wiersza) i suwakami; klawisz akcji zmienia się kliknięciem pola
+i naciśnięciem klawisza (Delete czyści, Esc rezygnuje). Przyciski części, których jeszcze nie ma (gra wielu graczy,
+demo), są szare.
 
 Oryginał pokazuje menu zawsze w 800x600 (`RCCars.exe` 0x4a6840). U nas menu wypełnia całe okno: tło jest rozciągnięte
 na szerokość (w oknie węższym niż 4:3 na wysokość), przyciski po prawej trzymają się krawędzi i łuków tła, a obrazki,
@@ -353,7 +364,8 @@ game/           gra (Tempest)
   hud.*         kokpit wyścigu (obrazki i czcionka z Language/<język>), konsola czatu
   fpscounter.*  licznik FPS (ShowFPS, F12)
   arrow.*       strzałka kierunku 3D z cockpit.sb
-  menu.*        menu gry (Interface.sb, dlg*.ini)
+  menu.*        menu gry (Interface.sb, dlg*.ini), menuoptions.cpp: opcje i twórcy
+  controls.*    klawisze auta z RCCars.crs (układy, kody klawiszy gry)
   players.*     gracze z Players\*.scp, wybrany w RCCars.crs, zdjęcia, wyniki wyścigów
   effects.*     efekty aut i trasy: sprite'y zwrócone do kamery, posortowane, z testem głębi
   sounds.*      dźwięki gry: kanały, silniki aut, otoczenie i muzyka na urządzeniu dźwięku Tempesta
@@ -373,7 +385,8 @@ lib/dr_mp3      dekoder MP3
   nagrania przeciwników, ścieżki postaci) i układ współrzędnych.
 - [docs/rccars_exe.md](docs/rccars_exe.md): jak działa oryginał według kodu `RCCars.exe`, z adresami funkcji
   i tym, gdzie u nas jest inaczej: fizyka auta, powrót na trasę, wyścig i kokpit, przeciwnicy, rekwizyty, postacie,
-  ruch uliczny, woda, efekty, grafika, kamera, dźwięk, gracze, menu, mistrzostwa, wyścig duchów, tryb deweloperski.
+  ruch uliczny, woda, efekty, grafika, kamera, dźwięk, gracze, menu, mistrzostwa, wyścig duchów, opcje, tryb
+  deweloperski.
 
 ## Czego jeszcze brakuje
 
@@ -381,8 +394,8 @@ Zrobione są wszystkie elementy pojedynczego szybkiego wyścigu. Brakuje:
 
 - **Grafika i świat**: przyciemnianie postaci i rekwizytów w cieniu (`feat_lmshd.ini`), dźwięk zahaczenia anteny
   (`Antenna_scratch`).
-- **Opakowanie gry**: reszta menu (opcje, autorzy), demo, intro, dwóch graczy na podzielonym
-  ekranie, gra przez sieć.
+- **Opakowanie gry**: demo, intro, dwóch graczy na podzielonym ekranie, gra przez sieć; z opcji działają w grze
+  tylko te, które ma nasz silnik (rozdzielczość, gamma, jakość grafiki i joysticki są tylko zapisywane).
 
 ## Licencja
 

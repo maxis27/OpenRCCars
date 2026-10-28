@@ -18,7 +18,7 @@
 
 class Resources;
 
-namespace rc { class Characters; class Traffic; }
+namespace rc { class Characters; class Traffic; class ConfigFile; }
 
 // The game's sound: the channels of RCCars.sb (Sound\*.wav from RCCars.pack) and the music (Tracks\*.mp3), mixed by
 // rc::Mixer and played through one Tempest sound effect. Without a sound device the game goes on silent.
@@ -45,6 +45,12 @@ class Sounds {
     // the next race track of the playlist (Autoexec.gm), and on to the next one whenever a track ends
     void startMusic();
     void stopMusic();
+    // RCCars.crs [Sound] as "Efekty dźwiękowe" sets it: Use_Sound, SoundVolume, Use_BkSound, SoundBkVolume and
+    // Snd_Style (0x4835ff .., 0x485d0e)
+    void setOptions(const rc::ConfigFile& f);
+    // the system's volume of the options, 0..100: the original's is the Windows mixer's, not kept by the game
+    int32_t masterVolume() const { return master; }
+    void    setMasterVolume(int32_t v);
     // the water of a track (water_splash_N, WATER_FALL_N, the sea along `coast`: LevelMesh::seaCoast), heard from
     // `ear` with `right` to the right of it; `waterAtEar` as rc::AmbientSounds::update
     void setTrack(const rc::SbScene& scene, const std::vector<rc::Vec3>& coast);
@@ -97,6 +103,11 @@ class Sounds {
     // per road car: its own sound and its gun
     std::vector<rc::BankChannel> trafficChannels;
     bool                                         musicOn = false;
+    bool                                         musicWanted = false;   // startMusic() and no stopMusic() since
+    // the options: sound on, its volume, the music on, its volume (0..100), the system's volume
+    bool                                         useSound = true, useMusic = true;
+    int32_t                                      volume = 70, musicVolume = 100, master = 100;
+    void                                         applyVolumes();
 
     std::unique_ptr<Tempest::SoundDevice>        device;
     Tempest::SoundEffect                         output;

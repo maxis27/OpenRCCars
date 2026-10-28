@@ -238,6 +238,8 @@ ConfigFile ConfigFile::parse(const std::vector<uint8_t>& data) {
         s.push_back(char(data[i]));
       ret.strings[path] = s;
       }
+    if(type==3)
+      ret.structs[path].assign(data.begin()+std::ptrdiff_t(v.at+8),data.begin()+std::ptrdiff_t(v.at+8+size));
     }
   return ret;
   }
@@ -245,6 +247,11 @@ ConfigFile ConfigFile::parse(const std::vector<uint8_t>& data) {
 int32_t ConfigFile::integer(std::string_view section, std::string_view key, int32_t def) const {
   auto it = ints.find(std::string(section)+"/"+std::string(key));
   return it==ints.end() ? def : it->second;
+  }
+
+const std::vector<uint8_t>* ConfigFile::structure(std::string_view section, std::string_view key) const {
+  auto it = structs.find(std::string(section)+"/"+std::string(key));
+  return it==structs.end() ? nullptr : &it->second;
   }
 
 std::string ConfigFile::string(std::string_view section, std::string_view key, std::string_view def) const {
@@ -289,14 +296,29 @@ std::vector<uint8_t> ConfigFile::withString(const std::vector<uint8_t>& data, st
 
 std::vector<uint8_t> ConfigFile::withInteger(const std::vector<uint8_t>& data, std::string_view section,
                                              std::string_view key, int32_t value) {
-  const auto lay = crsLayout(data);
-  if(!lay.ok)
-    return data;
   // a value record: [u16 1][u16 4][u16 0][u16 0], the integer, [u32 0]
   std::vector<uint8_t> rec = {1,0,4,0,0,0,0,0};
   for(int i=0; i<4; ++i)
     rec.push_back(uint8_t(uint32_t(value)>>(8*i)));
   rec.insert(rec.end(),4,0);
+  return withRecord(data,section,key,rec);
+  }
+
+std::vector<uint8_t> ConfigFile::withStruct(const std::vector<uint8_t>& data, std::string_view section,
+                                            std::string_view key, const std::vector<uint8_t>& value) {
+  // [u16 3][u16 length][u16 capacity = length][u16 0], the bytes, [u32 0]
+  const uint16_t n = uint16_t(std::min<size_t>(value.size(),0xffff));
+  std::vector<uint8_t> rec = {3,0,uint8_t(n&0xff),uint8_t(n>>8),uint8_t(n&0xff),uint8_t(n>>8),0,0};
+  rec.insert(rec.end(),value.begin(),value.begin()+n);
+  rec.insert(rec.end(),4,0);
+  return withRecord(data,section,key,rec);
+  }
+
+std::vector<uint8_t> ConfigFile::withRecord(const std::vector<uint8_t>& data, std::string_view section,
+                                            std::string_view key, const std::vector<uint8_t>& rec) {
+  const auto lay = crsLayout(data);
+  if(!lay.ok)
+    return data;
   std::vector<uint8_t> ret = data;
   auto bump = [&ret](size_t at) {
     const uint16_t n = uint16_t((ret[at] | ret[at+1]<<8)+1);

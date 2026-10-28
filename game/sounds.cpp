@@ -2,6 +2,8 @@
 
 #include <Tempest/Log>
 
+#include <algorithm>
+#include <cmath>
 #include <string_view>
 
 #include "resources.h"
@@ -25,8 +27,7 @@ class MixerOutput : public SoundProducer {
 }
 
 Sounds::Sounds(Resources& res) : res(res) {
-  mix.setEffectsVolume((70.f-100.f)*0.2f);
-  mix.setMusicVolume((100.f-100.f-20.f)*0.4f);
+  applyVolumes();
   try {
     lib = std::make_unique<rc::SoundLibrary>([&res](const std::string& f){ return res.pack().read(f); },
                                              res.readFile("RCCars.sb"));
@@ -229,11 +230,44 @@ void Sounds::tickAntenna(int car, bool under, float speed) {
   }
 
 void Sounds::startMusic() {
+  musicWanted = true;
+  if(!useMusic)
+    return;
   musicOn = true;
   nextTrack();
   }
 
+void Sounds::setOptions(const rc::ConfigFile& f) {
+  useSound    = f.integer("Sound","Use_Sound",1)!=0;
+  useMusic    = f.integer("Sound","Use_BkSound",1)!=0;
+  volume      = std::clamp(f.integer("Sound","SoundVolume",70),0,100);
+  musicVolume = std::clamp(f.integer("Sound","SoundBkVolume",100),0,100);
+  // 0x485d0e, 0x486c00: 0 only the tracks of "cycle 0", 1 only those of "cycle 1", -1 both
+  music.setStyle(f.integer("Sound","Snd_Style",-1));
+  if(!useMusic && musicOn) {
+    musicOn = false;
+    mix.setMusic(nullptr);
+    }
+  else if(useMusic && !musicOn && musicWanted)
+    startMusic();
+  applyVolumes();
+  }
+
+void Sounds::setMasterVolume(int32_t v) {
+  master = std::clamp(v,0,100);
+  applyVolumes();
+  }
+
+void Sounds::applyVolumes() {
+  // the effects at (volume - 100) * 0.2 dB, the music at (volume - 120) * 0.4 dB: -6 and -8 dB as the game ships
+  // (70, 100); the system's volume over both
+  const float sys = master>0 ? 20.f*std::log10(float(master)/100.f) : -100.f;
+  mix.setEffectsVolume(useSound ? (float(volume)-100.f)*0.2f+sys : -100.f);
+  mix.setMusicVolume((float(musicVolume)-100.f-20.f)*0.4f+sys);
+  }
+
 void Sounds::stopMusic() {
+  musicWanted = false;
   musicOn = false;
   mix.setMusic(nullptr);
   }

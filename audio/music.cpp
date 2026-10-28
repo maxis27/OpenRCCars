@@ -104,7 +104,9 @@ const MusicList::Track* MusicList::next() {
   if(list.empty())
     return nullptr;
   int style;
-  if(lastStyle==-2)
+  if(only>=0)
+    style = only;
+  else if(lastStyle==-2)
     style = int(rnd()&1);
   else
     style = (lastStyle+1)&1;

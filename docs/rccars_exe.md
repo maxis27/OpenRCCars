@@ -944,6 +944,68 @@ zmienia się tylko środek (komunikaty 0x26f/0x270 chowają i pokazują kontrolk
   ↑ / ↓ i kółko przewijają. Trasa zamknięta wybrana na mapie w mistrzostwach ustępuje ostatniej otwartej po
   powrocie na stronę tras (jak 0x4be720).
 
+## Opcje i twórcy
+
+Przyciski menu głównego mają identyfikatory ekranów 0x641.. (0x4c9500), a 0x4ca290 wybiera ekran: 0x642 „Wyjdź”
+pyta „Chcesz opuścić grę?” (10854, „Tak”/„Nie”, 0x4cb830), a „Tak” (0x64b) zamyka grę; 0x643
+mistrzostwa (0x4be150), 0x645 wyścig duchów (0x4d3000), 0x646 gracze (0x4d1c10), 0x647 opcje (0x4d1980), 0x648
+twórcy (0x4c3e40), 0x649 demo (komunikat 0x26d), 0x64a gra wielu graczy (0x4cd930).
+
+- **Opcje** (0x4d1980, nagłówek 10044, „Menu główne” na dole): strony jako przyciski radio 0x6a7..0x6ad
+  z tablicy 0x56f554. Każda strona czyta `RCCars.crs` przy pokazaniu i zapisuje przy zejściu (komunikat 0xf).
+  Wiersze idą od góry co 25 jednostek wysokości z 10 przerwy (0.04167 i 0.01667 ekranu, 0x554758/0x55475c).
+  Wyliczenie opcji ma etykietę 0..0.4 szerokości (drugie wywołanie 0x4b5920), a strzałki w środkowych 0.65 reszty
+  (0x4b59e0). Wł./Wył. to 0x4b5bc0 („Wył.” 21 = 0, „Wł.” 20 = 1), Tak/Nie 0x4b5b60 („Nie” 13 = 0, „Tak” 12 = 1).
+  - „Opcje wideo” (0x4c63f0, tablica 0x56eb10, od 0.14625, 0.225 do 0.67): rozdzielczość (tryby urządzenia od
+    640x480, `VideoRace` `X/YResolution`), jakość kolorów (32 bpp 10088 / 16 bpp 10089, `VideoRace/BPP`), „Uruchom
+    w oknie”, jakość tekstur (Niskie 2, Średnie 1, Wysokie 0), jakość renderingu i efektów (0, 1, 2), suwak
+    „Gamma” 1..200 co 20 (tylko gdy urządzenie zmienia gammę). Pod nimi „Sprzętowy sterownik 3D” (0xd48)
+    i nazwa sterownika (0xd49).
+  - „Opcje kokpitu” (0x4c1b00, tablica 0x56e620, od 0.14, 0.2 do 0.65, etykieta 0.5, strzałki 0.6): `Cockpit`
+    `ShowList`, `ShowMap`, `DirectArrow` i `Player/AutoChatPrior` (Krótki 10128 / Pełen 10129). Podgląd
+    `opt_cock_all` w `shotlist` (290,280 256x196, górne 196 linii tekstury), nad nim części włączonych opcji
+    (`opt_cock_l/m/a/c_0`), a skupionej `_1` migające (0x4c2090: okres 0,25 s, alfa sin·0.9+0.1).
+    W wyścigu `ShowMap` pokazuje mapę (0x4b77e1), `DirectArrow` strzałkę i nawiasy (0x4af22e, 0x4b1d03),
+    a `ShowList` okno listy graczy w grze sieciowej (0x4b0483).
+  - „Efekty dźwiękowe” (0x4d7930, tablica 0x56f988, od 0.14625, 0.2 do 0.67125): `Use_Sound`, `SoundQuality`
+    (Niskie 0, Średnie 1, Wysokie 1), suwak `SoundVolume` 0..100 co 10, `Use_BkSound`, suwak `SoundBkVolume`,
+    `Snd_Style` (Rock 0, Techno 1, Oba -1), wiersz przerwy (0x27e4) i „Głośność ogólna” (mikser systemu). Bez
+    dźwięku szare są jakość i głośności, bez muzyki jej głośność i styl. Styl wybiera utwory z `cycle` równym
+    stylowi (0x486c00; -1 dowolne): z twórców wynika, że `cycle 1` to „Techno Deadushki”, `cycle 0` „Hard Rock
+    Master”.
+  - „Urządzenia wejściowe” (0x4c2470, `dlgCONTROL.ini`): dla gracza 1 i 2 (drugi 220 niżej) typ sterowania
+    (`KbdJoyN`: Klaw. 0, Joystick/Kierownica 1, Gamepad 2), joystick („Brak” i urządzenia, `JoyNName`), suwaki
+    czułości i martwej strefy (`JoyNSens`, `JoyNDZone`), szare bez joysticka.
+  - „Dostosuj sterowanie” (0x4c2f20, `dlgCONTROL_PLAYER.ini`): „Pokaż sterowanie dla” (gracz 1 / 2), „Układ”
+    (Użytk. 5, Klaw.1 0, Klaw.2 1, z joystickiem też 2..4) i osiem wierszy klawiszy (klasa HKY 0x4b67f0, tablica
+    0x56e888: Gaz 10300, Wsteczny, Skręt w lewo, Skręt w prawo, Dopalacz, Skok, Hamulec, Zresetuj). Wiersz to
+    etykieta do 0.34 szerokości i dwa klawisze (0.34..0.7, 0.7..1), nazwa 20 jednostek od lewej, „Brak” bez
+    klawisza, czekający na klawisz czerwony; Delete czyści, Esc rezygnuje. Nowy klawisz znika z innych akcji
+    gracza, a układ staje się „Użytk.” (0x4c32e0). Linie nad i pod wierszami to statyczny 0x2847 w `rectLines`.
+    Pod nimi konflikt z drugim graczem dla skupionego wiersza (0x4c3b80): 10331/10332 z nazwą akcji albo „Brak
+    konfliktów” (10330).
+  - „Zaawansowane” (0x4c6de0, tablica 0x56eb70): potrójne buforowanie, suwak jaskrawości map 0..100, limit klatek
+    („Bez limitu” 0, „%i FPS” 35..70 co 5). Pod nimi nazwa i opis skupionej opcji (0x277e, 0x277f; 10112..10114).
+    Limit to zegar 1000 / limit ms, na który czeka każda klatka (0x48bc04).
+  - „Wiadomości” (0x4bf6c0, `dlgOPT_CHATMSG.ini`): siedem pól tekstu (klasa EDT 0x4b3540) w
+    `ChatMessages/Message1..7`, 60 znaków.
+- **Klawisze w `RCCars.crs`**: sekcje `Player1`/`Player2`, rekordy typu 3 po 44 bajty (0x4e48a0): `[u32 1]`, potem
+  dwa klawisze `[urządzenie][liczba kodów][3 kody]` (urządzenie 1 to klawiatura). Akcje 1..8 to Boost, Left,
+  Right, Forw, Back, Jump, Brake, Reset (0x4e4180). Układ gracza w `Input/PlayerNLayout`. Układy Klaw.1 i Klaw.2
+  (0x4e3110): Shift, strzałki, Spacja, B, R oraz Tab, A, D, W, S, Alt, Z, C. Kody klawiszy gry to nie kody
+  DirectInput: tablica 0x49ca00 (Esc 1, F1.. 2, 1..0 0x12.., Q..P 0x20.., A..L 0x2e.., Z..M 0x3b.., Shift 0x3a,
+  Ctrl 0x46, Alt 0x48, Spacja 0x49, strzałki 0x54..0x57). Prawe Shift/Ctrl/Alt dają kody lewych.
+- **Twórcy** (0x4c3e40, nagłówek 43800 „Twórcy”): linie z `Language/Game` od 50001 (0x4c4160), strony kończą się
+  linią „$”. Strona stoi 6 s, następna wchodzi na nią w 0,5 s (0x4c4210), po ostatniej wraca menu główne. Strona od
+  (112, 92) w Smash26, linia co wysokość czcionki + 1 + 5; linia ze spacją na początku to nazwisko, inne są
+  podkreślone (0x4c43c0). Logo w prawym górnym rogu (0x56e980: 0.84..1 × 0..0.213).
+- **U nas**: rozdzielczość, kolory, tekstury, jakość, gamma, potrójne buforowanie, jaskrawość map, joysticki
+  i wiadomości czatu są tylko zapisywane. Gra używa okna (przy następnym starcie), klawiszy gracza 1 według jego
+  układu, głośności, muzyki i jej stylu, limitu klatek oraz mapy i strzałki kokpitu. „Głośność ogólna” zmienia
+  głośność naszego miksera (nie systemu) i nie jest zapisywana. Lista trybów wideo jest stała, nazwy klawiszy są
+  angielskie jak w DirectInput. Wartości spoza listy (np. `SoundQuality` 2) zostają w pliku, dopóki się ich nie
+  zmieni.
+
 ## Tryb deweloperski
 
 `RCCars.exe -dev` (0x4883dd ustawia flagę 0x147d204, w logu „-dev mode on”): klawisz F9 (0x48c0e3) przełącza flagę

@@ -53,6 +53,12 @@ class Hud : public Canvas {
       // (0x4af22e, 0x4b1d03)
       bool  showMap   = true;
       bool  showArrow = true;
+      // the game's demo (RCCars.exe 0x4afdc0 with flag 0x200): the cockpit of the car followed, with its lap
+      // (`lap`, 1..), no place, arrow, checkpoint arrows or messages of the race; `demoHint` shows "Wciśnij <Enter>,
+      // aby załadować następne demo..." (Language/Game 41903)
+      bool  demo      = false;
+      int   lap       = 0;
+      bool  demoHint  = false;
       rc::Mat4 viewProj;       // the camera, for the debug spheres and the checkpoint arrows
       };
 

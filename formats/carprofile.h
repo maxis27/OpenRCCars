@@ -75,7 +75,8 @@ class CarProfile {
 
 // Scripts\ailayouts.ini: the computer drivers ("AIPlayer<n>": car and skin) and, for each track ("AIRace<n>"),
 // the opponents of a race (AI1 .. AI5: car, driver, recording, in which races, upgrades), the recording of
-// the player's start ("PlayerPath") and a speed factor for all of them ("CoeffCommonOpponents").
+// the player's start ("PlayerPath"), a speed factor for all of them ("CoeffCommonOpponents") and, on the demo's
+// three tracks, the five cars of the demo ("Demo<n>Ref", "Demo<n>Path", read by RCCars.exe 0x4a9630).
 // Written in the "Section Keys" format with #define constants and sums ("EASY + NORMAL + HARD").
 struct AiLayout {
   enum Races : int32_t { Easy = 1, Normal = 2, Hard = 4 };
@@ -97,6 +98,7 @@ struct AiLayout {
     std::string           playerPath;
     std::string           ghostPath;  // GhostPath: the folder of GhostRecords\ with the track's ghosts ("track1")
     std::vector<Opponent> opponents;  // AI1 ..
+    std::vector<Opponent> demos;      // Demo1 .. Demo5 of the game's demo (only driver and path: "demo1(surf)/over1")
     };
 
   std::map<int32_t,Driver> drivers;   // by AIPlayer number

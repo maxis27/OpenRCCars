@@ -132,6 +132,9 @@ Kanały `SNCH` (lista węzłów `SOND`) siedzą w `RCCars.sb` (np. kanał `Check
 
 Odliczanie to skrypty w `RCCars.sb`: `RaceEntry` ma `1.0 Show3`, `2.0 Show2`, `3.0 Show1`, `4.0 StartRace` (sekunda
 bez niczego, potem cyfry), `RaceAgain` („jeszcze raz”) to samo bez tej sekundy, start po 3 s.
+Linia to `<sekundy> <polecenie> [argumenty]`, komentarz od `//`; napisy w `"..."` albo `'...'` (`'$CAR' 2` to
+adres auta numer 2), `=` w `Set "Zmienna" = "wartość"` tylko rozdziela. Trasy mają własne skrypty w folderze
+„Scene Scripts”: `beach_1`, `country_3` i `country_4` po jednym `DemoEntry` dla dema gry. `formats/gamescript.*`.
 
 ## Ustawienia i krzywe
 

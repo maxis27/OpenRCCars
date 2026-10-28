@@ -359,6 +359,7 @@ void Menu::build(Page p) {
     case Page::Main:
       // 0x4c9500: all of them are tabs; those of the parts not made yet are greyed
       headerText = T_MainMenu;
+      mainIdle   = 0;
       if(shotAt/4!=choice.track)
         shotAt = choice.track*4;
       add(0,T_Championship,Button::Tab,Command::None,Page::Champ,players!=nullptr);
@@ -367,7 +368,7 @@ void Menu::build(Page p) {
       add(3,T_Multiplayer, Button::Tab,Command::None,Page::None,false);
       add(4,T_ChangePlayer,Button::Tab,Command::None,Page::Players,players!=nullptr);
       add(5,T_Options,     Button::Tab,Command::None,Page::Options,true);
-      add(6,T_Demo,        Button::Tab,Command::None,Page::None,false);
+      add(6,T_Demo,        Button::Tab,Command::Demo,Page::None,true);
       add(7,T_Credits,     Button::Tab,Command::None,Page::Credits,true);
       add(8,T_Exit,        Button::Back,Command::Quit,Page::None,true);
       add(-1,T_Race,       Button::Race,Command::Race,Page::None,quickAllowed());
@@ -585,6 +586,13 @@ void Menu::tick(float dt) {
     if(blinkT>5.f)
       blinkT = -1;
     }
+  if(current==Page::Main && mainIdle>=0 && slide==0) {
+    mainIdle += dt;
+    if(mainIdle>=DemoIdle) {
+      mainIdle = -1;
+      command  = Command::Demo;
+      }
+    }
   refreshButtons();
   infoTick(dt);
   if(current==Page::Options)
@@ -658,6 +666,8 @@ void Menu::pressButton(Button& b) {
     return;
   b.pressT = 0.4f;
   playControl(b.kind==Button::Race ? 5 : 3);
+  if(current==Page::Main)
+    mainIdle = -1;
   if(b.kind==Button::Radio) {
     for(auto& o:right)
       if(o.kind==Button::Radio)
@@ -673,6 +683,10 @@ void Menu::pressButton(Button& b) {
   if(b.command==Command::Quit) {
     // 0x4ca2a9: "Chcesz opuścić grę?" with "Tak" and "Nie"; "Tak" (0x64b) closes the game
     showMessage(T_QuitQ,Message::Quit,{},T_No);
+    return;
+    }
+  if(b.command==Command::Demo) {
+    command = b.command;
     return;
     }
   if(b.command==Command::Race) {

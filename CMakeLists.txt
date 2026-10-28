@@ -35,6 +35,7 @@ add_library(rcformats STATIC
   formats/actorpath.h  formats/actorpath.cpp
   formats/texttable.h  formats/texttable.cpp
   formats/playerprofile.h formats/playerprofile.cpp
+  formats/gamescript.h formats/gamescript.cpp
   )
 target_include_directories(rcformats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

@@ -588,7 +588,7 @@ void Opponent::drive(float dt, bool seen) {
   }
 
 Opponents::Opponents(PhysicsWorld& world, const Reader& read, const SbScene& carScene, const std::string& track,
-                     const Checkpoints& route, Level level, const Params& params)
+                     const Checkpoints& route, Level level, const Params& params, bool demo)
   : owner(world), lvl(level), player(route) {
   const int32_t raceId = aiRaceNumber(track);
   if(raceId==0 || route.empty())
@@ -629,7 +629,15 @@ Opponents::Opponents(PhysicsWorld& world, const Reader& read, const SbScene& car
   baseRate = race->second.coeff*diff;
 
   const int32_t bit = level==Level::Easy ? AiLayout::Easy : level==Level::Hard ? AiLayout::Hard : AiLayout::Normal;
-  const auto&   ops = race->second.opponents;
+  auto          ops = demo ? race->second.demos : race->second.opponents;
+  if(demo) {
+    // 0x4a9630: the driver's car, all of them in the demo
+    for(auto& o:ops) {
+      auto d = layout.drivers.find(o.driver);
+      o.car   = d!=layout.drivers.end() ? d->second.car : -1;
+      o.races = bit;
+      }
+    }
   for(size_t i=0; i<ops.size(); ++i) {
     const auto& o = ops[i];
     if((o.races & bit)==0 || o.car<0 || o.car>2 || o.path.empty())
@@ -713,6 +721,9 @@ void Opponents::restart() {
 void Opponents::update(float dt, bool racing, const Vec3& playerPos, size_t playerLaps, bool playerDone,
                        float raceTime, int laps) {
   player.update(playerPos,playerLaps);
+  const Opponent* active = focus>=0 && size_t(focus)<cars.size() ? cars[size_t(focus)].get() : nullptr;
+  if(active!=nullptr)
+    playerPose = active->pose();
   told.clear();
   for(size_t i=0; i<cars.size(); ++i) {
     auto& c = cars[i];
@@ -724,7 +735,8 @@ void Opponents::update(float dt, bool racing, const Vec3& playerPos, size_t play
     const Vec3 to   = c->pose().translation()-playerPose.translation();
     const bool seen = to.length()<SeeDistance && Vec3::dot(to,playerPose.vector({0,0,1}))>0;
     const size_t was = c->laps();
-    c->update(dt,baseRate,c->progress()-player.progress(),!playerDone,seen);
+    const float ahead = c->progress()-(active!=nullptr ? active->progress() : player.progress());
+    c->update(dt,baseRate,ahead,active!=nullptr || !playerDone,seen);
     const auto back = c->trackRules(dt);
     if(back==Opponent::Back::Drowned)
       told.push_back({News::Drowned,i});

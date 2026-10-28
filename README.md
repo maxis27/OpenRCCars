@@ -213,8 +213,9 @@ i ulepszenia (strzałki pod obrazkiem wybierają poziom). „Wyścig duchów” 
 (rodzaj wyniku strzałkami albo ← / →, lista ↑ / ↓ i kółkiem) to strony szybkiego wyścigu, wyścigu duchów
 i mistrzostw. Szybki wyścig i wyścig duchów ruszają tylko kupionym autem na otwartej trasie. W „Opcjach” wartości
 zmienia się strzałkami (też ← / → dla wskazanego wiersza) i suwakami; klawisz akcji zmienia się kliknięciem pola
-i naciśnięciem klawisza (Delete czyści, Esc rezygnuje). Przyciski części, których jeszcze nie ma (gra wielu graczy,
-demo), są szare.
+i naciśnięciem klawisza (Delete czyści, Esc rezygnuje). „Demo gry” (albo 3 minuty w menu głównym bez klikania)
+pokazuje nagrane wyścigi na Surferach, Rybakach i Silosie po kolei: Enter przechodzi do następnego, Esc wraca do
+menu. Przycisk gry wielu graczy, której jeszcze nie ma, jest szary.
 
 Oryginał pokazuje menu zawsze w 800x600 (`RCCars.exe` 0x4a6840). U nas menu wypełnia całe okno: tło jest rozciągnięte
 na szerokość (w oknie węższym niż 4:3 na wysokość), przyciski po prawej trzymają się krawędzi i łuków tła, a obrazki,
@@ -334,6 +335,7 @@ formats/        formaty danych, czyste C++ bez zależności
   soundbank.*   kanały dźwięku SNCH ze scen
   texttable.*   teksty gry Language/Game|System/<język>.tbl
   playerprofile.* gracze Players/*.scp, zdjęcia z .tga
+  gamescript.*  skrypty czasowe gry (RCCars.sb Level Entry, DemoEntry tras)
 physics/        fizyka jazdy i świat gry (RCCars.exe, Bullet dla rekwizytów, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
@@ -345,7 +347,7 @@ physics/        fizyka jazdy i świat gry (RCCars.exe, Bullet dla rekwizytów, b
   props.*       rekwizyty: parametry ze skryptu SCRI, kształt, bryła sztywna
   characters.*  ludzie i zwierzęta: zachowanie każdego rodzaju, kopnięcia i rzuty autem, „Wielkie Łup!”
   traffic.*     ruch uliczny: odjazdy, jazda po ścieżce, koła, światła, odpychanie aut, wieża BTR
-  opponents.*   przeciwnicy: odtwarzanie nagrań w tempie z gumką, autopilot, okrążenia, kolejność w wyścigu
+  opponents.*   przeciwnicy: odtwarzanie nagrań w tempie z gumką, autopilot, okrążenia, kolejność, auta dema
   aiemu.*       komunikaty przeciwników na konsoli czatu (Settings/AIEmu.ini)
 fx/             efekty, bez GPU
   particles.*   emiter i cząsteczki jak system cząsteczek RCCars.exe
@@ -394,7 +396,7 @@ Zrobione są wszystkie elementy pojedynczego szybkiego wyścigu. Brakuje:
 
 - **Grafika i świat**: przyciemnianie postaci i rekwizytów w cieniu (`feat_lmshd.ini`), dźwięk zahaczenia anteny
   (`Antenna_scratch`).
-- **Opakowanie gry**: demo, intro, dwóch graczy na podzielonym ekranie, gra przez sieć; z opcji działają w grze
+- **Opakowanie gry**: intro, dwóch graczy na podzielonym ekranie, gra przez sieć; z opcji działają w grze
   tylko te, które ma nasz silnik (rozdzielczość, gamma, jakość grafiki i joysticki są tylko zapisywane).
 
 ## Licencja

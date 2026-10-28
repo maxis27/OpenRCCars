@@ -5,6 +5,8 @@
 #include <Tempest/Except>
 #include <Tempest/Log>
 
+#include "formats/gamescript.h"
+
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -221,7 +223,8 @@ void MainWindow::setupOpponents() {
   try {
     opponents = std::make_unique<rc::Opponents>(*physics,[this](const std::string& f){ return resources.pack().read(f); },
                                                 carScene,level->name(),*checkpoints,aiLevel,
-                                                [this](int32_t c){ return rc::CarParams::load(resources.pack(),c); });
+                                                [this](int32_t c){ return rc::CarParams::load(resources.pack(),c); },
+                                                raceMode==Menu::Mode::Demo);
     }
   catch(const std::exception& e) {
     Log::e("opponents: ",e.what());
@@ -447,6 +450,14 @@ std::vector<rc::fx::Gunfire::Target> MainWindow::gunTargets() const {
 
 ChaseCamera::Car MainWindow::chaseCar() const {
   ChaseCamera::Car c;
+  if(const rc::Opponent* o = demoCar()) {
+    // the demo's camera follows its active car (CameraFollow '$CAR' <n>)
+    c.pose     = o->pose();
+    c.centre   = c.pose.translation();
+    c.velocity = o->velocity();
+    c.spin     = o->localSpin().length();
+    return c;
+    }
   c.pose     = carPose;
   // where the car is drawn: the physics' own position runs in fixed steps and would shake the view against the car
   c.centre   = vehicle ? vehicle->drawnCentre() : carPose.translation();
@@ -474,6 +485,26 @@ Hud::Info MainWindow::hudInfo() const {
   info.ghostRace  = ghosts!=nullptr;
   info.showMap    = showMap;
   info.showArrow  = showArrow;
+  if(const rc::Opponent* o = demoCar()) {
+    // the cockpit of the demo's car (0x4afdc0 draws the active one's); "Wciśnij <Enter> .." the first 10 s,
+    // shown in every odd second of them
+    const rc::Mat4 p = o->pose();
+    info.demo       = true;
+    info.speed      = std::abs(o->speed())*3.6f;
+    info.turbo      = 0;
+    info.speedMax   = 0;
+    info.carPos     = p.translation();
+    info.carForward = p.vector({0,0,1});
+    info.lap        = int(o->laps())+1;
+    const float t   = race->clockTime();
+    info.demoHint   = t<10.f && t>1.f && int(t)%2==1;
+    for(size_t i=0; i<opponents->size(); ++i)
+      if(&(*opponents)[i]!=o) {
+        const rc::Mat4 q = (*opponents)[i].pose();
+        info.opponents.push_back({q.translation(),q.vector({0,0,1})});
+        }
+    return info;
+    }
   for(size_t i=0; ghosts && i<ghosts->size(); ++i) {
     const auto& g = (*ghosts)[i];
     if(g.visible && !g.lap.empty())
@@ -567,6 +598,15 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     }
   if(menu->active()) {
     menu->keyDown(e.key,e.code);
+    return;
+    }
+  // the demo (0x4c89a0, message 0x8c): Esc back to the main menu (0x48c500(2)), Enter the next demo
+  // (NextDemoRace); no race menu and no pause (0x4ca960)
+  if(demo.on) {
+    if(e.key==Event::K_ESCAPE)
+      endDemo();
+    else if(e.key==Event::K_Return && !demo.next.empty())
+      demoRequested = demo.next;
     return;
     }
   // Esc: the menu over the race (dlgINRACE), the race stopped meanwhile
@@ -697,6 +737,10 @@ void MainWindow::menuCommand(Menu::Command c) {
     case Menu::Command::Race:
       raceRequested = true;
       return;
+    case Menu::Command::Demo:
+      // message 0x26d (0x4c9d6b): the demo from beach_1
+      demoRequested = "Beach_1";
+      return;
     case Menu::Command::Quit:
       Tempest::SystemApi::exit();
       return;
@@ -800,6 +844,8 @@ void MainWindow::startRace() {
       laps    = std::numeric_limits<int>::max();
       aiLevel = rc::Opponents::Level::Off;
       break;
+    case Menu::Mode::Demo:
+      break;   // startDemo()'s
     }
   // the car as the player has it (0x4aca10)
   int32_t b = 0, r = 0, t = 0, sk = 0;
@@ -857,6 +903,163 @@ void MainWindow::startRace() {
   setupGhosts();
   paused   = false;
   lastTick = Application::tickCount();
+  }
+
+void MainWindow::startDemo(const std::string& name) {
+  const size_t      trackId = Menu::trackIndex(name);
+  if(trackId>=Menu::TrackCount) {
+    Log::e("demo: no track \"",name,"\"");
+    endDemo();
+    return;
+    }
+  const std::string track = Menu::trackName(trackId);
+  menu->close();
+  // 0x4c9d6b: mode 6 (0x4a4c90), the race's settings as they are; the demo's flag (0x200) comes with the script's
+  // EnterDemo
+  raceMode = Menu::Mode::Demo;
+  demo     = Demo();
+  laps     = rc::Race::DefaultLaps;
+  aiLevel  = rc::Opponents::Level::Normal;
+  sounds->stopAll();
+  if(carSound)
+    carSound->stop();
+  presentLoading(trackId,0.f);
+  if(level!=nullptr && level->name()==track) {
+    presentLoading(trackId,0.5f);
+    race->setLaps(laps);
+    setupOpponents();
+    setupPhysics(true);
+    }
+  else {
+    presentLoading(trackId,0.2f);
+    try {
+      loadLevel(track);
+      race->setLaps(laps);
+      }
+    catch(const std::exception& e) {
+      Log::e("demo: ",e.what());
+      }
+    }
+  presentLoading(trackId,1.f);
+  setupGhosts();
+  if(level==nullptr || level->name()!=track || vehicle==nullptr || opponents==nullptr || opponents->size()==0) {
+    Log::e("demo: can't start it on ",track);
+    endDemo();
+    return;
+    }
+
+  // the track's "Scene Scripts" DemoEntry (beach_1, country_3, country_4)
+  const rc::SbScript* entry = nullptr;
+  for(auto& sc:level->scene().scripts)
+    if(sc.name=="DemoEntry")
+      entry = &sc;
+  if(entry==nullptr) {
+    Log::e("demo: ",track," has no DemoEntry script");
+    endDemo();
+    return;
+    }
+  const auto script = rc::GameScript::parse(entry->text);
+  for(auto& l:script.lines) {
+    if(l.command=="Set" && l.args.size()>=2 && l.args[0]=="NextDemoRace")
+      demo.next = l.args[1];
+    // the car's address: '$CAR' and its number (0x4e18b0, 0x4e23f0 type 9)
+    if(l.command=="SetActive" && l.args.size()>=2 && l.args[0]=="$CAR")
+      demo.focus = std::atoi(l.args[1].c_str());
+    if(l.command=="LoadMap" && !l.args.empty()) {
+      demo.loadAt  = l.time;
+      demo.loadMap = l.args[0];
+      }
+    }
+  if(demo.focus<0 || size_t(demo.focus)>=opponents->size())
+    demo.focus = 0;
+  demo.on = true;
+  opponents->follow(demo.focus);
+  // "0 StartRace" without a countdown; the player's car held above the track's box, out of everything
+  race->startNow();
+  const auto& box = level->scene().collision;
+  demo.park = rc::Mat4::translate({box.min.x,box.max.y+500.f,box.min.z});
+  carPose   = demo.park;
+  vehicle->hold(demo.park);
+  chase.reset(chaseCar());
+  paused   = false;
+  lastTick = Application::tickCount();
+  Log::i("demo: ",track,", following ",opponentName(size_t(demo.focus)),", next ",demo.next," after ",demo.loadAt," s");
+  }
+
+void MainWindow::endDemo() {
+  demo = Demo();
+  if(opponents)
+    opponents->follow(-1);
+  raceMode = Menu::Mode::Quick;
+  sounds->stopAll();
+  if(carSound)
+    carSound->stop();
+  for(auto& s:aiSounds)
+    s.stop();
+  paused = false;
+  // the track stays loaded under the main menu, as after a race left; the next race sets its field up again
+  menu->open(Menu::Page::Main);
+  }
+
+const rc::Opponent* MainWindow::demoCar() const {
+  if(!demo.on || opponents==nullptr || demo.focus<0 || size_t(demo.focus)>=opponents->size())
+    return nullptr;
+  return &(*opponents)[size_t(demo.focus)];
+  }
+
+void MainWindow::tickDemo(float dt) {
+  fog.tick(dt);
+  const bool racing = !race->holdCar();
+  vehicle->hold(demo.park);
+  opponents->collide(*vehicle,dt);
+  opponents->update(dt,racing,demo.park.translation(),0,false,race->clockTime(),race->laps());
+  if(objects)
+    objects->update(dt);
+  physics->step(dt);
+  if(objects)
+    objects->afterStep(*physics);
+  vehicle->hold(demo.park);
+  std::vector<rc::Characters::Car> others;
+  for(size_t i=0; i<opponents->size(); ++i) {
+    const rc::Mat4 p = (*opponents)[i].pose();
+    others.push_back({p.translation(),p.vector({0,0,1})*(*opponents)[i].speed()});
+    }
+  if(characters)
+    characters->update(dt,nullptr,others);
+  if(traffic)
+    traffic->update(dt,racing,nullptr,camera.position,others);
+  for(size_t i=0; i<others.size(); ++i)
+    if(others[i].hit)
+      (*opponents)[i].knock();
+  // the race's clock: the time in the cockpit and the script's
+  race->update(dt,demo.park.translation(),demo.park.vector({0,0,1}));
+  {
+    effects->tick(dt,*vehicle,opponents.get(),level->collision(),camera.position,false,false);
+    const rc::fx::View view = {camera.position,camera.viewProj(float(w())/float(std::max(1,h())))};
+    std::vector<rc::fx::Footprints::Walker> walkers;
+    if(characters)
+      for(auto* a:characters->actors())
+        walkers.push_back({a->world,a->soles});
+    effects->tickWorld(dt,view,time,[this](const rc::Vec3& p){ return level->waterHeight(p,10.f,time); },
+                       gunOrders(),gunTargets(),level->collision(),walkers);
+  }
+  for(auto& h:effects->gunHits())
+    if(h.target!=0 && h.target-1<opponents->size())
+      (*opponents)[h.target-1].shotFrom(h.gun);
+  tickSounds(dt);
+
+  // the script's LoadMap: the next track's demo
+  if(demo.loadAt>=0 && race->clockTime()>=demo.loadAt && !demo.loadMap.empty() && demoRequested.empty())
+    demoRequested = demo.loadMap;
+
+  if(zeroCam!=ZeroCam::Off) {
+    tickZeroCamera(dt);
+    return;
+    }
+  const ChaseCamera::Car c = chaseCar();
+  chase.update(c,dt);
+  chase.apply(c,&level->collision(),dt,camera);
+  level->keepAboveWater(camera,time);
   }
 
 void MainWindow::drawCarPreview(Encoder<CommandBuffer>& enc, const Menu::Preview& p) {
@@ -919,6 +1122,10 @@ void MainWindow::tick(float dt) {
     }
   else
     lastDt = dt;
+  if(demo.on) {
+    tickDemo(dt);
+    return;
+    }
   fog.tick(dt);
   if(vehicle!=nullptr) {
     rc::Vehicle::Input in;
@@ -1406,7 +1613,7 @@ void MainWindow::tickZeroCamera(float dt) {
     camera.pitch = 0;
   }
 
-void MainWindow::tickSounds(float dt) {
+void MainWindow::tickPlayerSounds(float dt) {
   const bool racing = race->phase()==rc::Race::Phase::Racing;
   const bool control = !race->holdCar() && zeroCam==ZeroCam::Off && !flying;
   const float fwd   = vehicle->speed();
@@ -1430,6 +1637,12 @@ void MainWindow::tickSounds(float dt) {
   in.shot     = shotSound;
   shotSound   = false;
   carSound->update(in,dt);
+  }
+
+void MainWindow::tickSounds(float dt) {
+  const bool racing = race->phase()==rc::Race::Phase::Racing;
+  if(!demo.on)
+    tickPlayerSounds(dt);
 
   // the computer's cars and the water, heard from the camera
   const rc::Vec3 ear   = camera.position;
@@ -1462,6 +1675,8 @@ void MainWindow::tickSounds(float dt) {
                        wl && *wl>at.y);
     }
 
+  if(demo.on)
+    return;
   // "wrong way" is said once each time the warning comes up
   if(race->wrongWay() && !wasWrongWay)
     sounds->play("Checkpoint","cp_wrongway");
@@ -1603,6 +1818,8 @@ void MainWindow::render() {
       raceRequested = false;
       startRace();
       }
+    if(!demoRequested.empty())
+      startDemo(std::exchange(demoRequested,std::string()));
     if(fpsLimit>0) {
       const uint64_t period = 1000/uint64_t(fpsLimit);
       const uint64_t t      = Application::tickCount();
@@ -1652,7 +1869,7 @@ void MainWindow::render() {
     push.sunDir[3] = 1.0f;                     // lightmap scale
     push.time      = time;
     if(car) {
-      const rc::Vec3 at = carPose.translation();
+      const rc::Vec3 at = demoCar()!=nullptr ? demoCar()->pose().translation() : carPose.translation();
       push.carPos[0] = at.x; push.carPos[1] = at.y; push.carPos[2] = at.z;
       }
 
@@ -1669,11 +1886,11 @@ void MainWindow::render() {
         characterView->draw(enc,frameId,resources,*characters,push);
       if(traffic)
         trafficView->draw(enc,frameId,*traffic,viewProj,push,level ? &level->collision() : nullptr);
-      if(car && level) {
+      if(car && level && !demo.on) {
         carSpotList.assign(1,carShadow->spot(carId,carPose));
         carSpots->draw(enc,frameId,carSpotList,viewProj,push,level->collision());
         }
-      if(car) {
+      if(car && !demo.on) {
         auto&      mesh  = car->at((carPose.translation()-camera.position).length(),lodDistances);
         const auto parts = carPartPoses(mesh);
         mesh.setDirt(forcedDirt>=0 ? float(forcedDirt) : effects->dirt());
@@ -1737,7 +1954,7 @@ void MainWindow::render() {
         info.viewProj = viewProj;
         hud->draw(enc,frameId,int(w()),int(h()),*race,info);
         // the direction arrow over everything, in a depth buffer of its own
-        if(race->phase()!=rc::Race::Phase::Finished && !checkpoints->empty() && showArrow) {
+        if(race->phase()!=rc::Race::Phase::Finished && !checkpoints->empty() && showArrow && !demo.on) {
           enc.setFramebuffer({{swapchain[swapchain.currentImage()],Tempest::Preserve,Tempest::Preserve}},
                              {zbuffer,1.f,Tempest::Discard});
           arrow->draw(enc,int(w()),int(h()));

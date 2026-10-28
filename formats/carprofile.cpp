@@ -379,6 +379,13 @@ AiLayout AiLayout::parse(std::string_view text) {
         if(rest=="Reson") o.reson  = int32_t(number(value));
         if(rest=="Tires") o.tires  = int32_t(number(value));
         }
+      else if(splitNumbered(key,"Demo",n,rest) && n>0 && n<=16) {
+        if(r.demos.size()<size_t(n))
+          r.demos.resize(size_t(n));
+        auto& o = r.demos[size_t(n-1)];
+        if(rest=="Ref")  o.driver = int32_t(number(value));
+        if(rest=="Path") o.path   = str;
+        }
       }
     }
   return ret;

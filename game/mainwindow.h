@@ -74,6 +74,14 @@ class MainWindow : public Tempest::Window {
     void menuCommand(Menu::Command c);
     // the race of the menu's Setup, from the loading screen
     void startRace();
+    // the game's demo on `track` (RCCars.exe 0x48c420(track, "DemoEntry")): mode 6 with flag 0x200, the track's
+    // Demo1 .. Demo5 racing, the camera on the car the track's DemoEntry script makes active, and its LoadMap
+    // going on to the next track; Enter goes on at once (NextDemoRace), Esc back to the main menu
+    void startDemo(const std::string& track);
+    void endDemo();
+    void tickDemo(float dt);
+    // the car the demo follows, nullptr without the demo
+    const rc::Opponent* demoCar() const;
     void renderMenu();
     // one frame of the loading screen
     void presentLoading(size_t track, float progress);
@@ -100,6 +108,7 @@ class MainWindow : public Tempest::Window {
     CarModel& carModel(const rc::Ghosts::Look& look);
     // engines, checkpoint voice: once per frame after the physics
     void tickSounds(float dt);
+    void tickPlayerSounds(float dt);            // the player's engine and its bumps
     static std::vector<rc::Mat4> partPoses(const ModelMesh& mesh, const rc::CarGeometry& geom, const rc::CarRig::Pose& pose);
     std::vector<rc::Mat4> carPartPoses(const ModelMesh& mesh) const;
     std::vector<rc::Mat4> opponentPartPoses(const ModelMesh& mesh, const rc::Opponent& o) const;
@@ -192,6 +201,17 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<Menu>   menu;
     std::unique_ptr<Players> players;   // Players\ and the one playing
     bool                    raceRequested = false;  // "Wyścig": the loading screen at the next frame
+    // the demo: what the track's DemoEntry script says (RCCars.sb of the track, "Scene Scripts")
+    struct Demo {
+      bool        on     = false;
+      int         focus  = -1;   // SetActive '$CAR' <n>: the car's number in the race (0x4a5320: Demo<n+1>)
+      std::string next;          // Set "NextDemoRace" = ...: the track Enter loads
+      float       loadAt = -1;   // s after the start: LoadMap
+      std::string loadMap;
+      rc::Mat4    park;          // the player's car, held out of the way: the demo has none (0x4a5320)
+      };
+    Demo                    demo;
+    std::string             demoRequested;          // a demo track to load at the next frame
     std::array<std::unique_ptr<CarModel>,3> previewCars; // the menus' car, by car
     std::array<std::array<int32_t,4>,3>     previewLook;  // and its upgrades and skin
 

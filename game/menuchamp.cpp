@@ -247,7 +247,7 @@ void Menu::refreshButtons() {
   const size_t car   = std::min<size_t>(choice.car,2);
   const bool   owned = p.cars[car].bought;
   for(auto& b:right) {
-    if(b.kind==Button::Race && (current==Page::Main || raceSetup()))
+    if(b.kind==Button::Race && (current==Page::Main || raceFrame()))
       b.enabled = quickAllowed();
     if(current==Page::Champ && b.id==C_Training)
       b.enabled = players->trackOpen(choice.track,true);
@@ -270,6 +270,11 @@ void Menu::refreshButtons() {
 void Menu::buttonAction(int id) {
   if(current==Page::Players) {
     playerAction(id);
+    return;
+    }
+  if(id>=C_Champ && id<=C_Stats && infoFrame()) {
+    // the frame's radio buttons: its pages
+    showInfo(id-C_Champ);
     return;
     }
   if(id==C_Garage) {
@@ -310,14 +315,19 @@ void Menu::buildChamp() {
     return &right.back();
     };
   add(0,T_Championship,Button::Radio, C_Champ,   true)->checked = true;
-  add(1,T_MapInfo,     Button::Radio, C_MapInfo, false);
-  add(2,T_TrackStats,  Button::Radio, C_Stats,   false);
+  add(1,T_MapInfo,     Button::Radio, C_MapInfo, true);
+  add(2,T_TrackStats,  Button::Radio, C_Stats,   true);
   add(3,T_Garage,      Button::Tab,   C_Garage,  players!=nullptr);
   add(4,T_NewChamp,    Button::Action,C_NewChamp,players!=nullptr);
   add(6,T_Training,    Button::Action,C_Training,false);
   add(8,T_MainMenu,    Button::Back,  0,         true)->to = Page::Main;
   add(-1,T_Race,       Button::Race,  C_Race,    players!=nullptr);
+  champTrackFix();
+  champHover = -1;
+  refreshButtons();
+  }
 
+void Menu::champTrackFix() {
   // 0x4be720: a track not open gives way to the last of the open ones from the first
   if(players!=nullptr && !players->trackOpen(choice.track,true)) {
     size_t last = 0;
@@ -330,8 +340,6 @@ void Menu::buildChamp() {
     champTop = choice.track;
   if(choice.track>=champTop+vis)
     champTop = choice.track+1-vis;
-  champHover = -1;
-  refreshButtons();
   }
 
 void Menu::champAction(int id) {

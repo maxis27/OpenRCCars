@@ -17,7 +17,7 @@
 
 class Players;
 class Sounds;
-namespace rc { struct PlayerProfile; }
+#include "formats/playerprofile.h"
 
 // The game's front end as RCCars.exe draws it (its dialog framework, 0x43f250 and the window classes of
 // 0x4aa2e0 ..): the main menu, the quick race, the championship with its garage, the choice of the player, the
@@ -264,8 +264,12 @@ class Menu : public Canvas {
     // shot_<track>_<shot> in `b`, its frame included, cut at `clip`'s left and right
     void   drawShot(size_t track, int shot, const Box& b, float alpha, const Box* clip = nullptr);
     void   drawMain();
-    // the quick race's screen, or the ghost race's (the same with the ghosts' kind for the laps and the skill)
-    bool   raceSetup() const { return current==Page::QuickRace || current==Page::GhostRace; }
+    // the quick race's frame, or the ghost race's (the same with the ghosts' kind for the laps and the skill)
+    bool   raceFrame() const { return current==Page::QuickRace || current==Page::GhostRace; }
+    // and its own page shown
+    bool   raceSetup() const { return raceFrame() && infoPage==0; }
+    // the championship's frame with its tracks' page shown
+    bool   champPage() const { return current==Page::Champ && infoPage==0; }
     void   drawQuickRace();
     // the player's picture, name, rank, car, time, scores and money (0x4a7170), the main menu's or another's
     void   drawPanel(rc::PlayerProfile& p, bool main);
@@ -335,6 +339,32 @@ class Menu : public Canvas {
     void   champAnswer(Message::Action a);
     Table  champTable() const;
     void   drawChamp();
+    // the pages of the frames' radio buttons (menuinfo.cpp): 0 the frame's own, 1 "Mapa i informacje" (dlgMAPINFO,
+    // 0x4caa20), 2 "Statystyki toru" (dlgSTAT, 0x4d8060)
+    bool   infoFrame() const;
+    void   showInfo(int page);
+    // the player playing may race on `track` in this frame (0x4e84a0)
+    bool   trackOpenHere(size_t track) const;
+    // 0 the championship's results, 1 the best lap, 2 .. 4 the best race of 3, 5, 7 laps (0x56fa20)
+    int    statKind() const;
+    Table  statTable() const;
+    const rc::PlayerProfile::Record* statRecord(const rc::PlayerProfile& p, int kind) const;
+    void   fillStats();
+    void   scrollStats(int step);
+    void   changeInfoShot(int step);
+    // after one of infoEnums has changed by `step`
+    void   changeInfoEnum(Enum& e, int step);
+    void   infoTick(float dt);
+    // in the units the page is drawn in; true if it was taken
+    bool   infoClick(float mx, float my);
+    void   infoHover(float mx, float my);
+    bool   infoKey(Tempest::Event::KeyType key);
+    void   drawInfo();
+    void   drawMapInfo();
+    void   drawStats();
+    // a track not open shown on another page of the championship's frame: back to the last open one (0x4be720)
+    void   champTrackFix();
+
     // Page::ChampRace (0x4c0610, 0x4c0b80)
     void   fillRivals();
     void   champRacePill(size_t i);
@@ -393,6 +423,13 @@ class Menu : public Canvas {
     // Page::Champ: the first row of the tracks shown, the row under the mouse
     size_t                  champTop = 0;
     int                     champHover = -1;
+    // the page of the frame's radio buttons shown, its "<  >" (the track's and the pictures', or the kind of the
+    // results), the pictures' row still moving (in pictures), the players of the results in their order
+    int                     infoPage = 0;
+    std::vector<Enum>       infoEnums;
+    float                   infoShotScroll = 0;
+    std::vector<size_t>     statRows;
+    size_t                  statTop = 0;
     // Page::ChampRace: the opponents of the race (AIRace<n> AI<n> of the expert races)
     struct Rival {
       std::string                 name;

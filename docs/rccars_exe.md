@@ -797,7 +797,7 @@ mistrzostw.
 - **Trasa otwarta** (0x4e84a0): poza mistrzostwami (flaga 0x100 z 0x1499dd0) wystarczy `IsOpened`; inaczej wyniki
   ≥ `AccessCash`, a ostatnia trasa wymaga jeszcze wygranych (najlepsze miejsce 0) na wszystkich pozostałych (0x4e8580).
 - **Ramka mistrzostw** (0x4be150): nagłówek 10051; przyciski: „Mistrzostwa” (radio 0x76f), „Mapa i informacje”
-  i „Statystyki toru” (0x770, 0x771; u nas wyłączone, to osobne strony), „Garaż” (0x772), „Nowe mistrzostwa”
+  i „Statystyki toru” (0x770, 0x771; strony z sekcji „Mapa i informacje, statystyki toru”), „Garaż” (0x772), „Nowe mistrzostwa”
   (0x773, pomarańczowy), „Trening” (0x774, pomarańczowy, aktywny, gdy trasa jest otwarta), „Menu główne”, „Wyścig”.
 - **Strona tras** (`dlgCHAMP`, 0x4be720, wypełnianie 0x4be0a0): panel gracza; tabela 88,233 440×227, nagłówek
   16 %, wiersze 13 % (6 widocznych, pasek przewijania), kolumny 0,2/0,2/0,17/0,12/reszta, nagłówki 40900–40904
@@ -904,6 +904,45 @@ ustawia flagę 0x40 i tryb 2 („Zwykły”) albo 0x80 i tryb 3 („Multi”).
 - **U nas**: nasze trasy nie mają przejazdu przez linię przy starcie, więc pierwszym przejazdem jest „Jazda!”,
   a „Wróć na start” i R pokazują odliczanie od nowa (bez sekundy przerwy); „Jeszcze raz?” zostawia duchy (zapisuje
   je w „Multi”) i zaczyna od odliczania. Duchy grają silnikiem jak przeciwnicy, kiedy jadą.
+
+## Mapa i informacje, statystyki toru
+
+Ramki szybkiego wyścigu, wyścigu duchów i mistrzostw mają tablice stron przełączanych przyciskami radio (0x56f58c
+duchy: 0x4d3430, 0x4caa20, 0x4d8060; 0x56e040 mistrzostwa: 0x4be630, 0x4caa20, 0x4d8060): pierwsza to strona ramki,
+druga „Mapa i informacje” (`dlgMAPINFO`), trzecia „Statystyki toru” (`dlgSTAT`). Przyciski po prawej zostają,
+zmienia się tylko środek (komunikaty 0x26f/0x270 chowają i pokazują kontrolki strony w 0,5 s).
+
+- **Mapa i informacje** (0x4cabc0 tworzy, 0x4cb540 układ z `dlgMAPINFO.ini`, 0x4cb080 wypełnia, 0x4cb2b0 zmiana
+  trasy, 0x4cb4e0 zmiana zdjęcia). Poza grą sieciową (tryby 7, 8: czat zamiast zdjęć):
+  - `shotTrackView` (0x839): `shot_<trasa>_L` (0x4a8ea0 z indeksem -1, `%s_L`) na 512x512 jednostek, cała tekstura.
+  - `shotTrackEnum` (0x838): „<  >” z nazwami tras (40000+, 0x4a8a00); zmiana ustawia trasę ramki (0x4a4c50)
+    i wysyła do niej 0x279 (stan przycisku „Wyścig”). W trybie 8 wyłączony.
+  - `staticTrackInfo` (0x837): Smash20, szary 0xd0d0d0, opis 40030+trasa (piąty tekst 0x4a8a00).
+  - `shotList` (0x834, klasa SHS 0x4b8fd0): 5 zdjęć `shot_<trasa>_0..4` (`%s_%i`), wybrane w ramce
+    `shotList` (349,387 199x152), pozostałe w rzędzie między `BoundL`/`BoundR` (25..686) i `BoundUp`/`BoundDn`
+    (402..478), co `Space` 5, w kółko (indeks modulo liczba zdjęć). Tekstura z ramką: UV 0x56edd8
+    (0.109, 0.203)–(0.891, 0.793). Zmiana przesuwa rząd przez 0,17 s (0x4b9e90).
+  - `enumShot` (0x835): „<  >” bez tekstu (5 pustych wartości), wybiera zdjęcie; `staticShortListText` (0x836)
+    „Zdjęcia” (41200) Smash26 z linią.
+  - `staticClosedInfo` (0x83a): „Zamknięty” (41201), gdy trasa niedostępna dla gracza (0x4e84a0).
+- **Statystyki toru** (0x4d81a0 tworzy, 0x4d86c0 wypełnia, 0x4d8860 tabela, 0x4d8b80 sortowanie, układ
+  `dlgSTAT.ini` przez 0x4d8cd0):
+  - `staticTrackName` (0xb54) Smash26 z linią, `staticTrackInfo` (0xb55) Smash20 z opisem 40020+trasa, `shotTrack`
+    (0xb56) `shot_<trasa>_0`, `staticClosedInfo` (0xb5b) „Nie dostępny” (40616) na trasie niedostępnej.
+  - `tableStat` (0xb59, klasa LST): kolumny 0.34/0.30/0.36, nagłówek 0.12, wiersz 0.1, pasek przewijania 0.04;
+    nagłówki „Gracz” (40601), wynik wg rodzaju (tablica 0x56fa20: 40614 „Wyniki”, 40602 „Okrążenie”,
+    40603..40605 „3/5/7 okrążeń”), „Samochód” (40606). Wiersze to wszyscy gracze (0x14ac170).
+  - `enumStatType` (0xb57) z „Posortuj wyniki według” (40600, `staticShowResult` 0xb58): 40615 „Wyniki” (tylko
+    w ramce mistrzostw, flaga 0x100 0x1499dd0), 40607 „Okrążenie”, 40608..40610 „3/5/7 okrążeń”.
+  - Rekordy trasy w pamięci profilu (+0x3d8 na trasę): +0x164 najlepsze okrążenie, +0x190 rekord mistrzostw (jego
+    „czas” to wygrane pieniądze, pokazywane `%i`), +0x240/+0x298/+0x2f0 najlepszy wyścig 3/5/7 okrążeń. Wartość
+    ≥ 10000 to „n/d” (40612, a w kolumnie auta 40611); czas w formie 3 0x49ec00 (`%i:%02i.%02i`), auto 40100+4·auto.
+  - Sortowanie (0x4d8b80): czasy rosnąco, pieniądze mistrzostw malejąco (po `ftol`), remis wg imienia (`strcmpi`).
+    Wiersz gracza grającego jest zaznaczony, a lista zaczyna się pół strony nad nim (+1).
+- **U nas**: strony zmieniają się od razu (bez 0,5 s chowania kontrolek). Na mapie strzałki ← / → zmieniają
+  zdjęcie, ↑ / ↓ trasę, kliknięcie zdjęcia z boku przesuwa je na środek; w statystykach ← / → zmienia rodzaj,
+  ↑ / ↓ i kółko przewijają. Trasa zamknięta wybrana na mapie w mistrzostwach ustępuje ostatniej otwartej po
+  powrocie na stronę tras (jak 0x4be720).
 
 ## Tryb deweloperski
 

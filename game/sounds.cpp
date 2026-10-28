@@ -3,6 +3,7 @@
 #include <Tempest/Log>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <string_view>
 
@@ -233,7 +234,8 @@ void Sounds::startMusic() {
   musicWanted = true;
   if(!useMusic)
     return;
-  musicOn = true;
+  musicOn      = true;
+  loadFailures = 0;
   nextTrack();
   }
 
@@ -273,24 +275,42 @@ void Sounds::stopMusic() {
   }
 
 void Sounds::nextTrack() {
-  // a track that cannot be read is skipped, but not forever
-  for(size_t tries=0; tries<music.tracks().size(); ++tries) {
-    const auto* t = music.next();
-    if(t==nullptr)
-      break;
-    try {
-      mix.setMusic(std::make_unique<rc::Mp3Stream>(res.readFile(std::filesystem::path("Tracks")/t->file)));
-      Log::i("music: ",t->file);
-      return;
-      }
-    catch(const std::exception& e) {
-      Log::e("music \"",t->file,"\": ",e.what());
-      }
+  if(loading.valid())
+    return;  // one is on its way already
+  const auto* t = music.next();
+  if(t==nullptr) {
+    musicOn = false;
+    return;
     }
-  musicOn = false;
+  // reading a few MB of MP3 from the disk would stop the game for a moment, so a worker does it
+  loadingFile = t->file;
+  loading = std::async(std::launch::async,[this,path = std::filesystem::path("Tracks")/t->file]() {
+    return std::make_unique<rc::Mp3Stream>(res.readFile(path));
+    });
   }
 
 void Sounds::tick() {
+  if(loading.valid()) {
+    if(loading.wait_for(std::chrono::seconds(0))!=std::future_status::ready)
+      return;
+    try {
+      auto stream = loading.get();
+      loadFailures = 0;
+      if(musicOn) {
+        mix.setMusic(std::move(stream));
+        Log::i("music: ",loadingFile);
+        }
+      }
+    catch(const std::exception& e) {
+      // a track that cannot be read is skipped, but not forever
+      Log::e("music \"",loadingFile,"\": ",e.what());
+      if(++loadFailures>=music.tracks().size())
+        musicOn = false;
+      else if(musicOn)
+        nextTrack();
+      }
+    return;
+    }
   if(musicOn && mix.musicEnded())
     nextTrack();
   }

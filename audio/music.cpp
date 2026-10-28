@@ -50,7 +50,8 @@ Mp3Stream::Mp3Stream(std::vector<uint8_t> f) : impl(std::make_unique<Impl>()) {
     impl->mp3 = {};
     throw std::runtime_error("unsupported MP3 file");
     }
-  impl->pcm.resize(size_t(8192)*impl->mp3.channels);
+  // small: it is decoded on the mixing thread while the mixer is locked, and the game waits for that lock
+  impl->pcm.resize(size_t(2048)*impl->mp3.channels);
   }
 
 Mp3Stream::~Mp3Stream() = default;

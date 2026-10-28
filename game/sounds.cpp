@@ -282,7 +282,9 @@ void Sounds::nextTrack() {
     musicOn = false;
     return;
     }
-  // reading a few MB of MP3 from the disk would stop the game for a moment, so a worker does it
+  // reading a few MB of MP3 from the disk would stop the game for a moment, so a worker does it. RCCars.exe does
+  // not stop for it either: its music thread (0x486d70) waits for the DirectShow graph's EC_COMPLETE and builds the
+  // next track's graph itself (0x486350, 0x486690), and DirectShow streams and decodes the file on its own threads
   loadingFile = t->file;
   loading = std::async(std::launch::async,[this,path = std::filesystem::path("Tracks")/t->file]() {
     return std::make_unique<rc::Mp3Stream>(res.readFile(path));

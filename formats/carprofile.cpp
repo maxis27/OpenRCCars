@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <iterator>
 
 #include "chunk.h"
@@ -32,6 +34,8 @@ CarProfile CarProfile::parse(const std::vector<uint8_t>& data) {
       for(auto& h:c.children(0)) {
         if(h.id=='g' && h.size()>=2)
           stride = size_t(h.data()[0]) | size_t(h.data()[1])<<8;
+        if(h.id=='i' && h.size()>=2)
+          ret.car = int32_t(h.data()[0] | h.data()[1]<<8);
         // "Time path FULL: 68.185939", "Time path CYCLE: 65.022942"
         const std::string_view s = h.str();
         const size_t           colon = s.find(": ");
@@ -43,6 +47,12 @@ CarProfile CarProfile::parse(const std::vector<uint8_t>& data) {
             cycle = v;
           }
         }
+      }
+    if(c.id==0x63 && c.size()>=0x14) {
+      // the profile's header as it was in memory: [frames][time][boost][resonator][tires] ..
+      ret.boost     = c.i32(8);
+      ret.resonator = c.i32(0xc);
+      ret.tires     = c.i32(0x10);
       }
     if(c.id==0x64) {
       f      = c;
@@ -64,8 +74,11 @@ CarProfile CarProfile::parse(const std::vector<uint8_t>& data) {
       fr.rot[k] = frames->f32(at+16+4*size_t(k));
     fr.velocity  = {frames->f32(at+32),frames->f32(at+36),frames->f32(at+40)};
     fr.spin      = {frames->f32(at+44),frames->f32(at+48),frames->f32(at+52)};
-    for(int k=0; k<4; ++k)
+    for(int k=0; k<6; ++k) {
       fr.suspension[k] = frames->f32(at+56+4*size_t(k));
+      fr.change[k]     = frames->f32(at+80+4*size_t(k));
+      }
+    fr.steer     = frames->f32(at+104);
     fr.keys      = frames->u32(at+132);
     }
   // time must not go back
@@ -74,6 +87,121 @@ CarProfile CarProfile::parse(const std::vector<uint8_t>& data) {
   if(full>0 && cycle>0 && cycle<=full)
     ret.loopStart = std::clamp(full-cycle,0.f,ret.duration());
   return ret;
+  }
+
+namespace {
+
+// the chunks of the format (formats/chunk.h): [u8 id][u8 type][u32 end], what the end of each nested one is
+// filled in when it is closed
+class ChunkWriter {
+  public:
+    std::vector<uint8_t> out;
+
+    size_t open(uint8_t id, uint8_t type) {
+      const size_t at = out.size();
+      out.insert(out.end(),{id,type,0,0,0,0});
+      return at;
+      }
+    void close(size_t at) {
+      const uint32_t end = uint32_t(out.size());
+      std::memcpy(out.data()+at+2,&end,4);
+      }
+    void word(uint8_t id, uint16_t v) {
+      const size_t at = open(id,0x20);
+      raw(&v,2);
+      close(at);
+      }
+    void text(uint8_t id, const std::string& s) {
+      const size_t at = open(id,0x40);
+      raw(s.c_str(),s.size()+1);
+      close(at);
+      }
+    void raw(const void* p, size_t n) {
+      const auto* b = static_cast<const uint8_t*>(p);
+      out.insert(out.end(),b,b+n);
+      }
+    void f32(float v)    { raw(&v,4); }
+    void u32(uint32_t v) { raw(&v,4); }
+  };
+
+std::string printed(const char* f, double v) {
+  char buf[64];
+  std::snprintf(buf,sizeof(buf),f,v);
+  return buf;
+  }
+
+}
+
+std::vector<uint8_t> CarProfile::save() const {
+  // 0x502010 with the loop at frame 0 (0x4f17d0 writes the ghosts so)
+  ChunkWriter w;
+  const size_t root = w.open(0x50,0x22);
+  const uint16_t one = 1;
+  w.raw(&one,2);
+
+  const size_t head = w.open(0x60,0x02);
+  w.word('a',0);
+  w.word('i',uint16_t(std::max(car,0)));
+  const float first = list.empty() ? 0.f : list.front().time;
+  const float last  = list.empty() ? 0.f : list.back().time;
+  float way = 0;
+  for(size_t i=1; i<list.size(); ++i)
+    way += (list[i].position-list[i-1].position).length();
+  w.text('t',printed("Time path FULL: %f",double(last-first)));
+  w.text('u',printed("Time path CYCLE: %f",double(last-first)));
+  w.text('v',printed("Distance FULL: %f",double(way)));
+  w.text('w',printed("Distance CYCLE: %f",double(way)));
+  {
+    char buf[128];
+    const Vec3 p = list.empty() ? Vec3{} : list.front().position;
+    std::snprintf(buf,sizeof(buf),"Cycle NMB: %d x: %f y: %f z: %f",0,double(p.x),double(p.y),double(p.z));
+    w.text('x',buf);
+  }
+  // 0x2070 .. 0x2073 as CarProfiles\*.dat have them, then the sizes of the header, a frame and an event
+  w.word('p',0);
+  w.word('q',1);
+  w.word('r',0);
+  w.word('s',0);
+  w.word('f',0x24);
+  w.word('g',0x88);
+  w.word('h',0x0c);
+  w.close(head);
+
+  const size_t prof = w.open(0x63,0x02);
+  w.u32(uint32_t(list.size()));
+  w.f32(last);
+  w.u32(uint32_t(boost));
+  w.u32(uint32_t(resonator));
+  w.u32(uint32_t(tires));
+  w.u32(uint32_t(list.size()));
+  w.u32(0);
+  w.u32(0);   // no events
+  w.u32(0);
+  w.close(prof);
+
+  const size_t frames = w.open(0x64,0x02);
+  for(auto& f:list) {
+    w.f32(f.time);
+    w.f32(f.position.x); w.f32(f.position.y); w.f32(f.position.z);
+    for(float r:f.rot)
+      w.f32(r);
+    w.f32(f.velocity.x); w.f32(f.velocity.y); w.f32(f.velocity.z);
+    w.f32(f.spin.x);     w.f32(f.spin.y);     w.f32(f.spin.z);
+    for(float v:f.suspension)
+      w.f32(v);
+    for(float v:f.change)
+      w.f32(v);
+    w.f32(f.steer);
+    for(float v:f.suspension)
+      w.f32(v!=0 ? 0.0014f : 0.f);
+    w.u32(f.keys);
+    }
+  w.close(frames);
+
+  const size_t events = w.open(0x65,0x02);
+  w.close(events);
+  w.close(root);
+  return std::move(w.out);
   }
 
 size_t CarProfile::find(float time, float& t) const {
@@ -115,6 +243,11 @@ Mat4 CarProfile::pose(float time) const {
   const Vec3 p = a.position+(b.position-a.position)*t;
   m.m[0][3] = p.x; m.m[1][3] = p.y; m.m[2][3] = p.z;
   return m;
+  }
+
+const CarProfile::Frame& CarProfile::frameAt(float time) const {
+  float t = 0;
+  return list[find(time,t)];
   }
 
 Vec3 CarProfile::velocity(float time) const {
@@ -232,6 +365,8 @@ AiLayout AiLayout::parse(std::string_view text) {
         r.coeff = number(value);
       else if(key=="PlayerPath")
         r.playerPath = str;
+      else if(key=="GhostPath")
+        r.ghostPath = str;
       else if(splitNumbered(key,"AI",n,rest) && n>0 && n<=16) {
         if(r.opponents.size()<size_t(n))
           r.opponents.resize(size_t(n));

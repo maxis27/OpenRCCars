@@ -38,6 +38,7 @@ class Menu : public Canvas {
       ChampRace,  // the championship race's fee and opponents before it: dlgCHRACE (0x4c03c0)
       Garage,     // "Garaż" (0x4c5f00): the cars (dlgSETCAR, 0x4d5330) and their upgrades (dlgSETDETAIL, 0x4d43e0 ..)
       ChampWin,   // the last track won: the congratulations (0x4c13a0, 0x4c1790)
+      GhostRace,  // "Wyścig duchów" (0x4d3000): dlgRACESUM with dlgRACESUM_GHOST's "Typ wyścigu" for the laps
       };
     // what the player chose, for MainWindow
     enum class Command : uint8_t {
@@ -53,6 +54,8 @@ class Menu : public Canvas {
     // the game modes of 0x4a4ca0 that the menus start
     enum class Mode : uint8_t {
       Quick        = 1,  // "Szybki wyścig": the laps and the skill chosen
+      Ghost        = 2,  // "Wyścig duchów", "Zwykły": against the own ghost of this race (flag 0x40)
+      MultiGhost   = 3,  // "Multi": against the ghosts of GhostRecords\ (flag 0x80)
       Training     = 4,  // "Trening" of the championship: 3 laps, the easy opponents, no fee and no prize
       Championship = 5,  // 5 laps, the expert opponents, the fee paid, the prize won (0x4e03b0)
       };
@@ -62,6 +65,7 @@ class Menu : public Canvas {
       int     laps    = 3;   // 3, 5 or 7 in a quick race
       int     skill   = 1;   // 0..2: "Niskie", "Norma", "Ekspert"
       Mode    mode    = Mode::Quick;
+      bool    ghost() const { return mode==Mode::Ghost || mode==Mode::MultiGhost; }
       };
     // the turning car of the quick race (AnimPreview, 0x4a9e70), in window pixels
     struct Preview {
@@ -260,6 +264,8 @@ class Menu : public Canvas {
     // shot_<track>_<shot> in `b`, its frame included, cut at `clip`'s left and right
     void   drawShot(size_t track, int shot, const Box& b, float alpha, const Box* clip = nullptr);
     void   drawMain();
+    // the quick race's screen, or the ghost race's (the same with the ghosts' kind for the laps and the skill)
+    bool   raceSetup() const { return current==Page::QuickRace || current==Page::GhostRace; }
     void   drawQuickRace();
     // the player's picture, name, rank, car, time, scores and money (0x4a7170), the main menu's or another's
     void   drawPanel(rc::PlayerProfile& p, bool main);
@@ -374,7 +380,7 @@ class Menu : public Canvas {
 
     std::vector<Button>     right;      // slots 0..7, then the back and race buttons
     std::vector<Pill>       pills;
-    std::vector<Enum>       enums;      // QuickRace: laps, skill
+    std::vector<Enum>       enums;      // QuickRace: laps, skill; GhostRace: the ghosts' kind
     Players*                players = nullptr;
     std::unordered_map<std::string,FaceTex> faces;   // by the player's name
     // Page::Finish: its cars, the time it has been open, the time it has been going (< 0 not) and what then

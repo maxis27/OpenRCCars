@@ -759,8 +759,8 @@ Po wyścigu (szybki wyścig to tryb 1, 0x4d2dd5):
 `dlgFINISH` (tworzenie 0x4c4f90, obsługa 0x4c44e0, wypełnianie 0x4c47e0, układ 0x4c5b50, przyciski 0x4c5500):
 
 - **Kiedy**: gdy auto gracza skończy wyścig (stan 2, 0x4a5100), gra uruchamia skrypt `LevelFinish` z `RCCars.sb`
-  („3 ShowTable”), więc tabela pojawia się 3 s po mecie (zdarzenie 30 → 0x4de520 z 0x4c44e0; w trybach duchów 7, 8
-  inna, 0x4cc670). W mistrzostwach przy wygranej na ostatniej trasie skrypt to `ChampionshipWin`. Wyścig w tle
+  („3 ShowTable”), więc tabela pojawia się 3 s po mecie (zdarzenie 30 → 0x4de520 z 0x4c44e0; w trybach 7 i 8,
+  grze w sieci, inna, 0x4cc670; wyścig duchów mety nie ma). W mistrzostwach przy wygranej na ostatniej trasie skrypt to `ChampionshipWin`. Wyścig w tle
   trwa: tabela co klatkę bierze kolejność z 0x4ea2d0 (skończeni po czasie, reszta po drodze).
 - **Rysowanie** (0x15): ekran przyciemniony `0x7f000020`, ramka 0x4acb20 (`messagebox.csi`: rogi 32 piksele,
   UV 0x56cd38, prawe odbite, środek z teksela 0,4), potem ogólna obsługa okien 0x4de520 przyciemnia jeszcze raz
@@ -784,7 +784,7 @@ Po wyścigu (szybki wyścig to tryb 1, 0x4d2dd5):
 - **Przyciski**: „Wyjdź” i klawisz akcji 12 (Esc; u nas też Enter) wygaszają okno i wysyłają 0x26b: okno się
   zamyka, wyścig się kończy (0x48c500(3)) i zapisuje (0x4c56c0). „Jeszcze raz?” wysyła 0x26d: okno się zamyka
   i 0x27e startuje wyścig od nowa.
-- **Nie przeniesione**: tabela duchów (0x4ccb40) i sieci (`dlgMULTI_FINISH`). Premia mistrzostw opisana niżej.
+- **Nie przeniesione**: tabela gry w sieci (0x4ccb40, `dlgMULTI_FINISH`). Premia mistrzostw opisana niżej.
 
 ## Mistrzostwa i garaż
 
@@ -858,6 +858,52 @@ mistrzostw.
   „Sprzedaj”: inny poziom niż oglądany → 40713 (strona kół na tym kończy, dopalacz i silnik idą dalej do pytania).
 - **Ceny**: sprzedaż to `int(cena × 0,9f)` ($50 → $44). Silnik i koła mają ceny z `Resonator-Car<n>` (0x4d6840
   i 0x4d7130 pytają 0x4a0990); `Tires-Car<n>` czyta tylko konsola. Zostawiamy jak w oryginale.
+
+## Wyścig duchów
+
+„Wyścig duchów” (10050) w menu głównym to ekran 0x4d3000: ten sam co szybki wyścig (nagłówek 10050, radio
+„Podsumowanie”, „Mapa i informacje”, „Statystyki toru”, zakładka „Garaż”, „Menu główne”, „Wyścig”), tylko zamiast
+liczby okrążeń i umiejętności (0x4d3620) jest „Typ wyścigu:” (41116, `enumGhostType` 115,247 400×25, etykieta 0,5
+szerokości, `Settings\dlgRACESUM_GHOST.ini`) z „Zwykły”/„Multi” (41112, 41113) i objaśnieniem pod nim
+(`staticGhostTypeExplain` 102,271 215×117, Smash20, flagi jak opis auta; 41114, 41115). Wybór siedzi w `RCCars.crs`
+`Player/GhostMode` (0 albo 1, nowy plik 0, 0x4e2660; zapis 0x4d3e60 przy wyjściu z ekranu). „Wyścig” (0x4d31a0)
+ustawia flagę 0x40 i tryb 2 („Zwykły”) albo 0x80 i tryb 3 („Multi”).
+
+- **Uczestnicy** (0x4a5320): tryb 2 to gracz i jego duch (typ 2, parametr 0); tryb 3 to gracz i duchy aut 0..2
+  (typ 2, parametr 1..3), a duch innego auta niż gracza znika, gdy nie ma pliku. Plik (0x4a9170):
+  `<GhostPath z Config.gm>\<GhostPath z AIRace<n>>\Track<n>_Car<m>.scg` (`.\GhostRecords\track1\Track1_Car1.scg`).
+  Nazwa ducha to 40220 + auto („Duch - MT/TC/OT”, 0x49fb80). Bez przeciwników, bez miejsca w kokpicie.
+- **Okrążenia** (0x4a4bc0): 19, ale wyścig się nie kończy (0x4eaa20 w trybach duchów nie woła mety), więc nie ma
+  tabeli mety; wychodzi się z menu (Esc, „Przerwij”) na ekran duchów (0x4e07c0). Kokpit (0x4afdc0) pokazuje samo
+  okrążenie (`%i` zamiast `%i/%i`) i czas bieżącego okrążenia (stan wyścigu +0x18) zamiast czasu wyścigu.
+- **Duch** to auto (typ 2), które odtwarza okrążenie (`CarProfile`, ten sam format co `CarProfiles\*.dat`) z
+  prędkością nagrania (0x503880: bez gumy). Nic go nie dotyka: zderzenia aut pomijają typ 2 (0x533940), ludzie
+  i zwierzęta auta z car+0x4c (0x533970, ustawiane duchom w 0x4f27a0), strażnicy i ich cele typ 2 (0x5359f0,
+  0x513100); nie da się go zepchnąć z nagrania (0x534880 z car+0x4c). Duch bez okrążenia jest ukryty (flaga 2 auta
+  i jego części, 0x4f1dd0, 0x4f27a0). Duch z okrążeniem czeka na jego pierwszej klatce (car+0x44 = 0), a gdy je
+  przejedzie, stoi na ostatniej.
+- **Nagrywanie** (0x4f6ea0 → 0x502b90): auto gracza co krok, klatka gdy minęło ≥ 0,02 s od poprzedniej, najwyżej
+  100000 klatek (0x501f80). Klatka (0x4f5180): czas, pozycja, kwaternion, prędkość, prędkość kątowa, 6 długości
+  sprężyn (car+0x595c), 6 ich zmian (0x5970), kąt kół w stopniach (0x5c6c), 6 × 0x5974, klawisze (0x502b00).
+- **Linia startu** (0x4fbeb0, licznik przejazdów stanu wyścigu +8): pierwszy przejazd (1, tuż za startem) tylko
+  zaczyna nagranie i okrążenia duchów od początku. Każdy następny: duch gracza (duch auta gracza, 0x4f1dd0) się
+  pokazuje; jeśli nie ma okrążenia albo to okrążenie jest szybsze od czasu jego ostatniej klatki, dostaje nagranie
+  (zamiana buforów), wygląd auta gracza i następną skórkę (+1 z 4), komunikat 10 kokpitu na 2 s („najlepsze
+  okrążenie”, 0x4afbb0) i czat 20100 z czasem. Potem wszystkie duchy z okrążeniem ruszają od pierwszej klatki,
+  a nagranie zaczyna się od nowa. W „Zwykłym” pierwsze pełne okrążenie zawsze staje się duchem („Okrąż tor jeden
+  raz, a potem walcz ze swoim najlepszym czasem”).
+- **„Wróć na start”** (42001 zamiast „Wróć na tor”, 0x4c7850; 0x4c7690) i reset klawiszem (0x4f6b20, nie częściej
+  niż co 1 s) w trybach duchów wołają 0x4f69e0: auto na pozycję startową, nagranie od nowa, stan wyścigu od zera
+  (0x4e9ce0), duchy z okrążeniem stają na pierwszej klatce i czekają. Utonięcie, wyjazd poza tor i strefy resetu
+  stawiają auto na ostatnim punkcie jak zwykle.
+- **Wygląd** ducha z pliku (0x4f15c0): poziomy ulepszeń z nagłówka (chunk 0x63: +8 dopalacz, +0xc rezonator,
+  +0x10 koła), skórka 0. Duch gracza bez okrążenia ma wygląd auta gracza.
+- **Zapis** (0x4f17d0, przy niszczeniu aut na końcu wyścigu): w trybie 3 każdy duch z okrążeniem zapisuje je do
+  swojego pliku (0x502010: `Time path`/`Distance` FULL i CYCLE od klatki 0, `Cycle NMB`, słowa 0x70–0x73, rozmiary
+  0x24/0x88/0x0c, nagłówek 0x24 bajty, klatki, zdarzenia po 12 bajtów). W trybie 2 duch ginie z wyścigiem.
+- **U nas**: nasze trasy nie mają przejazdu przez linię przy starcie, więc pierwszym przejazdem jest „Jazda!”,
+  a „Wróć na start” i R pokazują odliczanie od nowa (bez sekundy przerwy); „Jeszcze raz?” zostawia duchy (zapisuje
+  je w „Multi”) i zaczyna od odliczania. Duchy grają silnikiem jak przeciwnicy, kiedy jadą.
 
 ## Tryb deweloperski
 

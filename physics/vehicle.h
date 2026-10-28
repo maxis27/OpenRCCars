@@ -211,6 +211,11 @@ class Vehicle {
     CarRig::Pose               rigPose() const;
     // pose of geometry().wheels[i] in model space as drawn: hub position, steering and spin
     Mat4                       wheelPose(size_t i) const;
+    // what a recording keeps of the wheels (RCCars.exe 0x4f5180): spring i's length and what it changed by in the
+    // last step (m, car+0x595c, 0x5970), and the front wheels' angle (degrees, + = left, 0x5c6c)
+    float                      springLength(size_t i) const { return wheels[i].length; }
+    float                      springChange(size_t i) const { return wheels[i].change; }
+    float                      steering() const { return steerDeg; }
     // how much wheel i spins against the ground (RCCars.exe 0x5019a0): the rad/s it turns faster or slower than it
     // rolls, over 20, up to 1. `rim` gets the rad/s it turns at, + forwards.
     float                      wheelSlip(size_t i, float* rim = nullptr) const;

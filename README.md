@@ -76,6 +76,8 @@ plików w [docs/formaty.md](docs/formaty.md).
   z przeciwnikami „Ekspert”, trening, nagrody i premia za uderzenia i przewagę na ekranie mety, nowe mistrzostwa,
   gratulacje po ostatniej trasie; garaż z kupowaniem i sprzedażą aut, skórkami i ulepszeniami dopalacza, silnika
   i kół, które zmieniają wygląd i jazdę auta.
+- **Wyścig duchów**: „Zwykły” (z duchem najlepszego okrążenia tego wyścigu) i „Multi” (duchy wszystkich trzech aut
+  z plików `GhostRecords/track<n>/Track<n>_Car<m>.scg` oryginału, zapisywane po wyścigu).
 - **Gracze**: pliki `Players/*.scp` oryginału (czytane i zapisywane bajt w bajt), wybrany gracz w `RCCars.crs`;
   po wyścigu zapisują się najlepsze okrążenie i wyścig, czas gry, liczba wyścigów i przejechane metry.
 - **Narzędzia**: `rcinfo` (inspekcja i eksport danych, testy bez GPU) i `rcshot` (render offscreen do PNG).
@@ -187,10 +189,10 @@ Klawisze jak w instrukcji oryginału (`Instrukcja.pdf`):
 | Spacja | skok (przewrócone auto: na koła) |
 | Shift | dopalacz (zużywa turbo, ok. 10 s z pełnego zbiornika) |
 | B | zablokuj koła (tylne, do poślizgu) |
-| R | powrót do ostatniego głównego punktu kontrolnego (przed pierwszym: na start) |
+| R | powrót do ostatniego głównego punktu kontrolnego (przed pierwszym: na start); w wyścigu duchów na start |
 | Enter | wyścig od nowa, od odliczania („Jeszcze raz”); na ekranie mety „Wyjdź”, jak Esc |
 | P, Pause | pauza |
-| Esc | menu wyścigu: Przerwij (do menu głównego), Wróć na tor, Zastosuj (dalej), Jeszcze raz? |
+| Esc | menu wyścigu: Przerwij (do menu głównego, z wyścigu duchów na jego ekran), Wróć na tor (w wyścigu duchów Wróć na start), Zastosuj (dalej), Jeszcze raz? |
 | F12 | licznik FPS (nasz klawisz; jak w oryginale włącza go też `Set ShowFPS 1` w `Config.gm` albo `Autoexec.gm`) |
 
 Menu obsługuje się myszą. W menu głównym trasę wybiera się obrazkami (też ← / →); „Szybki wyścig” to tor, liczba
@@ -198,8 +200,8 @@ okrążeń, umiejętności przeciwników i auto; zielony „Wyścig” rusza (te
 lista graczy (też ↑ / ↓, kółko myszy), „Utwórz gracza” pyta o imię, „Zdjęcie” pozwala zmieniać zdjęcie strzałkami
 obok niego, „Kontynuuj” (też Enter, Esc) wybiera zaznaczonego gracza. W „Mistrzostwach” trasę wybiera się w tabeli
 (też ↑ / ↓), „Wyścig” pokazuje opłatę i przeciwników, „Garaż” to auta (strzałki, kupno, sprzedaż, skórka)
-i ulepszenia (strzałki pod obrazkiem wybierają poziom). Szybki wyścig rusza tylko kupionym autem na otwartej
-trasie. Przyciski części, których jeszcze nie ma (opcje, autorzy …), są szare.
+i ulepszenia (strzałki pod obrazkiem wybierają poziom). „Wyścig duchów” to tor, auto i typ wyścigu („Zwykły”,
+„Multi”). Szybki wyścig i wyścig duchów ruszają tylko kupionym autem na otwartej trasie. Przyciski części, których jeszcze nie ma (opcje, autorzy …), są szare.
 
 Oryginał pokazuje menu zawsze w 800x600 (`RCCars.exe` 0x4a6840). U nas menu wypełnia całe okno: tło jest rozciągnięte
 na szerokość (w oknie węższym niż 4:3 na wysokość), przyciski po prawej trzymają się krawędzi i łuków tła, a obrazki,
@@ -369,7 +371,7 @@ lib/dr_mp3      dekoder MP3
   nagrania przeciwników, ścieżki postaci) i układ współrzędnych.
 - [docs/rccars_exe.md](docs/rccars_exe.md): jak działa oryginał według kodu `RCCars.exe`, z adresami funkcji
   i tym, gdzie u nas jest inaczej: fizyka auta, powrót na trasę, wyścig i kokpit, przeciwnicy, rekwizyty, postacie,
-  ruch uliczny, woda, efekty, grafika, kamera, dźwięk, tryb deweloperski.
+  ruch uliczny, woda, efekty, grafika, kamera, dźwięk, gracze, menu, mistrzostwa, wyścig duchów, tryb deweloperski.
 
 ## Czego jeszcze brakuje
 
@@ -377,8 +379,8 @@ Zrobione są wszystkie elementy pojedynczego szybkiego wyścigu. Brakuje:
 
 - **Grafika i świat**: przyciemnianie postaci i rekwizytów w cieniu (`feat_lmshd.ini`), dźwięk zahaczenia anteny
   (`Antenna_scratch`).
-- **Opakowanie gry**: wyścig z duchami (`GhostRecords`), reszta menu
-  (opcje, informacje o trasie, autorzy), demo, intro, dwóch graczy na podzielonym ekranie, gra przez sieć.
+- **Opakowanie gry**: reszta menu (opcje, informacje o trasie, autorzy), demo, intro, dwóch graczy na podzielonym
+  ekranie, gra przez sieć.
 
 ## Licencja
 

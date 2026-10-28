@@ -46,6 +46,9 @@ class Hud : public Canvas {
       bool  paused    = false;
       bool  lowSignal = false; // in a reset volume: "Słaby sygnał" (msg_low_signal.csi)
       bool  gates     = false; // the checkpoints drawn over the 3D view (debug)
+      // the ghost race (RCCars.exe 0x4afdc0 with flags 0xc0): the lap without the laps of the race, which has no
+      // end, and the time of the lap being driven instead of the race's
+      bool  ghostRace = false;
       rc::Mat4 viewProj;       // the camera, for the debug spheres and the checkpoint arrows
       };
 

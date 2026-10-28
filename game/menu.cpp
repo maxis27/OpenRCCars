@@ -60,6 +60,10 @@ enum : uint32_t {
   T_Skill       = 41105, // "Umiejętności przeciwników"
   T_SkillLow    = 41107, // "Niskie", "Norma", "Ekspert", "Ultra"
   T_NotAvailable= 41106, // "Nie dostępny"
+  T_GhostNormal = 41112, // "Zwykły", "Multi", then their explanations
+  T_GhostMulti  = 41113,
+  T_GhostExplain= 41114,
+  T_GhostType   = 41116, // "Typ wyścigu:"
   T_Loading     = 41920, // "Wczytywanie..."
   T_ListPlayer  = 41000, // "Gracz", "Wynik", "Forsa", "Czas"
   T_CantRemoveCurrent = 41004,
@@ -75,7 +79,7 @@ enum : uint32_t {
   T_Welcome     = 41604, // "Witaj,"
   T_Rank        = 41606, // "Ranga"
   T_PanelCar    = 41607, // "Samochód"
-  T_BackOnTrack = 42000, // "Wróć na tor"
+  T_BackOnTrack = 42000, // "Wróć na tor", in the ghost race 42001 "Wróć na start"
   T_FinishHead  = 41300, // "Gracz", "Poz.", "Czas", "Dziura", "Najl. okr.", "śr. prędkość"
   T_NoGap       = 41306, // "---"
   T_Kmh         = 41307, // "km/h"
@@ -352,7 +356,7 @@ void Menu::build(Page p) {
         shotAt = choice.track*4;
       add(0,T_Championship,Button::Tab,Command::None,Page::Champ,players!=nullptr);
       add(1,T_QuickRace,   Button::Tab,Command::None,Page::QuickRace,true);
-      add(2,T_GhostRace,   Button::Tab,Command::None,Page::None,false);
+      add(2,T_GhostRace,   Button::Tab,Command::None,Page::GhostRace,true);
       add(3,T_Multiplayer, Button::Tab,Command::None,Page::None,false);
       add(4,T_ChangePlayer,Button::Tab,Command::None,Page::Players,players!=nullptr);
       add(5,T_Options,     Button::Tab,Command::None,Page::None,false);
@@ -361,9 +365,10 @@ void Menu::build(Page p) {
       add(8,T_Exit,        Button::Back,Command::Quit,Page::None,true);
       add(-1,T_Race,       Button::Race,Command::Race,Page::None,quickAllowed());
       break;
-    case Page::QuickRace: {
-      // dlgRACESUM: its pages as radio buttons, the garage as a tab
-      headerText = T_QuickRace;
+    case Page::QuickRace:
+    case Page::GhostRace: {
+      // dlgRACESUM: its pages as radio buttons, the garage as a tab; the ghost race's the same (0x4d3000)
+      headerText = p==Page::GhostRace ? T_GhostRace : T_QuickRace;
       add(0,T_Summary,   Button::Radio,Command::None,Page::None,true)->checked = true;
       add(1,T_MapInfo,   Button::Radio,Command::None,Page::None,false);
       add(2,T_TrackStats,Button::Radio,Command::None,Page::None,false);
@@ -376,6 +381,24 @@ void Menu::build(Page p) {
       trackEnum.split = 0;
       trackEnum.values.assign(TrackCount,"");
       trackEnum.at    = choice.track;
+
+      carEnum.box    = {311,392,311+304,392+25};
+      carEnum.split  = 0;
+      carEnum.values = {"","",""};
+      carEnum.at     = choice.car;
+
+      if(p==Page::GhostRace) {
+        // 0x4d3620: "Typ wyścigu" instead of the laps and the skill, placed by Settings\dlgRACESUM_GHOST.ini, as
+        // RCCars.crs Player/GhostMode has it
+        Enum kind;
+        kind.box    = {115,247,115+400,247+25};
+        kind.split  = 0.5f;
+        kind.label  = T_GhostType;
+        kind.values = {std::string(str(T_GhostNormal)),std::string(str(T_GhostMulti))};
+        kind.at     = players!=nullptr && players->ghostMode()==1 ? 1 : 0;
+        enums.push_back(kind);
+        break;
+        }
 
       Enum laps;
       laps.box    = {115,265,115+450,265+25};
@@ -393,11 +416,6 @@ void Menu::build(Page p) {
         skill.values.emplace_back(str(T_SkillLow+i));
       skill.at    = size_t(std::clamp(choice.skill,0,2));
       enums.push_back(skill);
-
-      carEnum.box    = {311,392,311+304,392+25};
-      carEnum.split  = 0;
-      carEnum.values = {"","",""};
-      carEnum.at     = choice.car;
       break;
       }
     case Page::Players: {
@@ -423,7 +441,8 @@ void Menu::build(Page p) {
       headerText = 0;
       Pill abort;  abort.box  = {101,518,101+145,518+38}; abort.text = T_Abort;       abort.red = true;
       abort.command = Command::Abort;
-      Pill reset;  reset.box  = {247,518,247+166,518+38}; reset.text = T_BackOnTrack;
+      Pill reset;  reset.box  = {247,518,247+166,518+38};
+      reset.text = choice.ghost() ? T_BackOnTrack+1 : T_BackOnTrack;   // 0x4c7850
       reset.command = Command::BackOnTrack;
       Pill back;   back.box   = {413,518,413+166,518+38}; back.text  = T_Apply;
       back.command  = Command::Resume;
@@ -529,7 +548,7 @@ void Menu::tick(float dt) {
     message.t += dt;
   if(nameEntry.open)
     nameEntry.t += dt;
-  if(current==Page::QuickRace || current==Page::Garage || current==Page::ChampWin) {
+  if(raceSetup() || current==Page::Garage || current==Page::ChampWin) {
     carYaw   = std::fmod(carYaw+dt*60.f,360.f);
     carAlpha = std::min(1.f,carAlpha+dt/0.5f);
     }
@@ -591,6 +610,9 @@ void Menu::changeEnum(Enum& e, int step) {
     choice.laps = 3+int(e.at)*2;
   if(e.label==T_Skill)
     choice.skill = int(e.at);
+  // 0x4d3e60 keeps it in RCCars.crs (Player/GhostMode) when the screen goes; at once here
+  if(e.label==T_GhostType && players!=nullptr)
+    players->setGhostMode(int32_t(e.at));
   }
 
 void Menu::pressButton(Button& b) {
@@ -611,7 +633,14 @@ void Menu::pressButton(Button& b) {
     return;
     }
   if(b.command==Command::Race || b.command==Command::Quit) {
-    if(b.command==Command::Race)
+    if(b.command==Command::Race && current==Page::GhostRace) {
+      // 0x4d31a0: GhostMode 0 the ghost race of mode 2, 1 of mode 3
+      const bool multi = !enums.empty() && enums[0].at==1;
+      choice.mode = multi ? Mode::MultiGhost : Mode::Ghost;
+      if(players!=nullptr)
+        players->setGhostMode(multi ? 1 : 0);
+      }
+    else if(b.command==Command::Race)
       choice.mode = Mode::Quick;
     command = b.command;
     return;
@@ -681,7 +710,7 @@ void Menu::mouseMove(int x, int y) {
     e.hoverL = hl;
     e.hoverR = hr;
     };
-  if(current==Page::QuickRace) {
+  if(raceSetup()) {
     hoverEnum(trackEnum);
     hoverEnum(carEnum);
     for(auto& e:enums)
@@ -783,7 +812,7 @@ void Menu::mouseDown(int x, int y) {
       }
     return;
     }
-  if(current==Page::QuickRace) {
+  if(raceSetup()) {
     for(auto* e:{&trackEnum,&carEnum})
       if(e->hoverL || e->hoverR) {
         changeEnum(*e,e->hoverL ? -1 : 1);
@@ -892,6 +921,7 @@ void Menu::keyDown(Event::KeyType key, uint32_t ch) {
       if(key==Event::K_Return) if(auto* b = find(Command::Race)) pressButton(*b);
       return;
     case Page::QuickRace:
+    case Page::GhostRace:
       if(key==Event::K_Left)   changeEnum(trackEnum,-1);
       if(key==Event::K_Right)  changeEnum(trackEnum,1);
       if(key==Event::K_Up)     changeEnum(carEnum,-1);
@@ -1177,7 +1207,7 @@ std::string Menu::clock(float seconds) {
 std::optional<Menu::Preview> Menu::carPreview() const {
   // dlgRACESUM animCar, dlgCARSCOMM animCarPreview, the congratulations' (0x4c1790)
   Box b;
-  if(current==Page::QuickRace)
+  if(raceSetup())
     b = {306,254,306+374,254+304};
   else if(current==Page::Garage)
     b = {0,19,504,19+403};
@@ -1478,6 +1508,9 @@ void Menu::drawQuickRace() {
   lines(font20,str(T_TrackInfo+uint32_t(choice.track)),{323,115,323+219,115+80},0,22.5f,white);
   for(auto& e:enums)
     drawEnum(e,true);
+  if(current==Page::GhostRace && !enums.empty())
+    // staticGhostTypeExplain: what the kind chosen is (0x4d3f50)
+    lines(font20,str(T_GhostExplain+uint32_t(enums[0].at)),{102,271,102+215,271+117},2,22.5f,white);
 
   // the car: its name and parts (0x4d4200: "%s\n%s: %s\n%s: %s\n%s: %s")
   drawEnum(carEnum,false);
@@ -1884,7 +1917,7 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
     }
   drawBackground();
 
-  if(current==Page::QuickRace || current==Page::Garage || current==Page::ChampWin)
+  if(raceSetup() || current==Page::Garage || current==Page::ChampWin)
     at = mark();
   // the screen's own controls fade out and in with the change of screen
   fade = slide==0 ? 1.f : std::clamp(slideT/SlideTime,0.f,1.f);
@@ -1899,7 +1932,7 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
       if(auto* p = players->current())
         drawPanel(*p,true);
     }
-  if(current==Page::QuickRace) {
+  if(raceSetup()) {
     dx = contentShift();
     dy = tall*0.5f;
     drawQuickRace();

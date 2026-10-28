@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <iterator>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -122,6 +123,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   }
 
 MainWindow::~MainWindow() {
+  saveGhosts();
   device.waitIdle();
   }
 
@@ -224,6 +226,84 @@ void MainWindow::setupOpponents() {
   Log::i("opponents (",rc::Opponents::levelName(aiLevel),"): ",opponents->size());
   }
 
+void MainWindow::setupGhosts() {
+  saveGhosts();
+  ghosts.reset();
+  for(auto& s:ghostSounds)
+    s.stop();
+  const bool normal = raceMode==Menu::Mode::Ghost;
+  if(level==nullptr || (!normal && raceMode!=Menu::Mode::MultiGhost))
+    return;
+  // the track's folder of GhostRecords\ (Config.gm GhostPath, AIRace<n> GhostPath of Scripts\ailayouts.ini)
+  const int32_t track = rc::aiRaceNumber(level->name());
+  std::string   sub   = "track"+std::to_string(track);
+  try {
+    const auto d = resources.pack().read("Scripts\\ailayouts.ini");
+    const auto l = rc::AiLayout::parse(std::string_view(reinterpret_cast<const char*>(d.data()),d.size()));
+    if(auto it = l.races.find(track); it!=l.races.end() && !it->second.ghostPath.empty())
+      sub = it->second.ghostPath;
+    }
+  catch(const std::exception& e) {
+    Log::e("ghosts: ",e.what());
+    }
+  rc::Ghosts::Look look;
+  look.car       = int32_t(carId);
+  look.boost     = boostLevel;
+  look.resonator = resonatorLevel;
+  look.tires     = tiresLevel;
+  look.skin      = skin;
+  ghosts = std::make_unique<rc::Ghosts>(normal ? rc::Ghosts::Kind::Normal : rc::Ghosts::Kind::Multi,look,
+                                        resources.gameDir()/"GhostRecords"/sub,track,
+                                        [this](int32_t c, rc::CarGeometry& g, rc::CarParams& p) {
+                                          g = rc::carGeometry(carScene,Cars[std::clamp(c,0,2)]);
+                                          p = rc::CarParams::load(resources.pack(),c+1);
+                                          },
+                                        [this](int32_t c) { return std::string(hud->gameText(uint32_t(40220+c))); });
+  for(size_t i=0; i<ghosts->size(); ++i)
+    carModel((*ghosts)[i].look);
+  while(ghostSounds.size()<ghosts->size())
+    ghostSounds.emplace_back(sounds->mixer(),sounds->library());
+  Log::i("ghosts (",normal ? "normal" : "multi","): ",ghosts->size());
+  }
+
+void MainWindow::saveGhosts() {
+  if(ghosts && !ghosts->save())
+    Log::e("ghosts: can't write the laps to GhostRecords");
+  }
+
+void MainWindow::ghostBackToStart() {
+  if(level==nullptr || vehicle==nullptr || car==nullptr || ghosts==nullptr)
+    return;
+  setFlying(false);
+  carPose = level->carStart(car->full().bboxMin().y);
+  vehicle->reset(carPose);
+  // ours from the countdown, as the lap begins with "Jazda!" here (our tracks have no line to cross at the start)
+  race->restart(carPose,true);
+  ghosts->restart();
+  effects->clear(true);
+  besideDone = true;
+  lastCarPos = carPose.translation();
+  upsideDown = 0;
+  shotTime   = -1;
+  resetVolumes.reset();
+  chase.reset(chaseCar());
+  }
+
+CarModel& MainWindow::carModel(const rc::Ghosts::Look& l) {
+  auto& m = aiMeshes[{l.car,l.skin,l.boost,l.resonator,l.tires}];
+  if(m==nullptr) {
+    ModelMesh::CarLook look;
+    look.skin      = l.skin;
+    look.boost     = l.boost;
+    look.resonator = l.resonator;
+    look.tires     = l.tires;
+    look.antenna   = !antennaView->has(size_t(l.car));
+    device.waitIdle();
+    m = std::make_unique<CarModel>(device,resources,carScene,size_t(std::clamp(l.car,0,2)),look);
+    }
+  return *m;
+  }
+
 void MainWindow::setupPhysics(bool restartRace, bool again) {
   if(level==nullptr || car==nullptr)
     return;
@@ -273,6 +353,8 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
     besideDone  = true;
     if(opponents)
       opponents->restart();
+    if(ghosts)
+      ghosts->restart();
     if(characters)
       characters->restart();
     if(traffic)
@@ -372,6 +454,12 @@ Hud::Info MainWindow::hudInfo() const {
   info.lowSignal = resetVolumes.lowSignal();
   info.carPos     = carPose.translation();
   info.carForward = carPose.vector({0,0,1});
+  info.ghostRace  = ghosts!=nullptr;
+  for(size_t i=0; ghosts && i<ghosts->size(); ++i) {
+    const auto& g = (*ghosts)[i];
+    if(g.visible && !g.lap.empty())
+      info.opponents.push_back({g.pose().translation(),g.pose().vector({0,0,1})});
+    }
   if(opponents && opponents->size()>0) {
     info.place     = opponents->place(playerFinish);
     for(size_t i=0; i<opponents->size(); ++i) {
@@ -512,6 +600,11 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     showGates = !showGates;
   // R: back to the last checkpoint, as in the original
   if(e.key==Event::K_R && level && !paused) {
+    // the ghost race's back to the start (0x4f6b20 -> 0x4f69e0)
+    if(ghosts) {
+      ghostBackToStart();
+      return;
+      }
     setFlying(false);
     respawnCar();
     }
@@ -595,6 +688,11 @@ void MainWindow::menuCommand(Menu::Command c) {
     case Menu::Command::BackOnTrack:
       menu->close();
       paused = false;
+      if(level && ghosts) {
+        // "Wróć na start" (0x4c7690)
+        ghostBackToStart();
+        return;
+        }
       if(level) {
         setFlying(false);
         respawnCar();
@@ -602,6 +700,7 @@ void MainWindow::menuCommand(Menu::Command c) {
       return;
     case Menu::Command::RaceAgain:
       menu->close();
+      saveGhosts();   // ours: the ghosts stay, from their first frames
       if(level)
         setupPhysics(true,true);
       paused = false;
@@ -630,7 +729,9 @@ void MainWindow::menuCommand(Menu::Command c) {
       for(auto& s:aiSounds)
         s.stop();
       paused = false;
-      menu->open(c==Menu::Command::Done ? menu->afterRace() : Menu::Page::Main);
+      // the ghost race has no finish: it is left from its menu, for its screen (0x4e07c0); the laps kept (0x4f17d0)
+      saveGhosts();
+      menu->open(c==Menu::Command::Done || ghosts!=nullptr ? menu->afterRace() : Menu::Page::Main);
       return;
     }
   }
@@ -673,6 +774,12 @@ void MainWindow::startRace() {
     case Menu::Mode::Championship:
       laps    = 5;
       aiLevel = rc::Opponents::Level::Hard;
+      break;
+    case Menu::Mode::Ghost:
+    case Menu::Mode::MultiGhost:
+      // 19 laps (0x4a4bc0) that never end it (0x4eaa20), alone with the ghosts
+      laps    = std::numeric_limits<int>::max();
+      aiLevel = rc::Opponents::Level::Off;
       break;
     }
   // the car as the player has it (0x4aca10)
@@ -728,6 +835,7 @@ void MainWindow::startRace() {
     menu->open(Menu::Page::Main);
     return;
     }
+  setupGhosts();
   paused   = false;
   lastTick = Application::tickCount();
   }
@@ -819,6 +927,12 @@ void MainWindow::tick(float dt) {
       }
     else
       vehicle->update(in,dt);
+    if(ghosts) {
+      // 0x4f6ea0 -> 0x502b90: the player's car recorded; the ghosts on their laps
+      const uint32_t pressed = (in.throttle>0 ? 0x01u : 0u) | (in.throttle<0 ? 0x02u : 0u);
+      ghosts->record(dt,*vehicle,pressed,!race->holdCar() && !flying);
+      ghosts->update(dt);
+      }
     auto hit = vehicle->hit();
     if(opponents)
       hit = std::max(hit,opponents->collide(*vehicle,dt));
@@ -862,12 +976,25 @@ void MainWindow::tick(float dt) {
     if(!race->holdCar() && playerFinish<0 && !flying)
       odometer += (at-lastCarPos).length();
     const size_t trackId = Menu::trackIndex(level->name());
+    const bool   lapEnd  = (ev==rc::Race::Event::Lap || ev==rc::Race::Event::BestLap || ev==rc::Race::Event::Finish) &&
+                           !race->lapTimes().empty();
+    // the ghost race (0x4fbeb0): "Jazda!" is our first time over the line, a lap the next
+    bool ghostTook = false;
+    if(ghosts && ev==rc::Race::Event::Go)
+      ghosts->start();
+    if(ghosts && lapEnd) {
+      ghostTook = ghosts->lapDone(race->lapTimes().back());
+      for(size_t i=0; i<ghosts->size(); ++i)
+        carModel((*ghosts)[i].look);
+      }
     // the player's laps and race into the player's file (0x4c5560, 0x4c56c0), told in the chat when they are the
-    // best (Language/Game 20100, 20101)
-    if((ev==rc::Race::Event::Lap || ev==rc::Race::Event::BestLap || ev==rc::Race::Event::Finish) &&
-       !race->lapTimes().empty() && !devFlew) {
-      const float lap = race->lapTimes().back();
-      if(players->lapDone(int32_t(trackId),int32_t(carId),lap))
+    // best (Language/Game 20100, 20101), and when the own ghost takes it (0x4fbeb0)
+    if(lapEnd) {
+      const float lap  = race->lapTimes().back();
+      bool        best = ghostTook;
+      if(!devFlew && players->lapDone(int32_t(trackId),int32_t(carId),lap))
+        best = true;
+      if(best)
         tell(20100,-1,Hud::formatTime(lap));
       }
     if(ev==rc::Race::Event::Finish) {
@@ -882,7 +1009,11 @@ void MainWindow::tick(float dt) {
       }
     if(menu->page()==Menu::Page::Finish)
       menu->setFinish(finishRows(),vehicle->hits());
-    hud->event(ev);
+    // the ghost race's "najlepsze okrążenie" for the lap the own ghost took (0x4afbb0 10), only then
+    if(ghosts && (ev==rc::Race::Event::Lap || ev==rc::Race::Event::BestLap))
+      hud->event(ghostTook ? rc::Race::Event::BestLap : rc::Race::Event::Lap);
+    else
+      hud->event(ev);
     // 0x4eaa50: every lap but the last, with its number in words; 0x4eaad0: the finish
     if(ev==rc::Race::Event::Lap || ev==rc::Race::Event::BestLap)
       tell(20108,-1,hud->gameText(uint32_t(race->lapTimes().size()+3)));
@@ -1292,6 +1423,15 @@ void MainWindow::tickSounds(float dt) {
     sounds->playAt(g.kind==rc::fx::Gunfire::Sound::Burst ? "burst" : "bullet",g.at,ear,right);
   if(traffic)
     sounds->tickTraffic(*traffic,ear,right);
+  for(size_t i=0; ghosts && i<ghosts->size() && i<ghostSounds.size(); ++i) {
+    // a ghost's engine, as an opponent's
+    const auto&    g  = (*ghosts)[i];
+    const rc::Vec3 at = g.pose().translation();
+    const rc::Vec3 to = at-ear;
+    const float    d  = to.length();
+    ghostSounds[i].update(std::abs(g.speed())*3.6f,racing && g.visible && g.running,d,
+                          d>1e-3f ? rc::Vec3::dot(to,right)/d : 0.f);
+    }
   for(size_t i=0; opponents && i<opponents->size() && i<aiSounds.size(); ++i) {
     const auto&    o  = (*opponents)[i];
     const rc::Vec3 to = o.pose().translation()-ear;
@@ -1530,6 +1670,17 @@ void MainWindow::render() {
           if(&mesh==&m->second->full() && i<aiAntennas.size() && aiAntennas[i])
             antennaView->add(size_t(o.car),aiAntennas[i]->joints(),mesh.lighting());
           }
+        }
+      for(size_t i=0; ghosts && i<ghosts->size(); ++i) {
+        // the ghosts: cars like the others (0x4f27a0), hidden until they have a lap (flag 2)
+        const auto& g = (*ghosts)[i];
+        auto        m = aiMeshes.find({g.look.car,g.look.skin,g.look.boost,g.look.resonator,g.look.tires});
+        if(!g.visible || g.lap.empty() || m==aiMeshes.end())
+          continue;
+        auto&       mesh  = m->second->at((g.pose().translation()-camera.position).length(),lodDistances);
+        const auto  parts = partPoses(mesh,g.geometry(),g.rigPose());
+        lightCar(mesh,&mesh==&m->second->full(),carLight,1.f);
+        mesh.draw(enc,viewProj,push,g.pose(),&parts);
         }
       antennaView->draw(enc,frameId,push);
       effects->setFog(push.cameraPos[3],push.fogColor);

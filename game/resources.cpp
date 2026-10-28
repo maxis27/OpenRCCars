@@ -43,6 +43,19 @@ Resources::Texture Resources::decode(const std::vector<uint8_t>& csi) {
   return t;
   }
 
+bool Resources::hasTexture(const std::string& name) const {
+  for(const char* dir:{"Textures.1\\","Textures.2\\","Textures.3\\"})
+    if(archive.find(std::string(dir)+name+".csi")!=nullptr)
+      return true;
+  return false;
+  }
+
+void Resources::preload(const std::vector<std::string>& names) {
+  for(auto& n:names)
+    if(hasTexture(n))
+      texture(n);
+  }
+
 const Resources::Texture* Resources::texture(const std::string& name) {
   const std::string key = rc::PackFile::normalize(name);
   if(auto it = cache.find(key); it!=cache.end())

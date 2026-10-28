@@ -178,8 +178,7 @@ bool Ghosts::lapDone(float time) {
       own->lap.boost     = playerLook.boost;
       own->lap.resonator = playerLook.resonator;
       own->lap.tires     = playerLook.tires;
-      own->look          = playerLook;
-      own->look.skin     = (playerLook.skin+1)%4;
+      own->look          = ownLapLook();
       took = true;
       }
     own->running = true;
@@ -192,6 +191,12 @@ bool Ghosts::lapDone(float time) {
   rec.clear();
   recTime = 0;
   return took;
+  }
+
+Ghosts::Look Ghosts::ownLapLook() const {
+  Look l = playerLook;
+  l.skin = (playerLook.skin+1)%4;
+  return l;
   }
 
 void Ghosts::restart() {

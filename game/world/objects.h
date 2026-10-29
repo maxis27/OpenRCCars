@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "formats/objects.h"
+#include "fx/carlight.h"
 #include "physics/props.h"
 #include "modelmesh.h"
 
@@ -34,8 +35,11 @@ class Objects {
       bool               hit   = false;
       };
     std::vector<Sound> sounds() const;
+    // how bright each prop is (rc::fx::FeatureShade::Prop) by the lightmap under it
+    void   shade(float dt, const rc::Spline& curve, rc::fx::LightmapProbe& probe);
+    // `shaded`: by that brightness (VIDEO_CharLight), otherwise lit like the track's other models
     void   draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, const rc::Mat4& viewProj,
-                const LevelMesh::Push& frame) const;
+                const LevelMesh::Push& frame, bool shaded = true) const;
     size_t size() const { return items.size(); }
 
   private:
@@ -44,6 +48,7 @@ class Objects {
       const std::string*        model = nullptr;
       bool                      hit   = false;
       float                     scale = 1;       // of the placement (the rigid body has none)
+      rc::fx::FeatureShade      light;
       std::unique_ptr<rc::Prop> prop;
       };
 

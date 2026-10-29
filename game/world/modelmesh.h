@@ -77,10 +77,12 @@ class ModelMesh {
 
     // `world` places the model (rotation, translation and a uniform scale); `partPoses`, if given, places each part in model
     // space (index as in parts(); rotation, translation, a spring's stretch), default: translate(pivot) - the modelled
-    // position. `lightsOn`: how the Options::lights are switched
+    // position. `lightsOn`: how the Options::lights are switched. `shade` 0..1 (rc::fx::FeatureShade): the textures
+    // times it and no other light, the Options::lights as they are; negative: the light set by setLight
     void                     draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, const rc::Mat4& viewProj,
                                   const LevelMesh::Push& frame, const rc::Mat4& world,
-                                  const std::vector<rc::Mat4>* partPoses = nullptr, bool lightsOn = false) const;
+                                  const std::vector<rc::Mat4>* partPoses = nullptr, bool lightsOn = false,
+                                  float shade = -1) const;
 
     // how dirty the car is, 0 clean .. 2 (Effects::dirt): its paint (car_askin<car>*, car_bskin<car>*) gets the
     // dirt_car<car>_1/_2 textures (with a/b for the two paints of cars 2 and 3) laid over it

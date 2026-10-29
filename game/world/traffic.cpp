@@ -44,12 +44,14 @@ void TrafficView::preload(const rc::Traffic& traffic) {
   }
 
 void TrafficView::draw(Encoder<CommandBuffer>& enc, uint8_t frameId, const rc::Traffic& traffic,
-                       const rc::Mat4& viewProj, const LevelMesh::Push& frame, const rc::CollisionMesh* track) {
-  for(auto* c:traffic.cars()) {
+                       const rc::Mat4& viewProj, const LevelMesh::Push& frame, const rc::CollisionMesh* track,
+                       const std::vector<float>& shades) {
+  for(size_t i=0; i<traffic.cars().size(); ++i) {
+    const auto* c = traffic.cars()[i];
     if(!c->visible)
       continue;
     if(auto* m = mesh(*c))
-      m->draw(enc,viewProj,frame,c->world,&c->partPoses,c->lightsOn);
+      m->draw(enc,viewProj,frame,c->world,&c->partPoses,c->lightsOn,i<shades.size() ? shades[i] : -1.f);
     }
   if(track==nullptr)
     return;

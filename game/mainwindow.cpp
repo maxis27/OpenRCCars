@@ -183,6 +183,7 @@ void MainWindow::applyOptions() {
   const std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)),std::istreambuf_iterator<char>());
   const auto crs = rc::ConfigFile::parse(data);
   controls.load(crs);
+  controls2.load(crs,1);
   sounds->setOptions(crs);
   // 0x48f206: the frame rate's limit, a timer of 1000 / limit ms the frames wait for (0x48bc04)
   fpsLimit  = std::max(0,crs.integer("Video","FPS_Limit",0));
@@ -219,6 +220,14 @@ void MainWindow::loadLevel(const std::string& name) {
   try {
     auto next = std::make_unique<Level>(device,resources,name,quality.renderLevel());
     next->mesh().setFeatures(levelFeatures());
+    if(two.rider) {
+      // player 2's car is a body in `physics`, its race follows `level`'s checkpoints
+      two.rider->vehicle.reset();
+      two.rider->race.reset();
+      two.rider->checkpoints.reset();
+      }
+    two.tracker[0].reset();
+    two.tracker[1].reset();
     vehicle.reset();
     opponents.reset();
     traffic.reset();
@@ -233,6 +242,8 @@ void MainWindow::loadLevel(const std::string& name) {
                                                          [this](const std::string& f){ return resources.pack().read(f); });
     carShade.reset();
     aiShades.clear();
+    actorShades.clear();
+    roadShades.clear();
     race        = std::make_unique<rc::Race>(*checkpoints,laps);
     resetVolumes = rc::ResetVolumes(level->scene());
     fog.setTarget(rc::FogParams::load(resources.pack(),name));
@@ -429,6 +440,23 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
   rc::Mat4 grid;
   if(opponents!=nullptr && opponents->playerStart(grid))
     carPose = grid;
+  if(split()) {
+    // the split screen has no opponents (0x4a5320); ours: the player on the grid's slot of the player, player 2 on
+    // the first opponent's, beside it
+    two.rider->start = carPose*rc::Mat4::translate({-1.f,0,0});
+    try {
+      rc::Opponents field(*physics,[this](const std::string& f){ return resources.pack().read(f); },carScene,
+                          level->name(),*checkpoints,rc::Opponents::Level::Easy);
+      field.restart();
+      if(field.playerStart(grid))
+        carPose = grid;
+      two.rider->start = field.size()>0 ? field[0].pose() : carPose*rc::Mat4::translate({-1.f,0,0});
+      }
+    catch(const std::exception& e) {
+      Log::e("two players: no grid: ",e.what());
+      }
+    }
+  camera.fov = split() ? chase.splitFov() : Camera().fov;
   const auto geom = rc::carGeometry(carScene,Cars[carId]);
   const auto prm  = rc::CarParams::load(resources.pack(),int32_t(carId+1),boostLevel,resonatorLevel,tiresLevel);
   vehicle  = std::make_unique<rc::Vehicle>(*physics,geom,prm,carPose);
@@ -462,6 +490,8 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
   lastCarPos = carPose.translation();
   resetVolumes.reset();
   chase.reset(chaseCar());
+  if(split())
+    resetRider(restartRace,again);
   Log::i("car ",Cars[carId],", upgrades ",boostLevel,"/",resonatorLevel,"/",tiresLevel,": top speed ",prm.topSpeed*3.6f," km/h, grip ",prm.gripFront);
   }
 
@@ -557,6 +587,16 @@ Hud::Info MainWindow::hudInfo() const {
   info.ghostRace  = ghosts!=nullptr;
   info.showMap    = showMap;
   info.showArrow  = showArrow;
+  if(split()) {
+    // the split screen's upper view: the place against player 2 (0x4afdc0), its car on the map
+    const auto& r = *two.rider;
+    info.endless = two.lag;
+    info.place   = two.way[0]>=two.way[1] ? 1 : 2;
+    if(playerFinish>=0 || r.finish>=0)
+      info.place = (playerFinish>=0 && (r.finish<0 || playerFinish<=r.finish)) ? 1 : 2;
+    info.opponents.push_back({r.pose.translation(),r.pose.vector({0,0,1})});
+    return info;
+    }
   if(const rc::Opponent* o = demoCar()) {
     // the cockpit of the demo's car (0x4afdc0 draws the active one's); "Wciśnij <Enter> .." the first 10 s,
     // shown in every odd second of them
@@ -730,6 +770,11 @@ void MainWindow::keyDownEvent(KeyEvent& e) {
     }
   if(controls.is(Controls::Jump,e.key) && zeroCam==ZeroCam::Off && !flying)
     jumpPressed = true;
+  // the split screen's player 2: its jump and its "Zresetuj"
+  if(split() && controls2.is(Controls::Jump,e.key))
+    two.rider->jump = true;
+  if(split() && controls2.is(Controls::Reset,e.key) && level && !paused)
+    respawnRider();
   // our debug keys, only in the developer mode (-dev)
   if(devMode && e.key==Event::K_T && vehicle && !flying)
     vehicle->recover();
@@ -856,7 +901,7 @@ void MainWindow::menuCommand(Menu::Command c) {
       return;
     case Menu::Command::Done:
       // 0x4c4629: "Wyjdź" records the race in the player's file (0x4c56c0), "Jeszcze raz?" does not
-      if(level && playerFinish>=0 && !devFlew) {
+      if(level && playerFinish>=0 && !devFlew && !split()) {
         const size_t trackId = Menu::trackIndex(level->name());
         if(players->raceDone(int32_t(trackId),int32_t(carId),race->laps(),playerFinish,odometer))
           tell(20101,-1,Hud::formatTime(playerFinish));
@@ -875,6 +920,8 @@ void MainWindow::menuCommand(Menu::Command c) {
       sounds->stopAll();
       if(carSound)
         carSound->stop();
+      if(split() && two.rider->sound)
+        two.rider->sound->stop();
       for(auto& s:aiSounds)
         s.stop();
       paused = false;
@@ -969,10 +1016,23 @@ void MainWindow::startRace() {
       break;
     case Menu::Mode::Demo:
       break;   // startDemo()'s
+    case Menu::Mode::TwoLaps:
+    case Menu::Mode::TwoLag:
+      // 0x4a4bb0, 0x4a4bc0: "fixedNLaps" laps, or no end of laps in the race of the gap; no opponents (0x4a5320)
+      laps    = st.mode==Menu::Mode::TwoLaps ? st.twoLaps : std::numeric_limits<int>::max();
+      aiLevel = rc::Opponents::Level::Off;
+      break;
     }
-  // the car as the player has it (0x4aca10)
+  setupTwo(&st);
+  // the car as the player has it (0x4aca10); the split screen's as chosen for it (RCCars.crs TwoPlayers)
   int32_t b = 0, r = 0, t = 0, sk = 0;
-  if(auto* p = players->current()) {
+  if(st.two()) {
+    b  = st.riders[0].boost;
+    r  = st.riders[0].resonator;
+    t  = st.riders[0].tires;
+    sk = st.riders[0].skin;
+    }
+  else if(auto* p = players->current()) {
     const auto& c = p->cars[std::min<size_t>(st.car,2)];
     if(c.bought) {
       b  = c.boost;
@@ -981,7 +1041,8 @@ void MainWindow::startRace() {
       sk = c.skin;
       }
     }
-  const bool sameCar = car!=nullptr && carId==st.car && boostLevel==b && resonatorLevel==r && tiresLevel==t && skin==sk;
+  const size_t carNow = st.two() ? std::min<size_t>(st.riders[0].car,2) : st.car;
+  const bool sameCar = car!=nullptr && carId==carNow && boostLevel==b && resonatorLevel==r && tiresLevel==t && skin==sk;
   boostLevel     = b;
   resonatorLevel = r;
   tiresLevel     = t;
@@ -990,7 +1051,7 @@ void MainWindow::startRace() {
     // the track already there: only the field, the car and the race again
     if(!sameCar) {
       device.waitIdle();
-      carId = st.car;
+      carId = carNow;
       fitCar();
       if(carSound)
         carSound->stop();
@@ -1004,7 +1065,7 @@ void MainWindow::startRace() {
   else {
     if(!sameCar) {
       device.waitIdle();
-      carId = st.car;
+      carId = carNow;
       fitCar();
       if(carSound)
         carSound->stop();
@@ -1040,6 +1101,7 @@ void MainWindow::startDemo(const std::string& name) {
   // 0x4c9d6b: mode 6 (0x4a4c90), the race's settings as they are; the demo's flag (0x200) comes with the script's
   // EnterDemo
   raceMode = Menu::Mode::Demo;
+  setupTwo(nullptr);
   demo     = Demo();
   laps     = rc::Race::DefaultLaps;
   aiLevel  = rc::Opponents::Level::Normal;
@@ -1186,7 +1248,8 @@ void MainWindow::tickDemo(float dt) {
   }
 
 void MainWindow::drawCarPreview(Encoder<CommandBuffer>& enc, const Menu::Preview& p) {
-  const size_t id = std::min<size_t>(p.car,2);
+  const size_t car = std::min<size_t>(p.car,2);
+  const size_t id  = car+3*size_t(std::clamp(p.slot,0,1));
   const std::array<int32_t,4> want = {p.boost,p.resonator,p.tires,p.skin};
   if(previewCars[id]==nullptr || previewLook[id]!=want) {
     ModelMesh::CarLook look;
@@ -1195,7 +1258,7 @@ void MainWindow::drawCarPreview(Encoder<CommandBuffer>& enc, const Menu::Preview
     look.tires     = p.tires;
     look.skin      = p.skin;
     device.waitIdle();
-    previewCars[id] = std::make_unique<CarModel>(device,resources,carScene,id,look);
+    previewCars[id] = std::make_unique<CarModel>(device,resources,carScene,car,look);
     previewLook[id] = want;
     }
   if(p.alpha<=0)
@@ -1252,8 +1315,9 @@ void MainWindow::tick(float dt) {
   fog.tick(dt);
   if(vehicle!=nullptr) {
     rc::Vehicle::Input in;
-    if(race->holdCar() || shotTime>=0 || resetVolumes.lowSignal()) {
-      // waiting for the start, shot (RCCars.exe 0x4f6b20) or in a reset volume (0x4f6c87): no keys, Brake held
+    if(race->holdCar() || race->phase()==rc::Race::Phase::Finished || shotTime>=0 || resetVolumes.lowSignal()) {
+      // waiting for the start, past the finish (RCCars.exe 0x4f6c39), shot (0x4f6b20) or in a reset volume
+      // (0x4f6c87): no keys, Brake held
       in.handbrake = true;
       }
     else if(zeroCam==ZeroCam::Off && !flying) {
@@ -1277,6 +1341,26 @@ void MainWindow::tick(float dt) {
       }
     else
       vehicle->update(in,dt);
+    if(split()) {
+      // player 2's keys (RCCars.crs Player2), the same rules as the player's
+      auto& r = *two.rider;
+      rc::Vehicle::Input in2;
+      if(r.race->holdCar() || r.race->phase()==rc::Race::Phase::Finished) {
+        in2.handbrake = true;
+        }
+      else {
+        auto held2 = [&](Controls::Action a) { return controls2.held(a,keys.data()); };
+        in2.throttle  = (held2(Controls::Forw) ? 1.f : 0.f) - (held2(Controls::Back) ? 1.f : 0.f);
+        in2.steer     = (held2(Controls::Left) ? 1.f : 0.f) - (held2(Controls::Right) ? 1.f : 0.f);
+        in2.handbrake = held2(Controls::Brake);
+        in2.boost     = held2(Controls::Boost);
+        in2.jump      = r.jump;
+        }
+      r.jump = false;
+      r.vehicle->update(in2,dt);
+      // the two cars push each other apart as cars do (0x533990)
+      rc::Vehicle::collide(*physics,*vehicle,*r.vehicle);
+      }
     if(ghosts) {
       // 0x4f6ea0 -> 0x502b90: the player's car recorded; the ghosts on their laps
       const uint32_t pressed = (in.throttle>0 ? 0x01u : 0u) | (in.throttle<0 ? 0x02u : 0u);
@@ -1306,6 +1390,8 @@ void MainWindow::tick(float dt) {
       const rc::Mat4 p = (*opponents)[i].pose();
       others.push_back({p.translation(),p.vector({0,0,1})*(*opponents)[i].speed()});
       }
+    if(split())   // player 2's car, for the people and the road cars
+      others.push_back({two.rider->pose.translation(),two.rider->vehicle->velocity()});
     if(characters && characters->update(dt,vehicle.get(),others)) {
       hud->hit(true);
       Log::i("great hit (character) at ",Hud::formatTime(race->time()));
@@ -1314,7 +1400,7 @@ void MainWindow::tick(float dt) {
       traffic->update(dt,!race->holdCar(),vehicle.get(),camera.position,others);
     // an opponent that ran into someone or something drives on by itself (RCCars.exe 0x534340, 0x534880 ..
     // -> 0x4fd9d0)
-    for(size_t i=0; i<others.size(); ++i)
+    for(size_t i=0; opponents && i<opponents->size(); ++i)
       if(others[i].hit)
         (*opponents)[i].knock();
     tellNews(dt,others);
@@ -1342,7 +1428,7 @@ void MainWindow::tick(float dt) {
     if(lapEnd) {
       const float lap  = race->lapTimes().back();
       bool        best = ghostTook;
-      if(!devFlew && players->lapDone(int32_t(trackId),int32_t(carId),lap))
+      if(!devFlew && !split() && players->lapDone(int32_t(trackId),int32_t(carId),lap))
         best = true;
       if(best)
         tell(20100,-1,Hud::formatTime(lap));
@@ -1352,8 +1438,10 @@ void MainWindow::tick(float dt) {
       if(opponents && opponents->size()>0)
         Log::i("finished ",opponents->place(playerFinish),". of ",opponents->size()+1," in ",Hud::formatTime(playerFinish));
       }
-    // RCCars.sb LevelFinish ("3 ShowTable", 0x4a5100): the table 3 s after the finish
-    if(playerFinish>=0 && !finishShown && race->sinceFinish()>=3.f && !menu->active()) {
+    // RCCars.sb LevelFinish ("3 ShowTable", 0x4a5100): the table 3 s after the finish; in the split screen after
+    // both have finished
+    const bool allDone = !split() || (two.rider->finish>=0 && two.rider->race->sinceFinish()>=3.f);
+    if(playerFinish>=0 && !finishShown && race->sinceFinish()>=3.f && allDone && !menu->active()) {
       finishShown = true;
       menu->open(Menu::Page::Finish);
       }
@@ -1438,6 +1526,8 @@ void MainWindow::tick(float dt) {
       respawnCar();
       }
     tickSounds(dt);
+    if(split())
+      tickTwo(dt);
     }
 
   if(zeroCam!=ZeroCam::Off) {
@@ -1500,6 +1590,32 @@ std::vector<Menu::FinishRow> MainWindow::finishRows() const {
   std::vector<Menu::FinishRow> rows;
   const float clock = race->clockTime();
   const float lap   = checkpoints->lapLength();
+  if(split()) {
+    // the split screen (0x4a5970): "Gracz1" and "Gracz2" (Language/Game 40508, 40509); mode 9 the finished by
+    // their times, mode 10 by where they were at its end (0x4ead70); the gap to the upper view's player
+    const auto& r = *two.rider;
+    const float fin[2] = {playerFinish,r.finish};
+    const rc::Race* races[2] = {race.get(),r.race.get()};
+    for(int i=0; i<2; ++i) {
+      Menu::FinishRow row;
+      row.name    = std::string(hud->gameText(uint32_t(40508+i)));
+      row.player  = i==0;
+      row.time    = fin[i]>=0 ? fin[i] : clock;
+      row.bestLap = races[i]->lapTimes().empty() ? -1.f : races[i]->bestLap();
+      const float t = row.time;
+      float v = t>1e-6f ? std::max(0.f,two.way[i])/t : 0.f;
+      if(fin[i]<0 && t<60.f)
+        v = (t/60.f)*v+(1.f-t/60.f)*7.f;
+      row.speed = v*3.6f;
+      rows.push_back(std::move(row));
+      }
+    bool second = two.way[1]>two.way[0];
+    if(!two.lag && (fin[0]>=0 || fin[1]>=0))
+      second = fin[1]>=0 && (fin[0]<0 || fin[1]<fin[0]);
+    if(second)
+      std::swap(rows[0],rows[1]);
+    return rows;
+    }
   auto avg = [&](float way, float t, bool done) {
     if(t<1e-6f)
       return 0.f;
@@ -1831,10 +1947,10 @@ void MainWindow::renderMenu() {
     auto enc = cmd.startEncoding(device);
     enc.setFramebuffer({{swapchain[swapchain.currentImage()],Vec4(0,0,0,1),Tempest::Preserve}},
                        {zbuffer,1.f,Tempest::Discard});
-    const auto preview = menu->carPreview();
+    const auto previews = menu->carPreviews();
     menu->draw(enc,frameId,int(w()),int(h()),[&](){
-      if(preview)
-        drawCarPreview(enc,*preview);
+      for(auto& p:previews)
+        drawCarPreview(enc,p);
       });
     fps->draw(enc,frameId,int(w()),int(h()));
   }
@@ -1844,20 +1960,22 @@ void MainWindow::renderMenu() {
   fps->presented();
   }
 
-// RCCars.exe 0x531ff0 (rc::fx::CarLight): the lightmap under the first four wheels touching the track, for the
-// player's car the one under the car if none does. The opponents on their recordings have no wheel contacts of
-// ours: theirs are looked for under their wheels as drawn.
 // RenderQual and the car's LOD index (0x501c10: -1 an opponent nearer than DistLOD1SwitchOn, 0 the full model, 1 and 2
 // the LODs) decide whether its antenna springs: where the index is below -1, 0, 1 for low, medium, high (0x5728b0,
 // 0x4ff2e8). So on high every full model's antenna springs, on medium only the near opponents', on low none; the
-// others keep the modelled one
+// others keep the modelled one. The split screen takes the nearer of the two views (0x501c10 the least index)
 bool MainWindow::springyAntenna(const rc::Vec3& pos, bool opponent) const {
   static const int32_t count[3] = {-1,0,1};
-  const float dist  = (pos-camera.position).length();
+  float dist = (pos-camera.position).length();
+  if(split())
+    dist = std::min(dist,(pos-two.rider->camera.position).length());
   const int32_t lod = opponent && dist<lodDistances.lod0 ? -1 : dist<lodDistances.lod1 ? 0 : dist<lodDistances.lod2 ? 1 : 2;
   return lod<count[quality.renderLevel()];
   }
 
+// RCCars.exe 0x531ff0 (rc::fx::CarLight): the lightmap under the first four wheels touching the track, for the
+// player's car the one under the car if none does. The opponents on their recordings have no wheel contacts of
+// ours: theirs are looked for under their wheels as drawn.
 void MainWindow::tickAntennas(float dt) {
   // RCCars.exe 0x4fe9d0 every frame for every car; set up again (0x4ff2d0) where the car was put somewhere else
   auto follow = [this,dt](std::optional<rc::Antenna>& a, size_t id, const rc::Mat4& pose, std::optional<float> ceiling,
@@ -1888,6 +2006,8 @@ void MainWindow::tickAntennas(float dt) {
     carAntenna.reset();
     sounds->tickAntenna(-1,false,0.f);
     }
+  if(split() && two.rider->car)
+    follow(two.rider->antenna,two.rider->carId,two.rider->pose,std::nullopt,false);
   const size_t n = opponents ? opponents->size() : 0;
   aiAntennas.resize(n);
   for(size_t i=0; i<n; ++i) {
@@ -1926,6 +2046,16 @@ void MainWindow::shadeCars(float dt) {
       light = probe(carPose.translation()+rc::Vec3{0,0.01f,0},1.5f);
     carShade.update(carLight,dt,near(carPose),light);
     }
+  if(split() && two.rider->vehicle) {
+    auto&  r   = *two.rider;
+    float  sum = 0;
+    int    n   = 0;
+    contacts(*r.vehicle,sum,n);
+    auto light = average(sum,n);
+    if(!light)
+      light = lightProbe->below(r.pose.translation()+rc::Vec3{0,0.01f,0},1.5f);
+    r.shade.update(carLight,dt,(r.pose.translation()-r.camera.position).length()<carLight.maxDist,light);
+    }
   if(opponents) {
     aiShades.resize(opponents->size());
     for(size_t i=0; i<opponents->size(); ++i) {
@@ -1949,6 +2079,179 @@ void MainWindow::shadeCars(float dt) {
       aiShades[i].update(carLight,dt,near(pose),average(sum,n));
       }
     }
+  }
+
+void MainWindow::shadeFeatures(float dt) {
+  if(lightProbe==nullptr)
+    return;
+  using rc::fx::FeatureShade;
+  const rc::Spline& curve = carLight.featCurve;
+  // RCCars.exe 0x532d80: from 0.1 m above where it stands, 2 m down
+  auto under = [this](const rc::Vec3& at) {
+    return [this,at]{ return lightProbe->ground(at+rc::Vec3{0,0.1f,0},2.f); };
+    };
+  // VIDEO_CharLight (RenderQual high): without it none of them is shaded by the lightmap (0x532d80)
+  actorLight.clear();
+  roadLight.clear();
+  if(!quality.charLight)
+    return;
+  if(objects)
+    objects->shade(dt,curve,*lightProbe);
+
+  if(characters) {
+    const auto& actors = characters->actors();
+    actorShades.resize(actors.size());
+    actorLight.assign(actors.size(),-1.f);
+    for(size_t i=0; i<actors.size(); ++i) {
+      const auto* a = actors[i];
+      auto&       f = actorShades[i];
+      const bool  person = a->kind==rc::Characters::Kind::Person;
+      if(!person && a->kind!=rc::Characters::Kind::Guard)
+        continue;
+      if(person && a->visible) {
+        f.shade.update(curve,FeatureShade::Person,dt,under(a->world.translation()));
+        f.on = true;
+        }
+      else if(!person && !f.on) {
+        f.shade.update(curve,FeatureShade::Guard,-1.f,under(a->world.translation()));
+        f.on = true;
+        }
+      actorLight[i] = f.shade.value();
+      }
+    }
+
+  if(traffic) {
+    const auto& cars = traffic->cars();
+    roadShades.resize(cars.size());
+    roadLight.assign(cars.size(),-1.f);
+    const FeatureShade::Settings cfg = {2,traffic->deltaAlpha(),-1};
+    for(size_t i=0; i<cars.size(); ++i) {
+      auto& f = roadShades[i];
+      if(cars[i]->visible)
+        f.shade.update(curve,cfg,dt,under(cars[i]->world.translation()));
+      roadLight[i] = f.shade.value();
+      }
+    }
+  }
+
+rc::Mat4 MainWindow::drawScene(Encoder<CommandBuffer>& enc, const Camera& cam, const Tempest::Rect& vp, float aspect,
+                               uint8_t frame, float dt) {
+  const int slot = frame>=MaxFramesInFlight ? 1 : 0;
+  LevelMesh::Push push;
+  const rc::Mat4  viewProj = cam.viewProj(aspect);
+  viewProj.toColumnMajor(push.viewProj);
+  push.cameraPos[0] = cam.position.x;
+  push.cameraPos[1] = cam.position.y;
+  push.cameraPos[2] = cam.position.z;
+  push.cameraPos[3] = fog.current().density;
+  push.fogColor     = fog.current().color & 0xffffffu;
+  push.sunDir[0] = 0.4f; push.sunDir[1] = 0.8f; push.sunDir[2] = 0.3f;
+  push.sunDir[3] = 1.0f;                     // lightmap scale
+  push.time      = time;
+  if(car && quality.renderLevel()>0) {
+    // the sea see-through near the car, not on low RenderQual (0x523b00 -> 0x5240c0)
+    const rc::Vec3 at = slot==1 ? two.rider->pose.translation() :
+                        demoCar()!=nullptr ? demoCar()->pose().translation() : carPose.translation();
+    push.carPos[0] = at.x; push.carPos[1] = at.y; push.carPos[2] = at.z;
+    }
+
+  const auto poses = level ? level->animated().poses(time) : std::vector<rc::Mat4>();
+  if(level)
+    level->mesh().draw(enc,push,LevelMesh::Pass::Opaque,viewProj,poses);
+  if(objects)
+    objects->draw(enc,viewProj,push,quality.charLight);
+  if(characters)
+    characterView->draw(enc,frame,resources,*characters,push,actorLight);
+  if(traffic)
+    // the wheels' shadows and the head lights' glow with VIDEO_RoadCarShadow (0x5171d6, 0x517293)
+    trafficView->draw(enc,frame,*traffic,viewProj,push,level && quality.roadCarShadow ? &level->collision() : nullptr,
+                      roadLight);
+  if(car && level && !demo.on && quality.carShadow) {
+    carSpotList.assign(1,carShadow->spot(carId,carPose));
+    if(split())
+      carSpotList.push_back(carShadow->spot(two.rider->carId,two.rider->pose));
+    carSpots->draw(enc,frame,carSpotList,viewProj,push,level->collision());
+    }
+  if(car && !demo.on) {
+    auto&      mesh  = car->at((carPose.translation()-cam.position).length(),lodDistances);
+    const auto parts = carPartPoses(mesh);
+    mesh.setDirt(forcedDirt>=0 ? float(forcedDirt) : effects->dirt());
+    lightCar(mesh,&mesh==&car->full() && quality.light,carLight,carShade.value());
+    mesh.setReflections(quality.envMap);
+    mesh.showAntenna(!(&mesh==&car->full() && carAntenna));
+    mesh.draw(enc,viewProj,push,carPose,&parts);
+    antennaView->clear();
+    if(&mesh==&car->full() && carAntenna)
+      antennaView->add(carId,carAntenna->joints(),mesh.lighting());
+    }
+  else {
+    antennaView->clear();
+    }
+  if(split() && two.rider->car) {
+    // player 2's car
+    auto&       r     = *two.rider;
+    auto&       mesh  = r.car->at((r.pose.translation()-cam.position).length(),lodDistances);
+    const auto  parts = r.vehicle ? partPoses(mesh,r.vehicle->geometry(),r.vehicle->rigPose()) : carPartPoses(mesh);
+    mesh.setDirt(effects->dirt(1));
+    lightCar(mesh,&mesh==&r.car->full() && quality.light,carLight,r.shade.value());
+    mesh.setReflections(quality.envMap);
+    mesh.showAntenna(!(&mesh==&r.car->full() && r.antenna));
+    mesh.draw(enc,viewProj,push,r.pose,&parts);
+    if(&mesh==&r.car->full() && r.antenna)
+      antennaView->add(r.carId,r.antenna->joints(),mesh.lighting());
+    }
+  if(opponents) {
+    for(size_t i=0; i<opponents->size(); ++i) {
+      const auto& o = (*opponents)[i];
+      auto        m = aiMeshes.find({o.car,o.skin,o.boost,o.reson,o.tires});
+      if(m==aiMeshes.end())
+        continue;
+      auto&       mesh  = m->second->at((o.pose().translation()-cam.position).length(),lodDistances);
+      const auto  parts = opponentPartPoses(mesh,o);
+      lightCar(mesh,&mesh==&m->second->full() && quality.light,carLight,
+               i<aiShades.size() ? aiShades[i].value() : 1.f);
+      mesh.setReflections(quality.envMap);
+      const bool springs = &mesh==&m->second->full() && i<aiAntennas.size() && aiAntennas[i];
+      mesh.showAntenna(!springs);
+      mesh.draw(enc,viewProj,push,o.pose(),&parts);
+      if(springs)
+        antennaView->add(size_t(o.car),aiAntennas[i]->joints(),mesh.lighting());
+      }
+    }
+  for(size_t i=0; ghosts && i<ghosts->size(); ++i) {
+    // the ghosts: cars like the others (0x4f27a0), hidden until they have a lap (flag 2)
+    const auto& g = (*ghosts)[i];
+    auto        m = aiMeshes.find({g.look.car,g.look.skin,g.look.boost,g.look.resonator,g.look.tires});
+    if(!g.visible || g.lap.empty() || m==aiMeshes.end())
+      continue;
+    auto&       mesh  = m->second->at((g.pose().translation()-cam.position).length(),lodDistances);
+    const auto  parts = partPoses(mesh,g.geometry(),g.rigPose());
+    lightCar(mesh,&mesh==&m->second->full() && quality.light,carLight,1.f);
+    mesh.setReflections(quality.envMap);
+    mesh.showAntenna(true);
+    mesh.draw(enc,viewProj,push,g.pose(),&parts);
+    }
+  antennaView->draw(enc,frame,push);
+  effects->setFog(push.cameraPos[3],push.fogColor);
+  if(vehicle)
+    effects->drawTracks(enc,frame,viewProj,cam.position);
+  if(level)
+    level->mesh().draw(enc,push,LevelMesh::Pass::Translucent,viewProj,poses);
+  if(vehicle)
+    effects->draw(enc,frame,vp.w,vp.h,viewProj,cam.position);
+  if(level && sunFlare.has() && slot==0) {
+    // the sun and its flare (RCCars.exe 0x479250): a ray from the camera to the sun every TimeShootRay s
+    const rc::CollisionMesh& coll = level->collision();
+    sunFlare.update(paused ? 0.f : std::min(dt,0.1f),cam.position,cam.forward(),viewProj,vp.w,vp.h,
+                    [&coll](const rc::Vec3& from, const rc::Vec3& to) {
+                      const rc::Vec3 d = to-from;
+                      return coll.raycast(from,d,0.98f).has_value(); // not the sky the sun stands on
+                      });
+    sunView->draw(enc,frame,vp.w,vp.h,sunFlare);
+    }
+  if(level && showCollision)
+    level->collisionView().draw(enc,push);
+  return viewProj;
   }
 
 void MainWindow::render() {
@@ -1991,7 +2294,11 @@ void MainWindow::render() {
       time  += zeroCam==ZeroCam::Detached ? (fixedTime>0 ? fixedTime/1000.f : lastDt) : std::min(dt,0.1f);
     tick(std::min(dt,0.1f));
     hud->tick(std::min(dt,0.1f));
+    if(split())
+      two.rider->hud->tick(std::min(dt,0.1f));
     shadeCars(std::min(dt,0.1f));
+    if(!paused)
+      shadeFeatures(std::min(dt,0.1f));
     tickAntennas(paused ? 0.f : std::min(dt,0.1f));
     fps->logicDone();
 
@@ -2000,118 +2307,60 @@ void MainWindow::render() {
     auto& cmd  = commands[frameId];
     sync.wait();
 
-    LevelMesh::Push push;
-    const rc::Mat4  viewProj = camera.viewProj(float(w())/float(std::max(1,h())));
-    viewProj.toColumnMajor(push.viewProj);
-    push.cameraPos[0] = camera.position.x;
-    push.cameraPos[1] = camera.position.y;
-    push.cameraPos[2] = camera.position.z;
-    push.cameraPos[3] = fog.current().density;
-    push.fogColor     = fog.current().color & 0xffffffu;
-    push.sunDir[0] = 0.4f; push.sunDir[1] = 0.8f; push.sunDir[2] = 0.3f;
-    push.sunDir[3] = 1.0f;                     // lightmap scale
-    push.time      = time;
-    if(car && quality.renderLevel()>0) {
-      // the sea see-through near the car, not on low RenderQual (0x523b00 -> 0x5240c0)
-      const rc::Vec3 at = demoCar()!=nullptr ? demoCar()->pose().translation() : carPose.translation();
-      push.carPos[0] = at.x; push.carPos[1] = at.y; push.carPos[2] = at.z;
-      }
-
     {
       auto enc = cmd.startEncoding(device);
-      enc.setFramebuffer({{swapchain[swapchain.currentImage()],Vec4(0.62f,0.72f,0.82f,1.f),Tempest::Preserve}},
+      // the split screen's gap between its views is black
+      const Vec4 clear = split() ? Vec4(0,0,0,1) : Vec4(0.62f,0.72f,0.82f,1.f);
+      enc.setFramebuffer({{swapchain[swapchain.currentImage()],clear,Tempest::Preserve}},
                          {zbuffer,1.f,Tempest::Preserve});
-      const auto poses = level ? level->animated().poses(time) : std::vector<rc::Mat4>();
-      if(level)
-        level->mesh().draw(enc,push,LevelMesh::Pass::Opaque,viewProj,poses);
-      if(objects)
-        objects->draw(enc,viewProj,push);
-      if(characters)
-        characterView->draw(enc,frameId,resources,*characters,push);
-      if(traffic)
-        // the wheels' shadows and the head lights' glow with VIDEO_RoadCarShadow (0x5171d6, 0x517293)
-        trafficView->draw(enc,frameId,*traffic,viewProj,push,
-                          level && quality.roadCarShadow ? &level->collision() : nullptr);
-      if(car && level && !demo.on && quality.carShadow) {
-        carSpotList.assign(1,carShadow->spot(carId,carPose));
-        carSpots->draw(enc,frameId,carSpotList,viewProj,push,level->collision());
-        }
-      if(car && !demo.on) {
-        auto&      mesh  = car->at((carPose.translation()-camera.position).length(),lodDistances);
-        const auto parts = carPartPoses(mesh);
-        mesh.setDirt(forcedDirt>=0 ? float(forcedDirt) : effects->dirt());
-        lightCar(mesh,&mesh==&car->full() && quality.light,carLight,carShade.value());
-        mesh.setReflections(quality.envMap);
-        mesh.showAntenna(!(&mesh==&car->full() && carAntenna));
-        mesh.draw(enc,viewProj,push,carPose,&parts);
-        antennaView->clear();
-        if(&mesh==&car->full() && carAntenna)
-          antennaView->add(carId,carAntenna->joints(),mesh.lighting());
-        }
-      else {
-        antennaView->clear();
-        }
-      if(opponents) {
-        for(size_t i=0; i<opponents->size(); ++i) {
-          const auto& o = (*opponents)[i];
-          auto        m = aiMeshes.find({o.car,o.skin,o.boost,o.reson,o.tires});
-          if(m==aiMeshes.end())
-            continue;
-          auto&       mesh  = m->second->at((o.pose().translation()-camera.position).length(),lodDistances);
-          const auto  parts = opponentPartPoses(mesh,o);
-          lightCar(mesh,&mesh==&m->second->full() && quality.light,carLight,
-                   i<aiShades.size() ? aiShades[i].value() : 1.f);
-          mesh.setReflections(quality.envMap);
-          const bool springs = &mesh==&m->second->full() && i<aiAntennas.size() && aiAntennas[i];
-          mesh.showAntenna(!springs);
-          mesh.draw(enc,viewProj,push,o.pose(),&parts);
-          if(springs)
-            antennaView->add(size_t(o.car),aiAntennas[i]->joints(),mesh.lighting());
+      const int W = int(w()), H = std::max(1,int(h()));
+      if(split()) {
+        // 0x4a5320: the views above and under 5 pixels around the middle (ours: units of 800x600), at 640x480 0,0 ..
+        // 640,235 and 0,245 .. 640,480; the picture made for a view 0.45 as high as wide (splitScrAspect), squeezed
+        // into one of 235/640 as the original's is at 640x480
+        const int     mid0 = H*295/600, mid1 = H*305/600;
+        const Rect    views[2] = {{0,0,W,mid0},{0,mid1,W,H-mid1}};
+        rc::Mat4      vps[2];
+        for(int v=0; v<2; ++v) {
+          const Rect& r = views[v];
+          enc.setViewport(r);
+          enc.setScissor(r);
+          const float aspect = float(r.w)/float(std::max(1,r.h))*(235.f/640.f)/chase.settings().splitAspect;
+          vps[v] = drawScene(enc,v==0 ? camera : two.rider->camera,r,aspect,uint8_t(frameId+MaxFramesInFlight*v),dt);
+          // the view's clip space -> the window's, for the cockpit's 3D parts
+          rc::Mat4 into;
+          into.m[1][1] = float(r.h)/float(H);
+          into.m[1][3] = float(2*r.y+r.h)/float(H)-1.f;
+          vps[v] = into*vps[v];
+          }
+        enc.setViewport(0,0,W,H);
+        enc.setScissor(0,0,W,H);
+        if(race && vehicle && two.rider->race) {
+          hud->setSplit(splitBar());
+          Hud::Info info = hudInfo();
+          info.gates    = showGates;
+          info.viewProj = vps[0];
+          hud->draw(enc,frameId,W,H,*race,info);
+          Hud::Info info2 = riderHud();
+          info2.gates    = showGates;
+          info2.viewProj = vps[1];
+          two.rider->hud->draw(enc,frameId,W,H,*two.rider->race,info2);
           }
         }
-      for(size_t i=0; ghosts && i<ghosts->size(); ++i) {
-        // the ghosts: cars like the others (0x4f27a0), hidden until they have a lap (flag 2)
-        const auto& g = (*ghosts)[i];
-        auto        m = aiMeshes.find({g.look.car,g.look.skin,g.look.boost,g.look.resonator,g.look.tires});
-        if(!g.visible || g.lap.empty() || m==aiMeshes.end())
-          continue;
-        auto&       mesh  = m->second->at((g.pose().translation()-camera.position).length(),lodDistances);
-        const auto  parts = partPoses(mesh,g.geometry(),g.rigPose());
-        lightCar(mesh,&mesh==&m->second->full() && quality.light,carLight,1.f);
-        mesh.setReflections(quality.envMap);
-        mesh.showAntenna(true);
-        mesh.draw(enc,viewProj,push,g.pose(),&parts);
-        }
-      antennaView->draw(enc,frameId,push);
-      effects->setFog(push.cameraPos[3],push.fogColor);
-      if(vehicle)
-        effects->drawTracks(enc,frameId,viewProj,camera.position);
-      if(level)
-        level->mesh().draw(enc,push,LevelMesh::Pass::Translucent,viewProj,poses);
-      if(vehicle)
-        effects->draw(enc,frameId,int(w()),int(h()),viewProj,camera.position);
-      if(level && sunFlare.has()) {
-        // the sun and its flare (RCCars.exe 0x479250): a ray from the camera to the sun every TimeShootRay s
-        const rc::CollisionMesh& coll = level->collision();
-        sunFlare.update(paused ? 0.f : std::min(dt,0.1f),camera.position,camera.forward(),viewProj,int(w()),int(h()),
-                        [&coll](const rc::Vec3& from, const rc::Vec3& to) {
-                          const rc::Vec3 d = to-from;
-                          return coll.raycast(from,d,0.98f).has_value(); // not the sky the sun stands on
-                          });
-        sunView->draw(enc,frameId,int(w()),int(h()),sunFlare);
-        }
-      if(level && showCollision)
-        level->collisionView().draw(enc,push);
-      if(race && vehicle) {
-        Hud::Info info = hudInfo();
-        info.gates    = showGates;
-        info.viewProj = viewProj;
-        hud->draw(enc,frameId,int(w()),int(h()),*race,info);
-        // the direction arrow over everything, in a depth buffer of its own
-        if(race->phase()!=rc::Race::Phase::Finished && !checkpoints->empty() && showArrow && !demo.on) {
-          enc.setFramebuffer({{swapchain[swapchain.currentImage()],Tempest::Preserve,Tempest::Preserve}},
-                             {zbuffer,1.f,Tempest::Discard});
-          arrow->draw(enc,int(w()),int(h()));
+      else {
+        const rc::Mat4 viewProj = drawScene(enc,camera,Rect(0,0,W,H),float(W)/float(H),frameId,dt);
+        if(race && vehicle) {
+          Hud::Info info = hudInfo();
+          info.gates    = showGates;
+          info.viewProj = viewProj;
+          hud->draw(enc,frameId,int(w()),int(h()),*race,info);
+          // the direction arrow over everything, in a depth buffer of its own; also past the finish (RCCars.exe
+          // 0x4b0fa0 does not ask)
+          if(!checkpoints->empty() && showArrow && !demo.on) {
+            enc.setFramebuffer({{swapchain[swapchain.currentImage()],Tempest::Preserve,Tempest::Preserve}},
+                               {zbuffer,1.f,Tempest::Discard});
+            arrow->draw(enc,int(w()),int(h()));
+            }
           }
         }
       if(menu->active())

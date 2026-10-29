@@ -1074,13 +1074,28 @@ static int cmdAi(const fs::path& game, const fs::path& track, rc::PackFile& pack
   float t = 0;
   size_t done = 0;
   std::vector<size_t> lapsSeen(ai.size(),0), backs(ai.size(),0);
-  while(done<ai.size() && t<150.f*float(laps)) {
+  std::vector<rc::Vec3> finishedAt(ai.size());
+  float lastFinish = -1;
+  while(t<150.f*float(laps) && (done<ai.size() || t<lastFinish+rc::Opponent::FinishStop+1.f)) {
     t += dt;
     ai.update(dt,true,grid.translation(),0,true,t,laps);
+    world.step(dt);   // the cars off their recordings
     done = 0;
     for(size_t i=0; i<ai.size(); ++i) {
-      if(ai[i].finishTime>=0)
+      if(ai[i].finishTime>=0) {
         ++done;
+        // past the finish: braking, then standing (Opponent::finish)
+        const float since = t-ai[i].finishTime;
+        const auto  p     = ai[i].pose().translation();
+        if(since<dt*0.5f) {
+          finishedAt[i] = p;
+          lastFinish    = std::max(lastFinish,t);
+          }
+        for(float at:{0.5f,1.f,2.f,3.f})
+          if(since>=at && since-dt<at)
+            std::printf("  %7.2f %-10s %.1f s after the finish: %.1f km/h, %.2f m from the line\n",t,
+                        ai[i].name.c_str(),at,ai[i].speed()*3.6f,(p-finishedAt[i]).length());
+        }
       if(ai[i].putBacks!=backs[i]) {
         backs[i] = ai[i].putBacks;
         const auto p = ai[i].pose().translation();

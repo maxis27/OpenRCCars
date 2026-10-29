@@ -159,21 +159,17 @@ struct BatchKey {
   };
 
 // Which detail texture (1..6, 0 none) a texture gets. RCCars.exe keeps it at +0x40 of its textures and draws a
-// face with the smaller nonzero one of its two base textures (0x480ef0); where that number comes from was not
-// found. The GLTX groups (SbTexture::groups) set bits 21..27 on just the textures one would give a detail texture,
-// and the six textures look like what those bits stand for: detailer is rock (stone), detailer2 sand,
-// detailer3 plaster (asphalt, concrete), detailer4 gravel (paths), detailer5 wood; bit 27 (floor) gets the sixth,
-// which does not exist. This mapping is a guess from the pictures.
+// face with the smaller nonzero one of its two base textures (0x480ef0). It is set when the scene's GLTX is read
+// (0x48e350): the lowest of bits 23..28 of the GLTX groups (SbTexture::groups) picks detailer (23: stone,
+// cobble), detailer2 (24: sand), detailer3 (25: asphalt, concrete), detailer4 (26: gravel, paths), detailer5
+// (27: floor) or detailer6 (28: no texture has it, and the game has no detailer6). Bits 21 (wood, metal) and 22
+// (sand, always with 24) give none.
 int32_t detailLayer(const rc::SbTexture* t) {
   if(t==nullptr)
     return 0;
-  const uint32_t g = t->groups;
-  if(g & (1u<<23)) return 1;
-  if(g & ((1u<<22)|(1u<<24))) return 2;
-  if(g & (1u<<25)) return 3;
-  if(g & (1u<<26)) return 4;
-  if(g & (1u<<21)) return 5;
-  if(g & (1u<<27)) return 6;
+  for(int32_t bit=23; bit<=28; ++bit)
+    if(t->groups & (1u<<bit))
+      return bit-22;
   return 0;
   }
 

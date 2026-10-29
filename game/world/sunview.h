@@ -34,6 +34,6 @@ class SunView {
     Tempest::Device&              device;
     const Tempest::Texture2d*     tex[5] = {};  // sun_disc, lens_flare_1, _2, _3, shine
     Tempest::RenderPipeline       blend, add;
-    Tempest::VertexBuffer<Vertex> vbo[2];
+    Tempest::VertexBuffer<Vertex> vbo[4];   // by the frame in flight and the view (two in the split screen)
     std::vector<Vertex>           verts;
   };

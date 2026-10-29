@@ -11,7 +11,8 @@
 //   env RCSHOT_TIME=<seconds> is the moment of the water animation and of the moving scenery (beach_4's submarine
 //   and radar; default: the drive time, else 0).
 //   env RCSHOT_FOG=0 draws without the track's fog (Settings\fog_<track>.ini), RCSHOT_NOSUN=1 without the sun.
-//   env RCSHOT_OBJECTS=0 hides the objects placed on the track (props, characters, road cars).
+//   env RCSHOT_OBJECTS=0 hides the objects placed on the track (props, characters, road cars), RCSHOT_FEATSHADE=0
+//   draws them without the brightness of the lightmap under them (rc::fx::FeatureShade).
 //   env RCSHOT_ACTOR=<instance name> looks at a person or animal from RCSHOT_ACTOR_DIST m (default 2.5) after
 //   RCSHOT_ACTOR_TIME seconds (default 1) with the car parked RCSHOT_ACTOR_CAR m in front of it (default 2), and
 //   RCSHOT_ACTOR_SIDE degrees round it (default 30).
@@ -407,6 +408,35 @@ int main(int argc, const char** argv) {
       Log::i("car brightness ",k);
       lightCar(*car,std::getenv("RCSHOT_LOD")==nullptr,light,k);
       }
+    // the props', people's, guards' and road cars' brightness as it is where they stand, at once
+    // (rc::fx::FeatureShade; RCSHOT_FEATSHADE=0 leaves them in the light of the other models)
+    std::vector<float> actorLight, roadLight;
+    if(const char* fs = std::getenv("RCSHOT_FEATSHADE"); fs==nullptr || std::string(fs)!="0") {
+      const auto        light = rc::fx::CarLight::load(res.pack());
+      rc::fx::LightmapProbe probe(level.scene(),level.collision(),[&res](const std::string& f){ return res.pack().read(f); });
+      auto under = [&probe](const rc::Vec3& at) {
+        return [&probe,at]{ return probe.ground(at+rc::Vec3{0,0.1f,0},2.f); };
+        };
+      if(objects)
+        objects->shade(-1.f,light.featCurve,probe);
+      if(chars)
+        for(auto* a:chars->actors()) {
+          float k = -1;
+          if(a->kind==rc::Characters::Kind::Person || a->kind==rc::Characters::Kind::Guard) {
+            rc::fx::FeatureShade s;
+            s.update(light.featCurve,rc::fx::FeatureShade::Guard,-1.f,under(a->world.translation()));
+            k = s.value();
+            Log::i("brightness of ",a->name,": ",k);
+            }
+          actorLight.push_back(k);
+          }
+      if(traffic)
+        for(auto* c:traffic->cars()) {
+          rc::fx::FeatureShade s;
+          s.update(light.featCurve,rc::fx::FeatureShade::Guard,-1.f,under(c->world.translation()));
+          roadLight.push_back(s.value());
+          }
+      }
     // the sun and its flare as they are after half a second
     rc::fx::LensFlare sunFlare;
     if(auto sun = level.scene().marker("SUN_AF"); sun!=nullptr && std::getenv("RCSHOT_NOSUN")==nullptr)
@@ -445,11 +475,11 @@ int main(int argc, const char** argv) {
           }
         }
       if(chars)
-        charView.draw(enc,0,res,*chars,push);
+        charView.draw(enc,0,res,*chars,push,actorLight);
       if(fx)
         fx->drawTracks(enc,0,viewProj,cam.position);
       if(traffic)
-        trafficView.draw(enc,0,*traffic,viewProj,push,&level.collision());
+        trafficView.draw(enc,0,*traffic,viewProj,push,&level.collision(),roadLight);
       level.mesh().draw(enc,push,LevelMesh::Pass::Translucent,viewProj,poses,sky);
       if(fx)
         fx->draw(enc,0,int(w),int(h),viewProj,cam.position);

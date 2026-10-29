@@ -119,6 +119,8 @@ Effects::Effects(Device& device, Resources& res)
 void Effects::clear(bool keep) {
   if(player)
     player->clear(keep);
+  if(player2)
+    player2->clear(keep);
   if(!keep) {
     // a car put back keeps its smoke and the bullet holes stay (RCCars.exe 0x508b50)
     gunfire.clear();
@@ -136,8 +138,36 @@ void Effects::clear(bool keep) {
   opponents.clear();
   }
 
-float Effects::dirt() const {
-  return player ? player->dirt() : 0.f;
+float Effects::dirt(size_t p) const {
+  const auto& fx = p==0 ? player : player2;
+  return fx ? fx->dirt() : 0.f;
+  }
+
+void Effects::clearSecond(bool keep) {
+  if(player2)
+    player2->clear(keep);
+  }
+
+void Effects::tickCar(rc::fx::CarEffects& fx, float dt, const rc::Vehicle& car, const rc::CollisionMesh& track,
+                      const rc::Vec3& camera, bool gas, bool brake) {
+  fx.setFeatures(carFeatures);
+  auto state = carState(car,car.pose(),car.velocity(),car.params().upgrade,car.params().boostLevel);
+  state.gas   = gas;
+  state.brake = brake;
+  state.boost = car.boosting();
+  for(size_t i=0; i<state.wheels.size(); ++i)
+    state.wheels[i].slip = car.wheelSlip(i,&state.wheels[i].rimSpeed);
+  state.sense(track);
+  fx.update(state,camera,dt,rnd);
+  }
+
+void Effects::tickSecond(float dt, const rc::Vehicle& car, const rc::CollisionMesh& track, const rc::Vec3& camera,
+                         bool gas, bool brake) {
+  if(!loaded || dt<=0)
+    return;
+  if(player2==nullptr)
+    player2 = std::make_unique<rc::fx::CarEffects>(settings,true);
+  tickCar(*player2,dt,car,track,camera,gas,brake);
   }
 
 void Effects::tick(float dt, const rc::Vehicle& car, const rc::Opponents* ai, const rc::CollisionMesh& track,
@@ -146,15 +176,7 @@ void Effects::tick(float dt, const rc::Vehicle& car, const rc::Opponents* ai, co
     return;
   if(player==nullptr)
     player = std::make_unique<rc::fx::CarEffects>(settings,true);
-  player->setFeatures(carFeatures);
-  auto state = carState(car,car.pose(),car.velocity(),car.params().upgrade,car.params().boostLevel);
-  state.gas   = gas;
-  state.brake = brake;
-  state.boost = car.boosting();
-  for(size_t i=0; i<state.wheels.size(); ++i)
-    state.wheels[i].slip = car.wheelSlip(i,&state.wheels[i].rimSpeed);
-  state.sense(track);
-  player->update(state,camera,dt,rnd);
+  tickCar(*player,dt,car,track,camera,gas,brake);
 
   const size_t n = ai!=nullptr ? ai->size() : 0;
   if(opponents.size()!=n) {
@@ -280,8 +302,9 @@ void Effects::drawTracks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::M
 
 void Effects::drawMarks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Mat4& vp, const rc::Vec3& eye, bool tracks) {
   marks.clear();
-  if(player)
-    player->collect(marks,eye);
+  for(auto* fx:{player.get(),player2.get()})
+    if(fx)
+      fx->collect(marks,eye);
   for(auto& o:opponents)
     if(o.fx)
       o.fx->collect(marks,eye);
@@ -320,7 +343,7 @@ void Effects::drawMarks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Ma
       }
     ranges.back().count += 6;
     }
-  auto& vbuf = markVbo[tracks ? 1 : 0][frame%2];
+  auto& vbuf = markVbo[tracks ? 1 : 0][frame%4];
   vbuf = device.vbo(BufferHeap::Upload,markVerts);
   struct Push {
     float    viewProj[16];
@@ -354,8 +377,9 @@ void Effects::drawMarks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Ma
 void Effects::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const rc::Mat4& vp, const rc::Vec3& eye) {
   drawMarks(enc,frame,vp,eye,false);
   sprites.clear();
-  if(player)
-    player->collect(sprites);
+  for(auto* fx:{player.get(),player2.get()})
+    if(fx)
+      fx->collect(sprites);
   for(auto& o:opponents)
     if(o.fx)
       o.fx->collect(sprites);
@@ -438,7 +462,7 @@ void Effects::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, con
   if(verts.empty())
     return;
 
-  vbo[frame%2] = device.vbo(BufferHeap::Upload,verts);
+  vbo[frame%4] = device.vbo(BufferHeap::Upload,verts);
   struct Push {
     float    screen[2];
     uint32_t fogColor;
@@ -447,6 +471,6 @@ void Effects::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, con
   enc.setPushData(push);
   for(auto& r:ranges) {
     enc.setBinding(0,*r.tex,Sampler::bilinear(ClampMode::ClampToEdge));
-    enc.draw(vbo[frame%2],r.first,r.count);
+    enc.draw(vbo[frame%4],r.first,r.count);
     }
   }

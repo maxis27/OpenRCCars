@@ -109,6 +109,9 @@ class Traffic {
     const std::vector<Car*>&   cars()  const { return view; }
     size_t                     size()  const { return view.size(); }
     bool                       slow()  const { return prm.slow; }
+    // roadcar.ini DeltaAlpha/100: how far off the lightmap's brightness may be before a car follows it
+    // (rc::fx::FeatureShade, RCCars.exe 0x516c60)
+    float                      deltaAlpha() const { return prm.deltaAlpha; }
     const std::vector<Shot>&   shots() const { return fired; }
     // a car touched the player's car in this update (its car_cdt_obj sound, RCCars.exe 0x534880)
     bool                       bumpedPlayer() const { return bumped; }
@@ -128,6 +131,7 @@ class Traffic {
       float towerShoot = 1.f;    // s, TowerShootT/10 (read, not used by 0x518050)
       float shadowY    = 0.48f;  // m, ShadowY/100: a wheel's shadow this far below the wheel's centre ..
       float shadowR    = 0.46f;  // m, ShadowR/100: .. on the faces within this of it
+      float deltaAlpha = 0.14f;  // DeltaAlpha/100
       };
 
     void   setup(State& s, const SbInstance& in);

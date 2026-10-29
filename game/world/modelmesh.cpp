@@ -275,7 +275,7 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
 
 void ModelMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
                    const LevelMesh::Push& frame, const rc::Mat4& world,
-                   const std::vector<rc::Mat4>* partPoses, bool lightsOn) const {
+                   const std::vector<rc::Mat4>* partPoses, bool lightsOn, float shade) const {
   const rc::Vec3 camera = {frame.cameraPos[0],frame.cameraPos[1],frame.cameraPos[2]};
   const rc::Vec3 sun    = light.on ? light.toLight : rc::Vec3{frame.sunDir[0],frame.sunDir[1],frame.sunDir[2]};
 
@@ -307,7 +307,13 @@ void ModelMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
     LevelMesh::Push& pp = push[b.part];
     pp.flags  = (b.mode==rc::AlphaMode::Cutout) ? uint32_t(LevelMesh::F_Cutout) : 0u;
     pp.envMap = reflections ? b.envMap : 0.f;
-    if(light.on) {
+    if(shade>=0) {
+      // RCCars.exe 0x516f50: the road cars' head lights keep a white texture factor
+      pp.flags    |= LevelMesh::F_CarLight;
+      pp.carPos[3] = b.lit>=0 ? 1.f : shade;
+      pp.sunDir[3] = 0;
+      }
+    else if(light.on) {
       pp.flags    |= LevelMesh::F_CarLight;
       pp.carPos[3] = light.ambient;
       pp.sunDir[3] = light.direct;

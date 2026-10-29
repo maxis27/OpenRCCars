@@ -153,11 +153,12 @@ void CharacterView::preload(Resources& res, const rc::Characters& chars) {
 static constexpr float PoseDistance = 270.f; // metres from the camera
 
 void CharacterView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, Resources& res, const rc::Characters& chars,
-                         const LevelMesh::Push& push) {
+                         const LevelMesh::Push& push, const std::vector<float>& shades) {
   verts.clear();
   draws.clear();
   const rc::Vec3 camera = {push.cameraPos[0],push.cameraPos[1],push.cameraPos[2]};
-  for(auto* a:chars.actors()) {
+  for(size_t ai=0; ai<chars.actors().size(); ++ai) {
+    const auto* a = chars.actors()[ai];
     if(!a->visible || a->skeleton==nullptr)
       continue;
     // not worth posing far away
@@ -176,6 +177,7 @@ void CharacterView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, Resources& 
       Draw d;
       d.first = verts.size();
       d.count = b.count;
+      d.shade = ai<shades.size() ? shades[ai] : -1.f;
       if(auto t = res.texture(textureOf(*a,b.texture))) {
         d.tex  = &t->tex;
         d.mode = t->alpha;
@@ -211,7 +213,7 @@ void CharacterView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, Resources& 
     }
   if(verts.empty())
     return;
-  vbo[frame%2] = device.vbo(BufferHeap::Upload,verts);
+  vbo[frame%4] = device.vbo(BufferHeap::Upload,verts);
   std::stable_sort(draws.begin(),draws.end(),[](const Draw& a, const Draw& b){
     return (a.mode==rc::AlphaMode::Translucent) < (b.mode==rc::AlphaMode::Translucent);
     });
@@ -225,6 +227,15 @@ void CharacterView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, Resources& 
       current = &p;
       }
     pp.flags = (d.mode==rc::AlphaMode::Cutout) ? uint32_t(LevelMesh::F_Cutout) : 0u;
+    if(d.shade>=0) {
+      pp.flags    |= LevelMesh::F_CarLight;
+      pp.carPos[3] = d.shade;
+      pp.sunDir[3] = 0;
+      }
+    else {
+      pp.carPos[3] = push.carPos[3];
+      pp.sunDir[3] = push.sunDir[3];
+      }
     enc.setPushData(pp);
     enc.setBinding(0,*d.tex);
     enc.setBinding(1,*d.tex);
@@ -232,6 +243,6 @@ void CharacterView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, Resources& 
     enc.setBinding(3,*d.tex);
     enc.setBinding(4,pso.noWater);
     enc.setBinding(5,res.white());
-    enc.draw(vbo[frame%2],d.first,d.count);
+    enc.draw(vbo[frame%4],d.first,d.count);
     }
   }

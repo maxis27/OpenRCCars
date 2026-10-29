@@ -191,6 +191,7 @@ Traffic::Traffic(PhysicsWorld& world, ObjectLibrary& library, const SbScene& tra
   if(road.find("TowerShootT")) prm.towerShoot = float(road.raw("TowerShootT"))*0.1f;
   if(road.find("ShadowY"))     prm.shadowY    = float(road.raw("ShadowY"))*0.01f;
   if(road.find("ShadowR"))     prm.shadowR    = float(road.raw("ShadowR"))*0.01f;
+  if(road.find("DeltaAlpha"))  prm.deltaAlpha = float(road.raw("DeltaAlpha"))*0.01f;
 
   const char* dirs[2] = {"forw","back"};
   for(int i=0; i<2; ++i)

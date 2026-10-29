@@ -271,7 +271,8 @@ z `Settings/cockpit.ini`.
   (rośnie w górę od ziemi), klatka co 0,1 s (zgadnięte; kod gry, który to czyta, nie jest rozpracowany).
 - **Komunikaty**: odliczanie, „okrążenie”, „zły kierunek”, „najlepsze okrążenie”, „Łup!”, „Słaby sygnał” obrazkami
   z `Language/<język>`. Tabela wyników to osobny ekran mety (`dlgFINISH`, niżej).
-- **Konsola czatu** (pole `chatRace` z `dlgMAIN.ini`: 5 linii po 5 s, czcionka `Smash20` z polskimi literami)
+- **Konsola czatu** (pole `chatRace` z `dlgMAIN.ini`: 5 linii po 5 s, czcionka `Smash20` z polskimi literami;
+  linie co 28, wysokość czcionki, od góry pola, pierwsza na y 260, najnowsza najniżej; 0x4adb20, 0x4ae600)
   pokazuje komunikaty z `Language/Game/<język>.tbl`: okrążenia i meta przeciwników, utonięcia, strefy resetu,
   trafienia z broni, kopnięcia i rzuty przez ludzi, pchanie aut z ulicy; przeciwnicy dostają je też z
   `Settings/AIEmu.ini`, gdy przejeżdżają obok ludzi, psów i aut (szansa `ProbCheck`).

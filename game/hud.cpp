@@ -114,13 +114,15 @@ constexpr float CpArrowMinDist = 2.37f;
 constexpr float CpArrowMaxDist = 9.f;
 constexpr float CpArrowFrame   = 0.1f;
 // The race's chat console (RCCars.exe 0x4a5f00: the "chatRace" box of dlgMAIN, 0x4ad840): x 20, y 260, 400 x 170 of
-// 800x600, in Smash20 at its size, white, the newest line at the bottom, at most 5 lines and each for 5 s; a new
-// line pushes the others up in 0.25 s (0x4ae71d: 20/5 of its age). Lines longer than the box break between words
-// (0x4ae0f0).
-constexpr float ChatX     = 20,  ChatY = 260, ChatW = 400, ChatH = 170;
+// 800x600, in Smash20 at its size, white, at most 5 lines and each for 5 s. The lines are Smash20's height apart
+// (28: 0x4adb20, 0x470480) and fill the box from its top (0x4ae819; Mateusz's screenshot: the first line's cell at
+// y 260); the newest is the lowest. When the oldest goes, the others move up in 0.25 s (0x4ae71d: 20/5 of its age).
+// Lines longer than the box break between words (0x4ae0f0).
+constexpr float ChatX     = 20,  ChatY = 260, ChatW = 400;
 constexpr size_t ChatLines = 5;
 constexpr float ChatLife  = 5.f, ChatSlide = 0.25f;
 constexpr float ChatSize  = 28.f;  // Smash20's cell: drawn 1:1
+constexpr float ChatLineH = 28.f;
 constexpr uint32_t DemoHint = 41903; // "Wciśnij <Enter>, aby załadować następne demo..."
 // The split screen (RCCars.exe 0x4afdc0 and 0x4b09a0 with the view, 0x4b1610): each view's parts at <name>_0/_1 of
 // cockpit.ini, cockpit_time.ini and map.ini, 800x600 units. "lapPos", "lapNumPos" and "mapPos" _0 are the full
@@ -239,7 +241,14 @@ void Hud::say(std::string line) {
       line.erase(0,1);
     }
   if(chat.size()>ChatLines)
-    chat.erase(chat.begin(),chat.end()-ChatLines);
+    dropChat(chat.size()-ChatLines);
+  }
+
+void Hud::dropChat(size_t n) {
+  const float left = std::max(chatShift-(clock-chatShiftAt)/ChatSlide,0.f);
+  chat.erase(chat.begin(),chat.begin()+std::ptrdiff_t(n));
+  chatShift   = left+float(n);
+  chatShiftAt = clock;
   }
 
 void Hud::tell(uint32_t id, std::string_view who, std::string_view what) {
@@ -260,17 +269,17 @@ void Hud::tell(uint32_t id, std::string_view who, std::string_view what) {
   }
 
 void Hud::chatConsole() {
-  while(!chat.empty() && clock-chat.front().at>ChatLife)
-    chat.erase(chat.begin());
+  size_t gone = 0;
+  while(gone<chat.size() && clock-chat[gone].at>ChatLife)
+    ++gone;
+  if(gone>0)
+    dropChat(gone);
   if(chat.empty())
     return;
-  const float  line  = ChatH/float(ChatLines);
-  const float  slide = std::clamp((clock-chat.back().at)/ChatSlide,0.f,1.f);
-  const Color  c     = {1,1,1,1};
-  for(size_t i=0; i<chat.size(); ++i) {
-    const float fromBottom = float(chat.size()-i)-slide;  // the newest comes up from under the box
-    text(font20,chat[i].text,pl(ChatX),py(ChatY+ChatH-fromBottom*line-line),ChatSize,c,-1);
-    }
+  const float shift = std::max(chatShift-(clock-chatShiftAt)/ChatSlide,0.f);
+  const Color c     = {1,1,1,1};
+  for(size_t i=0; i<chat.size(); ++i)
+    text(font20,chat[i].text,pl(ChatX),py(ChatY+(float(i)+shift)*ChatLineH),ChatSize,c,-1);
   }
 
 

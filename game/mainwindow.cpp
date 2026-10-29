@@ -2204,9 +2204,10 @@ void MainWindow::render() {
                          {zbuffer,1.f,Tempest::Preserve});
       const int W = int(w()), H = std::max(1,int(h()));
       if(split()) {
-        // 0x4a5320: the views 0,0 .. 640,235 and 0,245 .. 640,480 of 640x480; the picture made for a view 0.45 as
-        // high as wide (splitScrAspect), squeezed into one of 235/640 as the original's is
-        const int     mid0 = H*235/480, mid1 = H*245/480;
+        // 0x4a5320: the views above and under 5 pixels around the middle (ours: units of 800x600), at 640x480 0,0 ..
+        // 640,235 and 0,245 .. 640,480; the picture made for a view 0.45 as high as wide (splitScrAspect), squeezed
+        // into one of 235/640 as the original's is at 640x480
+        const int     mid0 = H*295/600, mid1 = H*305/600;
         const Rect    views[2] = {{0,0,W,mid0},{0,mid1,W,H-mid1}};
         rc::Mat4      vps[2];
         for(int v=0; v<2; ++v) {

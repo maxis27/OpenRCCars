@@ -1098,6 +1098,15 @@ twórcy (0x4c3e40), 0x649 demo (komunikat 0x26d), 0x64a gra wielu graczy (0x4cd9
   `indicatorShiftX/Y` − 200 (+300 lub +600 w jednostkach 800), lustrzana; `split_sp2` czerwona wartość, `split_sp3`
   żółty zasięg, `split_sp4` kapsel i obejma. Dopalacz od −34° do 126° (skala 100), prędkość od −54° do −213° (skala
   50 km/h), środek pierścienia (128, 128,5); napisy „dopalacz” (41902) i „km/h” (41901), liczby w `cock_num`.
+- **Napisy na tarczy** (0x4b32f0): odstępy w pikselach ekranu (dzielone przez 0x5647f0/0x5647f4, szerokość
+  i wysokość okna), nie w 640x480. Kreska 2 px pod środkiem tarczy, 70 px od jej boków; liczba dopalacza do prawej
+  3 px za środkiem kreski, dołem na kresce (flagi 0x220000), „dopalacz” od 2 px za środkiem, dołem 3 px nad kreską
+  (0x200001); prędkość (0x20000) i „km/h” (1) górą 9 px pod kreską. Flagi tekstu (0x4706a0): 0x10000/0x20000
+  środek/prawo, 0x100000/0x200000 środek/dół. Wysokość wiersza = wiersze czcionki od–do (0x46ffa0, 0x4704c0):
+  `cock_num` 16..55 komórki 64 (40 px), Smash26 5..25 (21 px), Smash20 0..27; litera rysowana od górnego wiersza.
+- **Czas w kapsule** (0x4afdc0): `cock_num` wyśrodkowany w obie strony w x 4 px .. węzeł − 16 px, y ±32 px wokół
+  środka ekranu + `timeTotalPosY_0`. Węzeł ±30x±32 px, pasek ±8 px, 32 px od prawej krawędzi, znaczniki ±16 px.
+  Widoki: nad i pod 5 px wokół środka ekranu (0x4a5320, przy 640x480 to 235 i 245).
 - **Tabela mety** (0x4a5970): „Gracz1” i „Gracz2” (40508, 40509) bez zdjęć, odstęp względem gracza 1.
 - **U nas** (`game/twoplayers.cpp`, `game/menutwo.cpp`, `MainWindow::render`): drugi gracz ma własne auto, wyścig,
   kamerę, dźwięk, efekty i kokpit (`Hud::setView`), klawisze z `Player2Layout`/`Player2` (domyślnie Klaw.2: Tab, W A

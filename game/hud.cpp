@@ -126,10 +126,11 @@ constexpr uint32_t DemoHint = 41903; // "Wciśnij <Enter>, aby załadować nast�
 // time ("timeLapPosY_0" 2, "_1" 318) have their own
 constexpr float SplitPlaceX[2] = {-8,-5}, SplitPlaceY[2] = {-26,303}, SplitTimeLapY[2] = {2,318};
 constexpr float SplitLapDY = 323, SplitLapNumDY = 325, SplitMapDY = 322;
-// the views of 640x480: 0,0 .. 640,235 and 0,245 .. 640,480 (0x4a5320); the messages ("msgOffsetY_0/_1" of
+// the views above and under 5 pixels around the middle (0x4a5320; at 640x480 0,0 .. 640,235 and 0,245 .. 640,480);
+// the messages ("msgOffsetY_0/_1" of
 // cockpit_split.ini, -89 and -70) from the middle of the view, in its scale (ours: the original's message code is
 // not decoded for the split screen)
-constexpr float SplitViewY[2][2] = {{0,235.f/480.f*600.f},{245.f/480.f*600.f,600}};
+constexpr float SplitViewY[2][2] = {{0,295},{305,600}};
 constexpr float SplitMsgY[2]     = {-89,-70};
 // the dial (0x4b1610): 255x255 of 640x480 (318.75 units) with its left at "indicatorShiftX_<v>" - 200 and its bottom
 // at "indicatorShiftY_<v>" - 200 under the middle (upper view) or the bottom (lower view) of the screen; drawn
@@ -144,22 +145,24 @@ constexpr float SplitDialX[2] = {172-200,172-200}, SplitDialY[2] = {210-200+300,
 constexpr float SplitAng[2][2] = {{-34,126},{-54,-213}};
 constexpr float SplitScale[2]  = {100,50};
 constexpr float SplitRingCX = 128, SplitRingCY = 128.5f;
-// the numbers and labels (0x4b32f0): a line across the dial 70/640 in from its sides; above it the turbo's number
-// (cock_num, right-aligned 3/640 right of the middle) and "dopalacz" (Smash26, from 2/640 right of the middle),
-// under it, 9/480 down, the speed and "km/h"
-constexpr float SplitTextIn = 70.f/640.f*800.f, SplitTextMid = 3.f/640.f*800.f, SplitLabelX = 2.f/640.f*800.f;
-constexpr float SplitBelow  = 9.f/480.f*600.f, SplitAbove = 3.f/480.f*600.f;
-// the bar (0x4b09a0): split_uzel 64x64 at "splitUzelPosX" 0.257 of the width, +-30/640 by +-32/480 around the
-// screen's middle; the capsule's body (u 0.03125..0.0625) from the left edge to it, the tube (u 0.9375..0.96875) from
-// it to the right edge. split_arrows over the tube from 30/640 right of the node to 32/640 short of the right edge,
-// +-8/480 high: grey (v 0..0.125) all along, red (v 0.125..0.25) to `lo`, yellow (v 0.25..0.375) on to `hi`; the
-// laps' notches (u 0.375..0.625, v 0.375..0.5, +-8/640); the upper player's mark pointing down (u 0.25..0.75,
-// v 0.5..0.6875, +-16/640, from 16/480 above the middle to 8/480 under it), the lower one's pointing up
-// (v 0.6875..0.875, 8 above to 16 under). The race's time in the capsule: 60/640 .. the node - 16/640, centred
-// ("timeTotalPosY_0" 2 units lower)
-constexpr float SplitNodeX = 0.257f, SplitNodeW = 30.f/640.f, SplitNodeH = 32.f/480.f;
-constexpr float SplitBarH  = 8.f/480.f, SplitBarEnd = 32.f/640.f;
-constexpr float SplitTimeX = 60.f/640.f, SplitTimeEnd = 16.f/640.f, SplitTimeY = 2;
+// the numbers and labels (0x4b32f0), in pixels of the screen (ours: units of 800x600): a line of two pixels under
+// the dial's middle, 70 in from its sides; above it the turbo's number (cock_num, right-aligned 3 right of the middle,
+// its bottom on the line) and "dopalacz" (Smash26, from 2 right of the middle, its bottom 3 above the line), under
+// it, their tops 9 down, the speed and "km/h". The original draws a glyph's rows from the font's top row on (cock_num
+// 16..55 of its 64 high cells, Smash26 5..25 of 28: 0x46ffa0, 0x4704c0); ours draw the whole cell
+constexpr float SplitTextIn = 70, SplitTextMid = 3, SplitLabelX = 2, SplitBelow = 9, SplitAbove = 3;
+constexpr float NumTop = 16, NumH = 40, Smash26Top = 5, Smash26H = 21;
+// the bar (0x4b09a0), in pixels of the screen (ours: units of 800x600): split_uzel 64x64 at "splitUzelPosX" 0.257 of
+// the width, +-30 by +-32 around the screen's middle; the capsule's body (u 0.03125..0.0625) from the left edge to
+// it, the tube (u 0.9375..0.96875) from it to the right edge. split_arrows over the tube from 30 right of the node to
+// 32 short of the right edge, +-8 high: grey (v 0..0.125) all along, red (v 0.125..0.25) to `lo`, yellow
+// (v 0.25..0.375) on to `hi`; the laps' notches (u 0.375..0.625, v 0.375..0.5, +-8); the upper player's mark pointing
+// down (u 0.25..0.75, v 0.5..0.6875, +-16, from 16 above the middle to 8 under it), the lower one's pointing up
+// (v 0.6875..0.875, 8 above to 16 under). The race's time in the capsule (0x4afdc0): centred both ways in 4 .. the
+// node - 16 across and +-32 around the middle moved down by "timeTotalPosY_0" (2)
+constexpr float SplitNodeX = 0.257f, SplitNodeW = 30, SplitNodeH = 32;
+constexpr float SplitBarH  = 8, SplitBarEnd = 32;
+constexpr float SplitTimeX = 4, SplitTimeEnd = 16, SplitTimeY = 2;
 constexpr float GateFlash  = 1.2f;                  // the checkpoint just passed flashes green
 constexpr float GateRange  = 150.f;                 // checkpoints farther away are not outlined
 
@@ -740,13 +743,12 @@ void Hud::splitGauge(const Info& info) {
   // the line across the middle, the numbers and the labels (0x4b32f0)
   const float l = x0+SplitTextIn*scale, r = x0+(SplitDialSize-SplitTextIn)*scale, mid = (l+r)*0.5f;
   const float cy = y0+SplitDialSize*0.5f*scale;
-  quad(*white,1,1,{0,0,1,1},l,cy-0.75f*scale,r-l,1.5f*scale,Color{1,1,1,0.9f});
+  quad(*white,1,1,{0,0,1,1},l,cy,r-l,2.f*scale,Color{1,1,1,0.9f});
   const int li = (lang=="Polish") ? 0 : 1;
-  // cock_num's digits stand 7..44 of their 64 high cells
-  numberText(std::to_string(int(tank)),mid+SplitTextMid*scale,cy-44.f*scale,1);
-  numberText(std::to_string(int(info.speed)),mid+SplitTextMid*scale,cy+(SplitBelow-7.f)*scale,1);
-  text(font,Texts[li][0],mid+SplitLabelX*scale,cy-(SplitAbove+26.f)*scale,26,Color{1,1,1,1},-1);
-  text(font,Texts[li][1],mid+SplitLabelX*scale,cy+SplitBelow*scale,26,Color{1,1,1,1},-1);
+  numberText(std::to_string(int(tank)),mid+SplitTextMid*scale,cy-(NumH+NumTop)*scale,1);
+  numberText(std::to_string(int(info.speed)),mid+SplitTextMid*scale,cy+(SplitBelow-NumTop)*scale,1);
+  text(font,Texts[li][0],mid+SplitLabelX*scale,cy-(SplitAbove+Smash26H+Smash26Top)*scale,28,Color{1,1,1,1},-1);
+  text(font,Texts[li][1],mid+SplitLabelX*scale,cy+(SplitBelow-Smash26Top)*scale,28,Color{1,1,1,1},-1);
   }
 
 void Hud::splitBar() {
@@ -755,21 +757,21 @@ void Hud::splitBar() {
   const float nodeX = SplitNodeX*W, midY = 0.5f*H;
   const Color white4 = {1,1,1,1};
   if(splitNode!=nullptr) {
-    quad(*splitNode,64,64,{2,0,4,64},0,midY-SplitNodeH*H,nodeX-SplitNodeW*W,2*SplitNodeH*H,white4);
-    quad(*splitNode,64,64,{0,0,64,64},nodeX-SplitNodeW*W,midY-SplitNodeH*H,2*SplitNodeW*W,2*SplitNodeH*H,white4);
-    quad(*splitNode,64,64,{60,0,62,64},nodeX+SplitNodeW*W,midY-SplitNodeH*H,W-(nodeX+SplitNodeW*W),2*SplitNodeH*H,white4);
+    quad(*splitNode,64,64,{2,0,4,64},0,midY-SplitNodeH*scale,nodeX-SplitNodeW*scale,2*SplitNodeH*scale,white4);
+    quad(*splitNode,64,64,{0,0,64,64},nodeX-SplitNodeW*scale,midY-SplitNodeH*scale,2*SplitNodeW*scale,2*SplitNodeH*scale,white4);
+    quad(*splitNode,64,64,{60,0,62,64},nodeX+SplitNodeW*scale,midY-SplitNodeH*scale,W-(nodeX+SplitNodeW*scale),2*SplitNodeH*scale,white4);
     }
   // the race's time inside the capsule
   {
-    const float x0 = SplitTimeX*W, x1 = nodeX-SplitTimeEnd*W;
-    numberText(formatTime(bar.time),(x0+x1)*0.5f,midY-25.5f*scale+py(SplitTimeY),0);
+    const float x0 = SplitTimeX*scale, x1 = nodeX-SplitTimeEnd*scale;
+    numberText(formatTime(bar.time),(x0+x1)*0.5f,midY+(SplitTimeY-NumH*0.5f-NumTop)*scale,0);
   }
   if(splitArrows==nullptr)
     return;
-  const float bx0 = nodeX+SplitNodeW*W, bx1 = W-SplitBarEnd*W, bw = bx1-bx0;
+  const float bx0 = nodeX+SplitNodeW*scale, bx1 = W-SplitBarEnd*scale, bw = bx1-bx0;
   auto strip = [&](float v0, float f0, float f1) {
     if(f1>f0)
-      quad(*splitArrows,64,128,{0,v0*128.f,64,(v0+0.125f)*128.f},bx0+bw*f0,midY-SplitBarH*H,bw*(f1-f0),2*SplitBarH*H,
+      quad(*splitArrows,64,128,{0,v0*128.f,64,(v0+0.125f)*128.f},bx0+bw*f0,midY-SplitBarH*scale,bw*(f1-f0),2*SplitBarH*scale,
            white4);
     };
   strip(0,0,1);
@@ -778,14 +780,14 @@ void Hud::splitBar() {
   if(!bar.lag && bar.laps>1)
     for(int i=1; i<bar.laps; ++i) {
       const float x = bx0+bw*float(i)/float(bar.laps);
-      quad(*splitArrows,64,128,{24,48,40,64},x-8.f/640.f*W,midY-SplitBarH*H,16.f/640.f*W,2*SplitBarH*H,white4);
+      quad(*splitArrows,64,128,{24,48,40,64},x-8.f*scale,midY-SplitBarH*scale,16.f*scale,2*SplitBarH*scale,white4);
       }
-  const float mw = 16.f/640.f*W;
+  const float mw = 16.f*scale;
   for(int p=0; p<2; ++p) {
     const float x  = bx0+bw*std::clamp(bar.at[p],0.f,1.f);
     const float v0 = p==0 ? 0.5f : 0.6875f;
-    const float y0 = p==0 ? midY-16.f/480.f*H : midY-8.f/480.f*H;
-    quad(*splitArrows,64,128,{16,v0*128.f,48,(v0+0.1875f)*128.f},x-mw,y0,2*mw,24.f/480.f*H,white4);
+    const float y0 = p==0 ? midY-16.f*scale : midY-8.f*scale;
+    quad(*splitArrows,64,128,{16,v0*128.f,48,(v0+0.1875f)*128.f},x-mw,y0,2*mw,24.f*scale,white4);
     }
   }
 

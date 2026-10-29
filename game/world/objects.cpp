@@ -60,8 +60,16 @@ std::vector<Objects::Sound> Objects::sounds() const {
   return ret;
   }
 
+void Objects::shade(float dt, const rc::Spline& curve, rc::fx::LightmapProbe& probe) {
+  for(auto& it:items) {
+    const rc::Vec3 at = it.prop->pose().translation();
+    it.light.update(curve,rc::fx::FeatureShade::Prop,dt,[&]{ return probe.ground(at+rc::Vec3{0,0.1f,0},2.f); });
+    }
+  }
+
 void Objects::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj, const LevelMesh::Push& frame) const {
   for(auto& it:items) {
-    it.mesh->draw(enc,viewProj,frame,it.prop->pose()*rc::Mat4::scale({it.scale,it.scale,it.scale}));
+    it.mesh->draw(enc,viewProj,frame,it.prop->pose()*rc::Mat4::scale({it.scale,it.scale,it.scale}),nullptr,false,
+                  it.light.value());
     }
   }

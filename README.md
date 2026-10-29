@@ -39,7 +39,8 @@ plików w [docs/formaty.md](docs/formaty.md).
   a pod niskim sufitem kładzie się do tyłu.
 - **Świat**: słońce na znaczniku `SUN_AF` z flarą obiektywu (`LENS_FLARE.ini`), tekstury detali z bliska
   (`Detail.ini`), wynurzająca się łódź podwodna i obracający się radar na beach_4 (`submarine.ini`), dym z chłodnic
-  (`hatch_smoke.ini`).
+  (`hatch_smoke.ini`); ludzie, strażnicy, rekwizyty i auta z ulicy ciemnieją w cieniu według lightmapy pod nimi
+  (`light_feat.bspl`).
 - **Kamera za autem** z `Settings/Camera.ini` (odległość, opóźnienia, odsuwanie przy prędkości i turbo, unoszenie,
   gdy teren zasłania auto), która nie schodzi pod wodę.
 - **Fizyka jazdy jak w `RCCars.exe`**: własny model auta oryginału (bryła 1 kg, kule nadwozia z `cdt<N>.ini`, koła
@@ -315,6 +316,7 @@ RCSHOT_DRIVE=1 RCSHOT_JUMP=0.8 RCSHOT_VIEW=90,0.6 rcshot ...   # z bliska, z lew
 RCSHOT_START="-8 -41 90" RCSHOT_DRIVE=1.6 rcshot ...            # auto najpierw w punkcie x z, obrócone o yaw (tu: do morza)
 RCSHOT_START="69.6 -6.4 0 4.5" RCSHOT_VIEW=270,0.6,0.4 rcshot <gra> beach_2 ...  # na ziemi pod y = 4,5 (w tunelu), kamera z prawej, wyżej
 RCSHOT_NOSHADOW=1 rcshot ...  /  RCSHOT_SHADE=1 rcshot ...      # bez cienia pod autem / jasność auta 1 zamiast lightmapy
+RCSHOT_FEATSHADE=0 rcshot ...                                   # ludzie, rekwizyty i auta z ulicy bez jasności z lightmapy
 RCSHOT_TIME=2.5 rcshot ...                                       # chwila animacji wody (fale, piana)
 RCSHOT_OBJECTS=0 rcshot ...                                      # bez rekwizytów
 RCSHOT_FOG=0 rcshot ...                                          # bez mgły
@@ -364,7 +366,7 @@ fx/             efekty, bez GPU
   wake.*        kilwater i piana na wodzie wokół kół i karoserii
   marks.h       czworokąty leżące w świecie (ślady, kilwater, piana, fale, dziury po kulach, ślady stóp)
   groundspots.* plamy cienia i światła położone na ścianach kolizji (cienie, reflektory ruchu ulicznego)
-  carlight.*    jasność auta z lightmapy pod kołami (car_lmshd.ini, carLight.ini)
+  carlight.*    jasność aut, ludzi, rekwizytów z lightmapy pod nimi (car_lmshd.ini, carLight.ini, light_feat.bspl)
   worldfx.*     efekty trasy: rozbryzgi przy water_splash_N, fale przy water_wave_N, strzały strażników, ślady stóp
 audio/          dźwięk: mikser PCM, kanały SNCH, silnik auta, dźwięki otoczenia, muzyka MP3 (lib/dr_mp3), film
                 intro MPEG-1 (lib/pl_mpeg)
@@ -405,8 +407,6 @@ lib/pl_mpeg     dekoder MPEG-1 i MP2 (intro, licencja MIT)
 
 Zrobione są wszystkie elementy pojedynczego szybkiego wyścigu. Brakuje:
 
-- **Grafika i świat**: przyciemnianie postaci i rekwizytów w cieniu (`feat_lmshd.ini`), dźwięk zahaczenia anteny
-  (`Antenna_scratch`).
 - **Opakowanie gry**: dwóch graczy na podzielonym ekranie, gra przez sieć; z opcji działają w grze
   tylko te, które ma nasz silnik (rozdzielczość, gamma, jakość grafiki i joysticki są tylko zapisywane).
 

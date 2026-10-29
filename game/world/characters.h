@@ -27,9 +27,11 @@ class CharacterView {
     // the meshes and textures of all of `chars`, made now rather than when each first comes near the camera (the
     // textures are read from RCCars.pack, which holds up that frame); call it for every new rc::Characters
     void preload(Resources& res, const rc::Characters& chars);
-    // `frame` is the frame in flight: its vertex buffer is rewritten
+    // `frame` is the frame in flight: its vertex buffer is rewritten. `shades`, by chars.actors(): the
+    // rc::fx::FeatureShade of the people and guards (their textures times it, no other light), negative for the
+    // animals, which keep the light of the track's models
     void draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frame, Resources& res,
-              const rc::Characters& chars, const LevelMesh::Push& push);
+              const rc::Characters& chars, const LevelMesh::Push& push, const std::vector<float>& shades = {});
 
   private:
     // one model's triangles, ready to be posed
@@ -54,6 +56,7 @@ class CharacterView {
       size_t                    first = 0, count = 0;
       const Tempest::Texture2d* tex   = nullptr;
       rc::AlphaMode             mode  = rc::AlphaMode::Opaque;
+      float                     shade = -1;
       };
 
     const Model& model(const rc::Skeleton& sk);

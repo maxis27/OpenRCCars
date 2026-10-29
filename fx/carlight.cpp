@@ -35,6 +35,11 @@ CarLight CarLight::load(PackFile& pack) {
     }
   catch(const std::exception&) {
     }
+  try {
+    l.featCurve = Spline::parse(pack.read("Splines\\light_feat.bspl"));
+    }
+  catch(const std::exception&) {
+    }
   return l;
   }
 
@@ -123,6 +128,41 @@ std::optional<float> LightmapProbe::below(const Vec3& from, float length) {
   if(!hit)
     return std::nullopt;
   return at(hit->triangle,hit->point);
+  }
+
+std::optional<float> LightmapProbe::ground(const Vec3& from, float length) {
+  auto hit = track.raycast(from,{0,-1,0},length);
+  if(!hit)
+    return std::nullopt;
+  return at(hit->triangle,hit->point).value_or(1.f);
+  }
+
+void FeatureShade::update(const Spline& curve, const Settings& cfg, float dt, const Sample& sample) {
+  bool look = dt<=0;
+  if(look) {
+    timer = 0;
+    }
+  else {
+    timer -= dt;
+    if(timer<=0) {
+      timer = cfg.interval;
+      look  = true;
+      }
+    }
+  if(look) {
+    const auto light = sample();
+    if(!light)
+      return;
+    target = curve.empty() ? *light : std::clamp(curve.at(*light*255.f)/255.f,0.f,1.f);
+    }
+  if(dt<=0) {
+    k = target;
+    return;
+    }
+  if(std::abs(k-target)<=cfg.delta)
+    return;
+  const float step = cfg.speed*dt;
+  k = target>k ? std::min(k+step,target) : std::max(k-step,target);
   }
 
 void CarShade::update(const CarLight& cfg, float dt, bool near, std::optional<float> light) {

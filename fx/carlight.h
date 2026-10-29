@@ -42,6 +42,7 @@ struct CarLight {
   float  deltaAlpha = 0.05f;
   float  maxDist    = 25.f;     // m
   Spline curve;                 // light_car.bspl, lightmap 0..255 -> brightness 0..255
+  Spline featCurve;             // light_feat.bspl, the same for FeatureShade
 
   static CarLight load(PackFile& pack);
   };
@@ -58,6 +59,9 @@ class LightmapProbe {
     std::optional<float> at(uint32_t triangle, const Vec3& point);
     // on the solid track at most `length` under `from`
     std::optional<float> below(const Vec3& from, float length);
+    // the same for the people, guards, props and road cars (0x532d80): 1 on a face without a lightmap, none only
+    // when nothing is there
+    std::optional<float> ground(const Vec3& from, float length);
 
   private:
     const Image* texture(int32_t index, int32_t model);
@@ -82,4 +86,40 @@ class CarShade {
     bool  primed = false;
   };
 
+// The brightness of the people, guards, props and road cars (RCCars.exe 0x532cf0 sets it up, 0x532d50 its
+// settings, 0x532d80 updates it; with VIDEO_CharLight, on by default): what the lightmap under them says, through
+// Splines\light_feat.bspl (the same curve as light_car.bspl; Settings\feat_lmshd.ini only names it, the game asks
+// for "light_feat" itself) over 255, held at 0..1, so 0.62 in the shade and 1 in the sun. It goes to Direct3D's
+// texture factor of all their meshes (0x451390 -> node +0x2fc, flag 0x100) and the texture is multiplied by it
+// (0x464d08, 0x45c980: MODULATE TEXTURE, TFACTOR), with no other light: in the sun they show their textures as they
+// are. The lightmap is looked up 0.1 m above where they stand and down to 2 m below; nothing there leaves the
+// brightness as it was (a face without a lightmap gives 1). Every `interval` s (negative: every update) it takes
+// the value under them as its target, then moves at `speed` a second towards it while it is more than `delta` off.
+class FeatureShade {
+  public:
+    struct Settings {
+      float speed    = 2;     // /s
+      float delta    = 0.1f;
+      float interval = -1;    // s
+      };
+    // the props of stone.sb (STON 0x50cb00; the original takes the ground the prop's body touches, we look below it)
+    static constexpr Settings Prop   = {2,0.1f,-1};
+    // the people (PEOP 0x510400), while they are about
+    static constexpr Settings Person = {2,0.1f,1};
+    // the guards (GUAM 0x51a7d0): once, when they are set up
+    static constexpr Settings Guard  = {0,0,-1};
+    // the road cars (RDCR 0x516f50) take `delta` from roadcar.ini DeltaAlpha/100 (0.14); their head lights stay
+    // white (0x2fc = 0xffffffff)
+
+    // what is under them: the lightmap (0..1, 1 without one), none when nothing is there
+    using Sample = std::function<std::optional<float>()>;
+    // `dt` <= 0 puts it at its target right away; until the first look it is 1
+    void  update(const Spline& curve, const Settings& cfg, float dt, const Sample& sample);
+    float value() const { return k; }
+
+  private:
+    float target = 1, k = 1, timer = 0;
+  };
+
 }
+

@@ -102,6 +102,7 @@ class MainWindow : public Tempest::Window {
     // the car on the start line and the race from the countdown; `again`: "Jeszcze raz", no delay before "3"
     void setupPhysics(bool restartRace = true, bool again = false);
     void shadeCars(float dt);                   // carShade, aiShades from the lightmaps under the cars
+    void shadeFeatures(float dt);               // the props', people's, guards' and road cars' FeatureShade
     void tickAntennas(float dt);                // the cars' springy antennas
     void setupOpponents();                      // the opponents of the track for aiLevel
     // the ghost race's ghosts (raceMode Ghost, MultiGhost), none in the other races; those of the race before
@@ -181,6 +182,13 @@ class MainWindow : public Tempest::Window {
     std::unique_ptr<rc::fx::LightmapProbe> lightProbe;
     rc::fx::CarShade                       carShade;
     std::vector<rc::fx::CarShade>          aiShades;
+    // by characters->actors() and traffic->cars(); `on` once a guard has looked (it does that once)
+    struct Feature {
+      rc::fx::FeatureShade shade;
+      bool                 on = false;
+      };
+    std::vector<Feature>                   actorShades, roadShades;
+    std::vector<float>                     actorLight, roadLight; // what is drawn, -1: not shaded
     std::unique_ptr<rc::Vehicle>      vehicle;
     std::unique_ptr<rc::Checkpoints>  checkpoints;
     std::unique_ptr<rc::Race>         race;

@@ -212,6 +212,8 @@ void MainWindow::loadLevel(const std::string& name) {
                                                          [this](const std::string& f){ return resources.pack().read(f); });
     carShade.reset();
     aiShades.clear();
+    actorShades.clear();
+    roadShades.clear();
     race        = std::make_unique<rc::Race>(*checkpoints,laps);
     resetVolumes = rc::ResetVolumes(level->scene());
     fog.setTarget(rc::FogParams::load(resources.pack(),name));
@@ -1913,6 +1915,56 @@ void MainWindow::shadeCars(float dt) {
     }
   }
 
+void MainWindow::shadeFeatures(float dt) {
+  if(lightProbe==nullptr)
+    return;
+  using rc::fx::FeatureShade;
+  const rc::Spline& curve = carLight.featCurve;
+  // RCCars.exe 0x532d80: from 0.1 m above where it stands, 2 m down
+  auto under = [this](const rc::Vec3& at) {
+    return [this,at]{ return lightProbe->ground(at+rc::Vec3{0,0.1f,0},2.f); };
+    };
+  if(objects)
+    objects->shade(dt,curve,*lightProbe);
+
+  actorLight.clear();
+  if(characters) {
+    const auto& actors = characters->actors();
+    actorShades.resize(actors.size());
+    actorLight.assign(actors.size(),-1.f);
+    for(size_t i=0; i<actors.size(); ++i) {
+      const auto* a = actors[i];
+      auto&       f = actorShades[i];
+      const bool  person = a->kind==rc::Characters::Kind::Person;
+      if(!person && a->kind!=rc::Characters::Kind::Guard)
+        continue;
+      if(person && a->visible) {
+        f.shade.update(curve,FeatureShade::Person,dt,under(a->world.translation()));
+        f.on = true;
+        }
+      else if(!person && !f.on) {
+        f.shade.update(curve,FeatureShade::Guard,-1.f,under(a->world.translation()));
+        f.on = true;
+        }
+      actorLight[i] = f.shade.value();
+      }
+    }
+
+  roadLight.clear();
+  if(traffic) {
+    const auto& cars = traffic->cars();
+    roadShades.resize(cars.size());
+    roadLight.assign(cars.size(),-1.f);
+    const FeatureShade::Settings cfg = {2,traffic->deltaAlpha(),-1};
+    for(size_t i=0; i<cars.size(); ++i) {
+      auto& f = roadShades[i];
+      if(cars[i]->visible)
+        f.shade.update(curve,cfg,dt,under(cars[i]->world.translation()));
+      roadLight[i] = f.shade.value();
+      }
+    }
+  }
+
 void MainWindow::render() {
   try {
     if(intro!=nullptr) {
@@ -1954,6 +2006,8 @@ void MainWindow::render() {
     tick(std::min(dt,0.1f));
     hud->tick(std::min(dt,0.1f));
     shadeCars(std::min(dt,0.1f));
+    if(!paused)
+      shadeFeatures(std::min(dt,0.1f));
     tickAntennas(paused ? 0.f : std::min(dt,0.1f));
     fps->logicDone();
 
@@ -1988,9 +2042,9 @@ void MainWindow::render() {
       if(objects)
         objects->draw(enc,viewProj,push);
       if(characters)
-        characterView->draw(enc,frameId,resources,*characters,push);
+        characterView->draw(enc,frameId,resources,*characters,push,actorLight);
       if(traffic)
-        trafficView->draw(enc,frameId,*traffic,viewProj,push,level ? &level->collision() : nullptr);
+        trafficView->draw(enc,frameId,*traffic,viewProj,push,level ? &level->collision() : nullptr,roadLight);
       if(car && level && !demo.on) {
         carSpotList.assign(1,carShadow->spot(carId,carPose));
         carSpots->draw(enc,frameId,carSpotList,viewProj,push,level->collision());

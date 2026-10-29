@@ -7,7 +7,7 @@
 #include "game/resources.h"
 #include "formats/water.h"
 
-Level::Level(Tempest::Device& device, Resources& res, const std::string& name)
+Level::Level(Tempest::Device& device, Resources& res, const std::string& name, int32_t renderQuality)
   :levelName(name) {
   sb  = rc::SbScene::load(res.readFile(std::filesystem::path("RCCarsDB")/(name+".sb")));
   coll    = rc::CollisionMesh(sb);
@@ -15,7 +15,7 @@ Level::Level(Tempest::Device& device, Resources& res, const std::string& name)
   anim    = rc::fx::AnimatedObjects(sb,rc::fx::AnimatedObjects::Settings::load([&](const std::string& f) {
     return res.pack().find(f)!=nullptr ? res.pack().read(f) : std::vector<uint8_t>();
     }));
-  gpu     = std::make_unique<LevelMesh>(device,res,sb,&coll,name,&anim.groups());
+  gpu     = std::make_unique<LevelMesh>(device,res,sb,&coll,name,&anim.groups(),renderQuality);
   collGpu = std::make_unique<CollisionView>(device,coll,sb);
   Tempest::Log::i("level \"",name,"\": ",sb.meshes.size()," meshes, ",sb.textures.size()," textures, ",
                   sb.markers.size()," markers, ",coll.triangles().size()," collision triangles");

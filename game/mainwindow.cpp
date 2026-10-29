@@ -107,6 +107,7 @@ void MainWindow::init(const std::string& name) {
   fps      = std::make_unique<FpsCounter>(device,res);
   arrow    = std::make_unique<DirectionArrow>(device,res);
   effects  = std::make_unique<Effects>(device,res);
+  effects->setQuality(quality);
   sunView  = std::make_unique<SunView>(device,res);
   antennaView = std::make_unique<AntennaView>(device,res,carScene);
   for(size_t i=0; i<antennaSettings.size(); ++i)
@@ -158,6 +159,7 @@ void MainWindow::init(const std::string& name) {
     for(const char* c:{"DT0","DT1","DT2","DT3","DT4","DT5","DTX","CONSTR","C1","F","E1","E2","I","STAT"})
       devCodes.push_back({c});
   setCursorShape(CursorShape::Hidden);   // the menus draw the game's own
+  applyOptions();                        // the quality the track is loaded with
   loadCar(0);
   if(name.empty()) {
     menu->open(Menu::Page::Main);
@@ -186,6 +188,23 @@ void MainWindow::applyOptions() {
   fpsLimit  = std::max(0,crs.integer("Video","FPS_Limit",0));
   showMap   = crs.integer("Cockpit","ShowMap",1)!=0;
   showArrow = crs.integer("Cockpit","DirectArrow",1)!=0;
+  // 0x4c854b: leaving the video options turns RenderQual and SFXQual into the VIDEO_* switches (0x4acdb0)
+  quality   = Quality::load(crs);
+  if(effects)
+    effects->setQuality(quality);
+  if(characters)
+    characters->setRenderQuality(quality.renderLevel());
+  if(level)
+    level->mesh().setFeatures(levelFeatures());
+  }
+
+LevelMesh::Features MainWindow::levelFeatures() const {
+  LevelMesh::Features f;
+  f.lightMaps = quality.lightMaps;
+  f.envMap    = quality.envMap;
+  f.coast     = quality.waterCoast;
+  f.detail    = quality.detailer;
+  return f;
   }
 
 MainWindow::~MainWindow() {
@@ -197,7 +216,8 @@ MainWindow::~MainWindow() {
 void MainWindow::loadLevel(const std::string& name) {
   device.waitIdle();
   try {
-    auto next = std::make_unique<Level>(device,resources,name);
+    auto next = std::make_unique<Level>(device,resources,name,quality.renderLevel());
+    next->mesh().setFeatures(levelFeatures());
     vehicle.reset();
     opponents.reset();
     traffic.reset();
@@ -385,6 +405,7 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
     try {
       characters = std::make_unique<rc::Characters>(*physics,library,level->scene(),level->name(),
                                                     [this](const std::string& f){ return resources.pack().read(f); });
+      characters->setRenderQuality(quality.renderLevel());
       Log::i("characters: ",characters->size());
       characterView->preload(resources,*characters);
       }
@@ -1825,10 +1846,22 @@ void MainWindow::renderMenu() {
 // RCCars.exe 0x531ff0 (rc::fx::CarLight): the lightmap under the first four wheels touching the track, for the
 // player's car the one under the car if none does. The opponents on their recordings have no wheel contacts of
 // ours: theirs are looked for under their wheels as drawn.
+// RenderQual and the car's LOD index (0x501c10: -1 an opponent nearer than DistLOD1SwitchOn, 0 the full model, 1 and 2
+// the LODs) decide whether its antenna springs: where the index is below -1, 0, 1 for low, medium, high (0x5728b0,
+// 0x4ff2e8). So on high every full model's antenna springs, on medium only the near opponents', on low none; the
+// others keep the modelled one
+bool MainWindow::springyAntenna(const rc::Vec3& pos, bool opponent) const {
+  static const int32_t count[3] = {-1,0,1};
+  const float dist  = (pos-camera.position).length();
+  const int32_t lod = opponent && dist<lodDistances.lod0 ? -1 : dist<lodDistances.lod1 ? 0 : dist<lodDistances.lod2 ? 1 : 2;
+  return lod<count[quality.renderLevel()];
+  }
+
 void MainWindow::tickAntennas(float dt) {
   // RCCars.exe 0x4fe9d0 every frame for every car; set up again (0x4ff2d0) where the car was put somewhere else
-  auto follow = [this,dt](std::optional<rc::Antenna>& a, size_t id, const rc::Mat4& pose, std::optional<float> ceiling) {
-    if(!antennaView->has(id)) {
+  auto follow = [this,dt](std::optional<rc::Antenna>& a, size_t id, const rc::Mat4& pose, std::optional<float> ceiling,
+                          bool opponent) {
+    if(!antennaView->has(id) || !springyAntenna(pose.translation(),opponent)) {
       a.reset();
       return;
       }
@@ -1845,7 +1878,7 @@ void MainWindow::tickAntennas(float dt) {
     if(level && carAntenna)
       if(auto hit = level->collision().raycast(carAntenna->mountPoint(),{0,1,0},carAntenna->reach()))
         ceiling = hit->distance;
-    follow(carAntenna,carId,carPose,ceiling);
+    follow(carAntenna,carId,carPose,ceiling,false);
     // 0x4fe5f0: and scratches along it
     sounds->tickAntenna(carAntenna && vehicle ? int(carId) : -1,ceiling.has_value(),
                        vehicle ? vehicle->velocity().length()*3.6f : 0.f);
@@ -1858,7 +1891,7 @@ void MainWindow::tickAntennas(float dt) {
   aiAntennas.resize(n);
   for(size_t i=0; i<n; ++i) {
     const auto& o = (*opponents)[i];
-    follow(aiAntennas[i],size_t(o.car),o.pose(),std::nullopt);
+    follow(aiAntennas[i],size_t(o.car),o.pose(),std::nullopt,true);
     }
   }
 
@@ -1870,11 +1903,15 @@ void MainWindow::shadeCars(float dt) {
     return (pose.translation()-camera.position).length()<carLight.maxDist;
     };
   auto average = [](float sum, int n) { return n>0 ? std::optional<float>(sum/float(n)) : std::nullopt; };
-  auto contacts = [this](const rc::Vehicle& v, float& sum, int& n) {
+  // 0x4572c0 finds no light under the cars without the track's lightmaps (VIDEO_LightMaps)
+  auto probe = [this](const rc::Vec3& at, float reach) {
+    return quality.lightMaps ? lightProbe->below(at,reach) : std::nullopt;
+    };
+  auto contacts = [&probe](const rc::Vehicle& v, float& sum, int& n) {
     rc::Vec3 at;
     for(size_t i=0; i<Wheels; ++i)
       if(v.wheelGround(i,at))
-        if(auto l = lightProbe->below(at+rc::Vec3{0,0.05f,0},0.1f)) {
+        if(auto l = probe(at+rc::Vec3{0,0.05f,0},0.1f)) {
           sum += *l;
           ++n;
           }
@@ -1885,7 +1922,7 @@ void MainWindow::shadeCars(float dt) {
     contacts(*vehicle,sum,n);
     auto light = average(sum,n);
     if(!light)
-      light = lightProbe->below(carPose.translation()+rc::Vec3{0,0.01f,0},1.5f);
+      light = probe(carPose.translation()+rc::Vec3{0,0.01f,0},1.5f);
     carShade.update(carLight,dt,near(carPose),light);
     }
   if(opponents) {
@@ -1902,7 +1939,7 @@ void MainWindow::shadeCars(float dt) {
         const auto& wheels = o.geometry().wheels;
         for(size_t w=0; w<std::min(Wheels,wheels.size()); ++w) {
           const rc::Vec3 hub = pose.point(o.wheelPose(w).translation());
-          if(auto l = lightProbe->below(hub,wheels[w].radius+0.1f)) {
+          if(auto l = probe(hub,wheels[w].radius+0.1f)) {
             sum += *l;
             ++n;
             }
@@ -1973,7 +2010,8 @@ void MainWindow::render() {
     push.sunDir[0] = 0.4f; push.sunDir[1] = 0.8f; push.sunDir[2] = 0.3f;
     push.sunDir[3] = 1.0f;                     // lightmap scale
     push.time      = time;
-    if(car) {
+    if(car && quality.renderLevel()>0) {
+      // the sea see-through near the car, not on low RenderQual (0x523b00 -> 0x5240c0)
       const rc::Vec3 at = demoCar()!=nullptr ? demoCar()->pose().translation() : carPose.translation();
       push.carPos[0] = at.x; push.carPos[1] = at.y; push.carPos[2] = at.z;
       }
@@ -1990,8 +2028,10 @@ void MainWindow::render() {
       if(characters)
         characterView->draw(enc,frameId,resources,*characters,push);
       if(traffic)
-        trafficView->draw(enc,frameId,*traffic,viewProj,push,level ? &level->collision() : nullptr);
-      if(car && level && !demo.on) {
+        // the wheels' shadows and the head lights' glow with VIDEO_RoadCarShadow (0x5171d6, 0x517293)
+        trafficView->draw(enc,frameId,*traffic,viewProj,push,
+                          level && quality.roadCarShadow ? &level->collision() : nullptr);
+      if(car && level && !demo.on && quality.carShadow) {
         carSpotList.assign(1,carShadow->spot(carId,carPose));
         carSpots->draw(enc,frameId,carSpotList,viewProj,push,level->collision());
         }
@@ -1999,7 +2039,9 @@ void MainWindow::render() {
         auto&      mesh  = car->at((carPose.translation()-camera.position).length(),lodDistances);
         const auto parts = carPartPoses(mesh);
         mesh.setDirt(forcedDirt>=0 ? float(forcedDirt) : effects->dirt());
-        lightCar(mesh,&mesh==&car->full(),carLight,carShade.value());
+        lightCar(mesh,&mesh==&car->full() && quality.light,carLight,carShade.value());
+        mesh.setReflections(quality.envMap);
+        mesh.showAntenna(!(&mesh==&car->full() && carAntenna));
         mesh.draw(enc,viewProj,push,carPose,&parts);
         antennaView->clear();
         if(&mesh==&car->full() && carAntenna)
@@ -2016,9 +2058,13 @@ void MainWindow::render() {
             continue;
           auto&       mesh  = m->second->at((o.pose().translation()-camera.position).length(),lodDistances);
           const auto  parts = opponentPartPoses(mesh,o);
-          lightCar(mesh,&mesh==&m->second->full(),carLight,i<aiShades.size() ? aiShades[i].value() : 1.f);
+          lightCar(mesh,&mesh==&m->second->full() && quality.light,carLight,
+                   i<aiShades.size() ? aiShades[i].value() : 1.f);
+          mesh.setReflections(quality.envMap);
+          const bool springs = &mesh==&m->second->full() && i<aiAntennas.size() && aiAntennas[i];
+          mesh.showAntenna(!springs);
           mesh.draw(enc,viewProj,push,o.pose(),&parts);
-          if(&mesh==&m->second->full() && i<aiAntennas.size() && aiAntennas[i])
+          if(springs)
             antennaView->add(size_t(o.car),aiAntennas[i]->joints(),mesh.lighting());
           }
         }
@@ -2030,7 +2076,9 @@ void MainWindow::render() {
           continue;
         auto&       mesh  = m->second->at((g.pose().translation()-camera.position).length(),lodDistances);
         const auto  parts = partPoses(mesh,g.geometry(),g.rigPose());
-        lightCar(mesh,&mesh==&m->second->full(),carLight,1.f);
+        lightCar(mesh,&mesh==&m->second->full() && quality.light,carLight,1.f);
+        mesh.setReflections(quality.envMap);
+        mesh.showAntenna(true);
         mesh.draw(enc,viewProj,push,g.pose(),&parts);
         }
       antennaView->draw(enc,frameId,push);

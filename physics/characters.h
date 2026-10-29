@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <functional>
 #include <map>
 #include <memory>
@@ -99,6 +100,8 @@ class Characters {
     bool                        update(float dt, Vehicle* player) { std::vector<Car> none; return update(dt,player,none); }
     // back to the start of the race
     void                        restart();
+    // the options' RenderQual (0..2): how far from the player's car the people are there (0x5100d0)
+    void                        setRenderQuality(int32_t q) { renderQuality = std::clamp(q,0,2); }
 
     const std::vector<Actor*>&  actors() const { return view; }
     // a burst a guard fires in this update (message 0x261 to BURST_MNG, fx::Gunfire): from its gun at a car,
@@ -181,6 +184,7 @@ class Characters {
     float                                         carKmh      = 0;    // the player's speed before this step
     float                                         lastKmh     = 0;
     int                                           vultures    = 0;
+    int32_t                                       renderQuality = 2;
   };
 
 }

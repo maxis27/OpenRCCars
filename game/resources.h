@@ -27,7 +27,10 @@ class Resources {
 
     std::vector<uint8_t>         readFile(const std::filesystem::path& relative) const;
 
-    // texture by name, searched in Textures.1 (best quality) .. Textures.3; nullptr if not found
+    // the options' "Jakość tekstur" (RCCars.crs VIDEO_TexQual): 0 high .. 2 low; set before reading any texture
+    void                         setTextureQuality(int32_t q);
+    // texture by name, searched from Textures.<quality+1> down to Textures.1 (best quality, all of them); nullptr
+    // if not found
     const Texture*               texture(const std::string& name);
     // whether there is such a texture, without reading it
     bool                         hasTexture(const std::string& name) const;
@@ -40,9 +43,12 @@ class Resources {
     const Tempest::Texture2d&    white() const { return fallback; }
 
   private:
+    std::vector<std::string>     textureDirs() const;
+
     Tempest::Device&                                          device;
     std::filesystem::path                                     root;
     rc::PackFile                                              archive;
     Tempest::Texture2d                                        fallback;
+    int32_t                                                   texQual = 0;
     std::unordered_map<std::string,std::unique_ptr<Texture>> cache;
   };

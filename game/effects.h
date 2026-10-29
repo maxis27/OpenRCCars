@@ -12,6 +12,7 @@
 
 #include "fx/careffects.h"
 #include "fx/worldfx.h"
+#include "quality.h"
 
 class Resources;
 
@@ -36,6 +37,8 @@ class Effects {
     void clear(bool keep = false);
     // how dirty the player's car is: 0 clean .. 2 (CarEffects::dirt)
     float dirt() const;
+    // what the options' quality leaves (game/quality.h): of the cars' effects and of the track's
+    void setQuality(const Quality& q);
     // the track's own effects (fx/worldfx.h): splashes at its water_splash_N markers, waves breaking at its
     // water_wave_N markers on `sea` (the main sea's waves, null: none), the guards' gunfire, the smoke out of its
     // coolers (*KOOLER* nodes)
@@ -101,6 +104,9 @@ class Effects {
     rc::fx::Gunfire                     gunfire;
     rc::fx::Footprints                  footprints;
     rc::fx::HatchSmoke                  hatch;
+    rc::fx::CarEffects::Features        carFeatures;
+    bool                                splashOn = true, burstOn = true, solesOn = true, hatchOn = true;
+    bool                                shoreOn  = true;
 
     // `tracks`: the tyre tracks, otherwise the wake and the foam
     void drawMarks(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frame, const rc::Mat4& viewProj,

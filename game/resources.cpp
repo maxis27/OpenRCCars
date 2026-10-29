@@ -3,6 +3,7 @@
 #include <Tempest/Log>
 #include <Tempest/Pixmap>
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -43,9 +44,22 @@ Resources::Texture Resources::decode(const std::vector<uint8_t>& csi) {
   return t;
   }
 
+void Resources::setTextureQuality(int32_t q) {
+  // 0x48f595: Config.gm's TexturePath ".\Textures.<n>", <n> searched from VIDEO_TexQual+1 down to 1 (Textures.1
+  // has every texture, Textures.2 and .3 only the smaller copies of some)
+  texQual = std::clamp(q,0,2);
+  }
+
+std::vector<std::string> Resources::textureDirs() const {
+  std::vector<std::string> ret;
+  for(int32_t n=texQual+1; n>=1; --n)
+    ret.push_back("Textures."+std::to_string(n)+"\\");
+  return ret;
+  }
+
 bool Resources::hasTexture(const std::string& name) const {
-  for(const char* dir:{"Textures.1\\","Textures.2\\","Textures.3\\"})
-    if(archive.find(std::string(dir)+name+".csi")!=nullptr)
+  for(auto& dir:textureDirs())
+    if(archive.find(dir+name+".csi")!=nullptr)
       return true;
   return false;
   }
@@ -62,8 +76,8 @@ const Resources::Texture* Resources::texture(const std::string& name) {
     return it->second.get();
 
   std::unique_ptr<Texture> ret;
-  for(const char* dir:{"Textures.1\\","Textures.2\\","Textures.3\\"}) {
-    auto e = archive.find(std::string(dir)+name+".csi");
+  for(auto& dir:textureDirs()) {
+    auto e = archive.find(dir+name+".csi");
     if(e==nullptr)
       continue;
     try {

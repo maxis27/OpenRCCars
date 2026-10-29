@@ -272,6 +272,10 @@ void Menu::buttonAction(int id) {
     playerAction(id);
     return;
     }
+  if(current==Page::Multi || current==Page::TwoPlayers || current==Page::TwoCars) {
+    twoAction(id);
+    return;
+    }
   if(current==Page::Options && id>=0x6a7 && id<0x6a7+7) {
     // "Opcje": the page shown writes RCCars.crs, the next one reads it
     saveOptions();
@@ -897,6 +901,8 @@ Menu::Page Menu::afterRace() const {
     return Page::QuickRace;
   if(choice.ghost())
     return Page::GhostRace;
+  if(choice.two())
+    return Page::TwoPlayers;   // 0x4e07c0: over "Wielu graczy"
   if(choice.mode==Mode::Championship && championWon)
     return Page::ChampWin;
   return Page::Champ;

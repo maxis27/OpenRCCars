@@ -47,7 +47,7 @@ void SpotView::draw(Encoder<CommandBuffer>& enc, uint8_t frameId, const std::vec
     }
   if(verts.empty())
     return;
-  auto& vbuf = vbo[frameId%2];
+  auto& vbuf = vbo[frameId%4];
   vbuf = device.vbo(BufferHeap::Upload,verts);
 
   struct Push {

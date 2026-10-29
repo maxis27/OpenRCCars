@@ -51,7 +51,7 @@ void SunView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, con
     for(const Vertex* v:{&a,&b,&c,&a,&c,&d})
       verts.push_back(*v);
     }
-  vbo[frame%2] = device.vbo(BufferHeap::Upload,verts);
+  vbo[frame%4] = device.vbo(BufferHeap::Upload,verts);
   struct Push {
     float    screen[2];
     uint32_t fogColor;
@@ -60,6 +60,6 @@ void SunView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, con
     enc.setPipeline(quads[i].additive ? add : blend);
     enc.setPushData(push);
     enc.setBinding(0,*tex[quads[i].texture],Sampler::bilinear(ClampMode::ClampToEdge));
-    enc.draw(vbo[frame%2],i*6,6);
+    enc.draw(vbo[frame%4],i*6,6);
     }
   }

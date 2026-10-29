@@ -51,8 +51,8 @@ class Controls {
     // "Shift", "Space", "A" ...: what the original's keyboard calls a key
     static std::string              name(int32_t code);
 
-    // the keys raced with: the layout chosen in RCCars.crs for player 1
-    void load(const rc::ConfigFile& f);
+    // the keys raced with: the layout chosen in RCCars.crs for player 1 (0) or 2 (1, the split screen's lower view)
+    void load(const rc::ConfigFile& f, int player = 0);
     // `held`: Tempest's keys down, by KeyType
     bool held(Action a, const bool* held) const;
     bool is(Action a, Tempest::Event::KeyType k) const;

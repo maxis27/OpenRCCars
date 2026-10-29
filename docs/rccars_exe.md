@@ -769,6 +769,21 @@ Po wyścigu (szybki wyścig to tryb 1, 0x4d2dd5):
   w wyścigu użyto F9 albo N z `-dev`). „Jeszcze raz?” wyścigu nie zapisuje (0x4c46c6: tylko 0x27e, wyścig od
   nowa); rekord okrążenia (0x4c5560) jest już w profilu.
 
+## Po mecie
+
+Stan wyścigu auta (car+0x5d3c, pole +4: 0 odliczanie, 1 wyścig, 2 meta) ustawia na 2 meta 0x4eaad0, która też
+pisze w czacie 20106 i pokazuje komunikat 8 (napis „meta” z `msg_321_s_f`) na 2 s:
+
+- **Napis** (0x4afbb0 z flagą 1, 0x4b02a5, 0x4b12b0): rośnie od zera do pełnej wielkości przez pierwsze
+  min(2; 0,8) s, potem stoi do końca swoich 2 s i znika. Tabela przychodzi dopiero po 3 s.
+- **Auto gracza** (0x4f6c39, co klatkę dla każdego auta): skończone nie ma klawiszy (car+0x574c zerowane)
+  i trzyma `Brake` (0x5784 | 1, 0x5788 = 1), jak przy „Słabym sygnale”; toczy się i staje.
+- **Przeciwnik** (car+0x50 == 1; 0x4f6d0e, 0x4f7341): po swojej mecie licznik car+0x128 rośnie; przez 2 s
+  jedzie fizyką (0x4f5e50, jak zepchnięty z nagrania, flaga 0x4398), bez klawiszy, z ręcznym, a kąt kół 0x5c6c
+  wraca do zera 120°/s. Potem nie ma ani fizyki, ani nagrania: stoi tam, gdzie wyhamował. Odstawianie na trasę
+  (0x508160) działa dalej.
+- **Strzałka kierunku** (0x4b0fa0, 0x4e94e0) nie pyta o metę, więc zostaje na ekranie.
+
 ## Ekran mety
 
 `dlgFINISH` (tworzenie 0x4c4f90, obsługa 0x4c44e0, wypełnianie 0x4c47e0, układ 0x4c5b50, przyciski 0x4c5500):
@@ -1072,6 +1087,60 @@ twórcy (0x4c3e40), 0x649 demo (komunikat 0x26d), 0x64a gra wielu graczy (0x4cd9
   głośność naszego miksera (nie systemu) i nie jest zapisywana. Lista trybów wideo jest stała, nazwy klawiszy są
   angielskie jak w DirectInput. Wartości spoza listy (np. `SoundQuality` 2) zostają w pliku, dopóki się ich nie
   zmieni.
+
+## Dwóch graczy (podzielony ekran)
+
+- **Menu**: „Wielu graczy” w menu głównym (0x4cd930, nagłówek 10131): „Utwórz grę” (0xedb, 0x4ce3e0) i „Dołącz do
+  gry” (0xedc, 0x4cf960) to sieć (u nas wyszarzone), „Dwóch graczy” (0xedd, 10130) w slocie 3, „Wyścig” wyłączony
+  (0xed9), panel gracza (0x4a7170). Pokaz (`dlgMULTIPLAYER.ini`): zdjęcia tras jak w menu głównym, następne co 4 s
+  (0x5543f0), po czterech następna trasa; wtedy, jeśli pokazywane były zdjęcia, z szansą 1/5 (`rand() % 5 < 1`)
+  w ich miejscu przez tyle samo kręci się auto (`animPrevCar` 188,197 320x240, seryjne, 0x50bb60) z nazwą i opisem
+  (40100 + 4·auto, + 3; 0x4ce360), inaczej następne auto i zdjęcia z nazwą trasy i tekstem z menu głównego
+  (40000 + t, 40040 + t; 0x4ce2d0).
+- **„Dwóch graczy”** (0x4d8d30): „Dalej” 10069 (0x1069 → 0x4bfa80), „Wróć” 10003; strony jako przyciski radiowe:
+  10015 „Podsumowanie” (0x4d8fe0), 10033 „Sterowanie” (0x4c23f0, strona opcji „Urządzenia wejściowe”), 10035
+  „Dostosuj sterowanie” (0x4c2e60, ta z opcji). Wejście czyta `RCCars.crs` `TwoPlayers` (0x4a4d40, 0x4a4ff0), wyjście
+  zapisuje (0x4a4e30, 0x4a5060).
+- **Podsumowanie** (`dlgTWOPLAYERS_RACESUM.ini`, tablica 0x56fb18): trasa jak w szybkim wyścigu (`shotTrack`,
+  `enumTrack`, nazwa, opis 40020 + t; 0x4d9710), `editRaceMode` (0x1324, 42800 „Tryb wyścigu:”: 42803 „Okrążenia” =
+  2, 42804 „Opóźnienia” = 1), `editNLaps` (0x1325, 42801, „%i” z 1..5, 0x56fbd4) albo `editMaxDist` (0x1326, 42802,
+  „%i m” z 200/400/600, 0x56fbc8) w tym samym miejscu, zależnie od trybu (0x4d95d0), `staticRaceMode` (Smash26,
+  42803/42804) i `staticExplain` (42808/42809). Zapis: `lagType` 2 i `fixedNLaps` albo 1 i `lagMetre`; tryb gry 9 gdy
+  `lagType` = 2, inaczej 10.
+- **Auta** (0x4bfa80, `dlgTWOPLAYERS_CHOOSE2CARS.ini` + `dlgCARSCOMM_SPLIT.ini`, tablica 0x56e2c0): dla każdego gracza
+  `enumCar` (nazwy aut), `enumBoost0`, `enumReson0`, `enumTires0` (43400..43402, wartości 43403..43406 „dom.”, „Poz.
+  1..3”; dowolne, nie z garażu), podgląd `animCarPreviewSplit` i „Samochód” (41500); drugi gracz o `shift2` = 202
+  niżej (wpisy `enum*1` z pliku są nieużywane: obaj biorą `*0`). „Następna skóra” (10012) w slotach 0 i 5: skóra
+  (s + 1) % 4. `TwoPlayers` `car1/2`, `boost1/2`, `reson1/2`, `tires1/2`, `skin1/2`. „Wyścig” (0x15e1, 0x26d) zapisuje
+  i wczytuje trasę ze skryptem `2PLEntry`; po wyścigu powrót na „Dwóch graczy” nad „Wielu graczy” (0x4e07c0).
+- **Wyścig** (0x4a5320): dwa widoki (0, 0)–(640, 235) i (0, 245)–(640, 480) ekranu 640x480, czarny pas między nimi,
+  dwa auta graczy (rodzaj 0, id 8 i 9), bez przeciwników. Kamera (0x4a5d90): `Camera.ini` `splitScrAngle` 62° (kąt
+  pionowy) i `splitScrAspect` 45 (0,45 wys./szer. rzutu w widoku 235/640, 0x405e80). Tryb 9: `fixedNLaps` okrążeń
+  (0x4a4bb0); tryb 10: okrążenia bez końca (0x7fffffff), a gdy |odstęp| po trasie (0x4ea7b0) ≥ `lagMetre`, licznik
+  0x14b0990 rośnie o dt (zerowany tylko na starcie); po 7,5 s meta obu (0x4eab80), kolejność wg pozycji (0x4ead70).
+  `LevelFinish` dopiero gdy obaj skończyli (0x4a5100). Bez strzałki 3D i listy.
+- **Kokpit** (0x4afdc0 z widokiem, 0x4b09a0): pozycje `<nazwa>_0/_1` z `cockpit.ini`, `cockpit_time.ini`, `map.ini`
+  (`mapPosY_1` = 401) i `cockpit_split.ini` (`msgOffsetY_0/_1`); numer okrążenia „%i/%i”, w trybie 10 samo „%i”;
+  czas całkowity tylko w kapsule `split_uzel` paska. Pasek: szary cały, czerwony 0..min, żółty min..max; tryb 9
+  postęp = droga/(okrążenia · długość okrążenia) z kreskami okrążeń, tryb 10 f = odstęp/`lagMetre`, min/max =
+  0,5 ∓ |f|/2, prowadzący na max; znacznik gracza 1 w dół, gracza 2 w górę.
+- **Prędkościomierz** (0x4b1610, 0x4b3100, 0x4b32f0): tarcza `split_sp1` 255x255 z 640x480 przy lewej krawędzi,
+  `indicatorShiftX/Y` − 200 (+300 lub +600 w jednostkach 800), lustrzana; `split_sp2` czerwona wartość, `split_sp3`
+  żółty zasięg, `split_sp4` kapsel i obejma. Dopalacz od −34° do 126° (skala 100), prędkość od −54° do −213° (skala
+  50 km/h), środek pierścienia (128, 128,5); napisy „dopalacz” (41902) i „km/h” (41901), liczby w `cock_num`.
+- **Napisy na tarczy** (0x4b32f0): odstępy w pikselach ekranu (dzielone przez 0x5647f0/0x5647f4, szerokość
+  i wysokość okna), nie w 640x480. Kreska 2 px pod środkiem tarczy, 70 px od jej boków; liczba dopalacza do prawej
+  3 px za środkiem kreski, dołem na kresce (flagi 0x220000), „dopalacz” od 2 px za środkiem, dołem 3 px nad kreską
+  (0x200001); prędkość (0x20000) i „km/h” (1) górą 9 px pod kreską. Flagi tekstu (0x4706a0): 0x10000/0x20000
+  środek/prawo, 0x100000/0x200000 środek/dół. Wysokość wiersza = wiersze czcionki od–do (0x46ffa0, 0x4704c0):
+  `cock_num` 16..55 komórki 64 (40 px), Smash26 5..25 (21 px), Smash20 0..27; litera rysowana od górnego wiersza.
+- **Czas w kapsule** (0x4afdc0): `cock_num` wyśrodkowany w obie strony w x 4 px .. węzeł − 16 px, y ±32 px wokół
+  środka ekranu + `timeTotalPosY_0`. Węzeł ±30x±32 px, pasek ±8 px, 32 px od prawej krawędzi, znaczniki ±16 px.
+  Widoki: nad i pod 5 px wokół środka ekranu (0x4a5320, przy 640x480 to 235 i 245).
+- **Tabela mety** (0x4a5970): „Gracz1” i „Gracz2” (40508, 40509) bez zdjęć, odstęp względem gracza 1.
+- **U nas** (`game/twoplayers.cpp`, `game/menutwo.cpp`, `MainWindow::render`): drugi gracz ma własne auto, wyścig,
+  kamerę, dźwięk, efekty i kokpit (`Hud::setView`), klawisze z `Player2Layout`/`Player2` (domyślnie Klaw.2: Tab, W A
+  S D, Alt, Z, C); zderzenia aut graczy jak z przeciwnikami. Postęp na trasie liczy `RouteTracker`.
 
 ## Tryb deweloperski
 

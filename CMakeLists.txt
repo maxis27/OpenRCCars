@@ -134,7 +134,7 @@ add_library(rcengine STATIC
   game/chasecamera.h       game/chasecamera.cpp
   game/resources.h         game/resources.cpp
   game/canvas.h            game/canvas.cpp
-  game/menu.h              game/menu.cpp game/menuchamp.cpp game/menuinfo.cpp game/menuoptions.cpp
+  game/menu.h              game/menu.cpp game/menuchamp.cpp game/menuinfo.cpp game/menuoptions.cpp game/menutwo.cpp
   game/controls.h          game/controls.cpp
   game/players.h           game/players.cpp
   game/championship.h      game/championship.cpp
@@ -163,7 +163,7 @@ target_link_libraries(rcengine PUBLIC rcformats rcphysics rcaudio rcfx Tempest S
 target_link_directories(rcengine PUBLIC "$ENV{VULKAN_SDK}/lib")
 
 # --- game ---
-add_executable(OpenRCCars game/main.cpp game/mainwindow.h game/mainwindow.cpp)
+add_executable(OpenRCCars game/main.cpp game/mainwindow.h game/mainwindow.cpp game/twoplayers.cpp)
 target_link_libraries(OpenRCCars rcengine)
 # Console subsystem on purpose: logs (missing files, GPU info) stay visible while the project is young.
 # For a release build add /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup (MSVC) or -mwindows (MinGW).

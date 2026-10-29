@@ -66,7 +66,7 @@ class CharacterView {
     Tempest::Device&                                   device;
     ScenePipelines                                     pso;
     std::map<const rc::Skeleton*,std::unique_ptr<Model>> models;
-    Tempest::VertexBuffer<LevelMesh::Vertex>           vbo[2];
+    Tempest::VertexBuffer<LevelMesh::Vertex>           vbo[4];   // by the frame in flight and the view (two in the split screen)
     std::vector<LevelMesh::Vertex>                     verts;
     std::vector<Draw>                                  draws;
     std::vector<rc::Mat4>                              pose, skin;

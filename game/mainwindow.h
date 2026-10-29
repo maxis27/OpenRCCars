@@ -91,7 +91,7 @@ class MainWindow : public Tempest::Window {
     void renderMenu();
     // one frame of the loading screen
     void presentLoading(size_t track, float progress);
-    // the turning car of the quick race in the rectangle Menu::carPreview gives
+    // a turning car of the menus in the rectangle Menu::carPreviews gives
     void drawCarPreview(Tempest::Encoder<Tempest::CommandBuffer>& enc, const Menu::Preview& p);
     void tick(float dt);
     void loadLevel(const std::string& name);
@@ -227,8 +227,63 @@ class MainWindow : public Tempest::Window {
       };
     Demo                    demo;
     std::string             demoRequested;          // a demo track to load at the next frame
-    std::array<std::unique_ptr<CarModel>,3> previewCars; // the menus' car, by car
-    std::array<std::array<int32_t,4>,3>     previewLook;  // and its upgrades and skin
+    // the split screen ("Dwóch graczy", RCCars.exe modes 9 and 10, 0x4a5320): the player's car in the upper view
+    // (0,0 .. 640,235 of 640x480), player 2's in the lower one (0,245 .. 640,480), each with its own race through
+    // the checkpoints, chase camera and cockpit, and no opponents
+    struct Rider {
+      size_t                           carId = 0;
+      int32_t                          boost = 0, resonator = 0, tires = 0, skin = 0;
+      std::unique_ptr<CarModel>        car;
+      std::unique_ptr<rc::Vehicle>     vehicle;
+      std::unique_ptr<rc::Checkpoints> checkpoints;
+      std::unique_ptr<rc::Race>        race;
+      std::unique_ptr<rc::CarSound>    sound;
+      std::unique_ptr<Hud>             hud;
+      std::optional<rc::Antenna>       antenna;
+      rc::fx::CarShade                 shade;
+      rc::Mat4                         pose;
+      rc::Mat4                         start;   // its grid slot
+      rc::Vec3                         lastPos;
+      ChaseCamera                      chase;
+      Camera                           camera;
+      float                            finish     = -1;  // race time of its finish
+      float                            upsideDown = 0;
+      float                            airborne   = 0;
+      bool                             jump       = false;
+      };
+    struct TwoPlayers {
+      std::unique_ptr<Rider>  rider;          // player 2, nullptr: no split screen
+      // how far each has come along the route, m (RouteTracker as the opponents'), [0] the player
+      std::optional<rc::RouteTracker> tracker[2];
+      float                   way[2]    = {};
+      bool                    lag       = false; // mode 10: over when one is lagMetre ahead long enough
+      float                   lagMetre  = 200;
+      float                   lagTime   = 0;     // s player 2 has been that far from the player (0x14b0990)
+      bool                    shown     = false; // the finish table opened
+      };
+    TwoPlayers              two;
+    bool                    split() const { return two.rider!=nullptr; }
+    // the split screen's race: player 2 made (`setup` the menu's choice), or gone (nullptr)
+    void                    setupTwo(const Menu::Setup* setup);
+    void                    fitRider();
+    // player 2 on its start, its race from the countdown
+    void                    resetRider(bool restartRace, bool again);
+    void                    respawnRider();
+    // its keys (RCCars.crs Player2), car, race and camera, after the player's; the race's end (0x4eab80, 0x4a5100)
+    void                    tickTwo(float dt);
+    void                    tickRiderSound(float dt);
+    ChaseCamera::Car        riderChase() const;
+    Hud::Info               riderHud() const;
+    // the cockpit's middle bar (0x4b09a0): where each is, 0..1
+    Hud::Split              splitBar() const;
+    // the scene through `cam` into the window's rectangle `vp` (the whole window, or a view of the split screen,
+    // set on `enc`); `frame` the frame in flight, plus MaxFramesInFlight for the lower view (its own buffers);
+    // returns the camera's view and projection
+    rc::Mat4                drawScene(Tempest::Encoder<Tempest::CommandBuffer>& enc, const Camera& cam,
+                                      const Tempest::Rect& vp, float aspect, uint8_t frame, float dt);
+    Controls                controls2;              // RCCars.crs Player2
+    std::array<std::unique_ptr<CarModel>,6> previewCars; // the menus' cars, by car and slot (car + 3 * slot)
+    std::array<std::array<int32_t,4>,6>     previewLook;  // and their upgrades and skins
 
     std::unique_ptr<DirectionArrow> arrow;
     std::unique_ptr<Effects>        effects;    // dust and spray of the cars

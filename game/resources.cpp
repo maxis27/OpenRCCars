@@ -47,7 +47,20 @@ Resources::Texture Resources::decode(const std::vector<uint8_t>& csi) {
 void Resources::setTextureQuality(int32_t q) {
   // 0x48f595: Config.gm's TexturePath ".\Textures.<n>", <n> searched from VIDEO_TexQual+1 down to 1 (Textures.1
   // has every texture, Textures.2 and .3 only the smaller copies of some)
-  texQual = std::clamp(q,0,2);
+  q = std::clamp(q,0,2);
+  if(q==texQual)
+    return;
+  texQual = q;
+  // 0x4c854b: RCCars.exe reads its textures again as soon as the video options are left
+  if(cache.empty())
+    return;
+  device.waitIdle();
+  for(auto& [name,tex]:cache) {
+    if(tex==nullptr)
+      continue;
+    if(auto t = load(name))
+      *tex = std::move(*t);
+    }
   }
 
 std::vector<std::string> Resources::textureDirs() const {
@@ -75,22 +88,26 @@ const Resources::Texture* Resources::texture(const std::string& name) {
   if(auto it = cache.find(key); it!=cache.end())
     return it->second.get();
 
-  std::unique_ptr<Texture> ret;
+  auto ret = load(name);
+  if(ret==nullptr)
+    Log::e("texture not found: \"",name,"\"");
+  auto* p = ret.get();
+  cache[key] = std::move(ret);
+  return p;
+  }
+
+std::unique_ptr<Resources::Texture> Resources::load(const std::string& name) {
   for(auto& dir:textureDirs()) {
     auto e = archive.find(dir+name+".csi");
     if(e==nullptr)
       continue;
     try {
-      ret = std::make_unique<Texture>(decode(archive.read(*e)));
+      return std::make_unique<Texture>(decode(archive.read(*e)));
       }
     catch(const std::exception& ex) {
       Log::e("texture \"",name,"\": ",ex.what());
       }
     break;
     }
-  if(ret==nullptr)
-    Log::e("texture not found: \"",name,"\"");
-  auto* p = ret.get();
-  cache[key] = std::move(ret);
-  return p;
+  return nullptr;
   }

@@ -27,7 +27,8 @@ class Resources {
 
     std::vector<uint8_t>         readFile(const std::filesystem::path& relative) const;
 
-    // the options' "Jakość tekstur" (RCCars.crs VIDEO_TexQual): 0 high .. 2 low; set before reading any texture
+    // the options' "Jakość tekstur" (RCCars.crs VIDEO_TexQual): 0 high .. 2 low. The textures read so far are read
+    // again from the new folders in place, so the pointers texture() gave stay valid; waits for the device first
     void                         setTextureQuality(int32_t q);
     // texture by name, searched from Textures.<quality+1> down to Textures.1 (best quality, all of them); nullptr
     // if not found
@@ -44,6 +45,7 @@ class Resources {
 
   private:
     std::vector<std::string>     textureDirs() const;
+    std::unique_ptr<Texture>     load(const std::string& name);
 
     Tempest::Device&                                          device;
     std::filesystem::path                                     root;

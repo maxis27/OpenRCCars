@@ -190,6 +190,7 @@ void MainWindow::applyOptions() {
   showArrow = crs.integer("Cockpit","DirectArrow",1)!=0;
   // 0x4c854b: leaving the video options turns RenderQual and SFXQual into the VIDEO_* switches (0x4acdb0)
   quality   = Quality::load(crs);
+  resources.setTextureQuality(crs.integer("Video","VIDEO_TexQual",0));
   if(effects)
     effects->setQuality(quality);
   if(characters)

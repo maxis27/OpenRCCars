@@ -43,6 +43,9 @@ class Menu : public Canvas {
       GhostRace,  // "Wyścig duchów" (0x4d3000): dlgRACESUM with dlgRACESUM_GHOST's "Typ wyścigu" for the laps
       Options,    // "Opcje" (0x4d1980): its seven pages as radio buttons (0x56f554), kept in RCCars.crs
       Credits,    // "Autorzy" (0x4c3e40): the pages of the authors, one after another
+      Multi,      // "Wielu graczy" (0x4cd930): the network's games (not ours) and "Dwóch graczy"
+      TwoPlayers, // "Dwóch graczy" (0x4d8d30): "Podsumowanie" (dlgTWOPLAYERS_RACESUM) and the controls' pages
+      TwoCars,    // the two players' cars (0x4bfa80, dlgTWOPLAYERS_CHOOSE2CARS)
       };
     // what the player chose, for MainWindow
     enum class Command : uint8_t {
@@ -64,6 +67,8 @@ class Menu : public Canvas {
       Training     = 4,  // "Trening" of the championship: 3 laps, the easy opponents, no fee and no prize
       Championship = 5,  // 5 laps, the expert opponents, the fee paid, the prize won (0x4e03b0)
       Demo         = 6,  // the game's demo: the recorded cars on beach_1, country_3 and country_4 in turn
+      TwoLaps      = 9,  // "Dwóch graczy", "Okrążenia": the split screen, 1 .. 3 laps
+      TwoLag       = 10, // "Dwóch graczy", "Opóźnienia": the split screen, over when one is far enough ahead
       };
     struct Setup {
       size_t  track   = 0;   // 0..9 in the game's order (Language/Game 40050..: Beach_1, Country_3 ...)
@@ -71,7 +76,17 @@ class Menu : public Canvas {
       int     laps    = 3;   // 3, 5 or 7 in a quick race
       int     skill   = 1;   // 0..2: "Niskie", "Norma", "Ekspert"
       Mode    mode    = Mode::Quick;
+      // "Dwóch graczy" (RCCars.crs TwoPlayers): the players' cars ([0] the upper view's) and the gap, m, that ends
+      // the race of Mode::TwoLag
+      struct Rider {
+        size_t  car = 0;
+        int32_t boost = 0, resonator = 0, tires = 0, skin = 0;
+        };
+      std::array<Rider,2> riders;
+      int     twoLaps  = 1;   // Mode::TwoLaps: 1 .. 5 ("fixedNLaps")
+      float   lagMetre = 200;
       bool    ghost() const { return mode==Mode::Ghost || mode==Mode::MultiGhost; }
+      bool    two()   const { return mode==Mode::TwoLaps || mode==Mode::TwoLag; }
       };
     // the turning car of the quick race (AnimPreview, 0x4a9e70), in window pixels
     struct Preview {
@@ -81,6 +96,7 @@ class Menu : public Canvas {
       // the car and how it looks: the player's, or stock when the player has not got it
       size_t  car = 0;
       int32_t boost = 0, resonator = 0, tires = 0, skin = 0;
+      int     slot  = 0;     // which of the screen's cars (the two players' on Page::TwoCars)
       };
 
     // a car of the finish table (0x4c47e0), in the order of the race
@@ -141,9 +157,10 @@ class Menu : public Canvas {
     void    keyDown(Tempest::Event::KeyType key, uint32_t ch = 0);
     void    mouseWheel(int delta);
 
-    std::optional<Preview> carPreview() const;
+    // the turning cars of the screen shown, none on most
+    std::vector<Preview> carPreviews() const;
 
-    // the menu over the framebuffer set on `enc`; `preview` draws the car of carPreview() over the background
+    // the menu over the framebuffer set on `enc`; `preview` draws the cars of carPreviews() over the background
     void    draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frame, int w, int h,
                  const std::function<void()>& preview);
     // the loading screen of a track (0x4dfaa0): its pictures, its name and how far the loading is (0..1)
@@ -280,6 +297,10 @@ class Menu : public Canvas {
     // shot_<track>_<shot> in `b`, its frame included, cut at `clip`'s left and right
     void   drawShot(size_t track, int shot, const Box& b, float alpha, const Box* clip = nullptr);
     void   drawMain();
+    // the main menu's pictures of the tracks in a row (shotListTracks), `at` (track * 4 + picture) in the middle,
+    // the row still moving by `scroll` pictures; under it a header and its text
+    void   drawShotRow(size_t at, float scroll);
+    void   drawShowcase(std::string_view head, std::string_view info);
     // the quick race's frame, or the ghost race's (the same with the ghosts' kind for the laps and the skill)
     bool   raceFrame() const { return current==Page::QuickRace || current==Page::GhostRace; }
     // and its own page shown
@@ -434,6 +455,27 @@ class Menu : public Canvas {
     void   drawCredits();
     void   drawCreditsPage(int first, float alpha);
 
+    // Page::Multi (0x4cd930, menutwo.cpp): every 4 s the next picture of the tracks, 4 of each; after a track's
+    // four, one time of five, the next car turning in their place for as long
+    void   buildMulti();
+    void   multiTick(float dt);
+    void   drawMulti();
+    // Page::TwoPlayers and Page::TwoCars: RCCars.crs TwoPlayers (0x4a4d40, 0x4a4ff0) into `choice` and back
+    // (0x4a4e30, 0x4a5060)
+    void   loadTwo();
+    void   saveTwo();
+    void   buildTwo();
+    void   buildTwoCars();
+    void   twoAction(int id);
+    // after an Enum of the two's pages has changed
+    void   changeTwoEnum(Enum& e);
+    // the "<  >" of the page shown that take the mouse
+    std::vector<Enum*> twoEnums();
+    void   drawTwo();
+    void   drawTwoCars();
+    // the options' pages shown: Page::Options, or "Sterowanie" and "Dostosuj sterowanie" of Page::TwoPlayers
+    bool   optionsOn() const { return current==Page::Options || (current==Page::TwoPlayers && twoTab>0); }
+
     // Page::ChampRace (0x4c0610, 0x4c0b80)
     void   fillRivals();
     void   champRacePill(size_t i);
@@ -532,6 +574,18 @@ class Menu : public Canvas {
     Enum                    garageCar, upgradeEnum, upgradeCar;
     float                   blinkT = -1;
     int                     blinkPage = 0;
+    // Page::Multi: the picture shown (track * 4 + picture), how many of its track's have been shown, the row still
+    // moving, the time it has been shown; the car shown instead (0x14a4218, 0x14a4220)
+    size_t                  multiAt = 0;
+    int                     multiCount = 0;
+    float                   multiScroll = 0;
+    float                   multiT = 0;
+    size_t                  multiCar = 0;
+    bool                    multiShowCar = false;
+    // Page::TwoPlayers: its page shown, 0 "Podsumowanie", else the options' page (3 the devices, 4 the keys);
+    // Page::TwoCars: each player's car, boost, engine and tires
+    int                     twoTab = 0;
+    std::array<std::array<Enum,4>,2> twoCars;
     // Page::Players: the list's rows (players' indices in the order shown), the one chosen, the first shown
     std::vector<size_t>     rows;
     size_t                  selRow  = 0;

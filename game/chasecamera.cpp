@@ -54,6 +54,8 @@ ChaseCamera::Settings ChaseCamera::Settings::load(const std::function<std::vecto
     s.angleUpSpd = sl.real("CDT_AngleUpSpeed",         s.angleUpSpd);
     s.dirAdd     = sl.real("CDT_AngleUp_DIR_ADD",      s.dirAdd);
     s.dirAddSpd  = sl.real("CDT_AngleUp_SPEED_DIR_ADD",s.dirAddSpd);
+    s.splitFov    = float(sl.raw("splitScrAngle",62));
+    s.splitAspect = float(sl.raw("splitScrAspect",45))/100.f;
     }
   catch(const std::exception& e) {
     Log::e("Settings\\Camera.ini: ",e.what());

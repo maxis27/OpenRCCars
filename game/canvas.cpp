@@ -237,7 +237,7 @@ size_t Canvas::mark() {
 
 void Canvas::flush(Encoder<CommandBuffer>& enc, uint8_t frame, const std::function<void()>& between, size_t at) {
   if(!verts.empty())
-    vbo[frame%2] = device.vbo(BufferHeap::Upload,verts);
+    vbo[frame%4] = device.vbo(BufferHeap::Upload,verts);
   struct Push {
     float screen[2];
     float sharpen;
@@ -252,7 +252,7 @@ void Canvas::flush(Encoder<CommandBuffer>& enc, uint8_t frame, const std::functi
     push.sharpen = d.sharpen;
     enc.setPushData(push);
     enc.setBinding(0,*d.tex,Sampler::bilinear(ClampMode::ClampToEdge));
-    enc.draw(vbo[frame%2],d.first,d.count);
+    enc.draw(vbo[frame%4],d.first,d.count);
     }
   verts.clear();
   draws.clear();

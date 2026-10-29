@@ -122,6 +122,49 @@ constexpr size_t ChatLines = 5;
 constexpr float ChatLife  = 5.f, ChatSlide = 0.25f;
 constexpr float ChatSize  = 28.f;  // Smash20's cell: drawn 1:1
 constexpr uint32_t DemoHint = 41903; // "Wciśnij <Enter>, aby załadować następne demo..."
+// The split screen (RCCars.exe 0x4afdc0 and 0x4b09a0 with the view, 0x4b1610): each view's parts at <name>_0/_1 of
+// cockpit.ini, cockpit_time.ini and map.ini, 800x600 units. "lapPos", "lapNumPos" and "mapPos" _0 are the full
+// screen's, so the lower view's lie lower by _1 - _0; the place ("placePosX/Y_0" -8,-26, "_1" -5,303) and the lap's
+// time ("timeLapPosY_0" 2, "_1" 318) have their own
+constexpr float SplitPlaceX[2] = {-8,-5}, SplitPlaceY[2] = {-26,303}, SplitTimeLapY[2] = {2,318};
+constexpr float SplitLapDY = 323, SplitLapNumDY = 325, SplitMapDY = 322;
+// the views above and under 5 pixels around the middle (0x4a5320; at 640x480 0,0 .. 640,235 and 0,245 .. 640,480);
+// the messages ("msgOffsetY_0/_1" of
+// cockpit_split.ini, -89 and -70) from the middle of the view, in its scale (ours: the original's message code is
+// not decoded for the split screen)
+constexpr float SplitViewY[2][2] = {{0,295},{305,600}};
+constexpr float SplitMsgY[2]     = {-89,-70};
+// the dial (0x4b1610): 255x255 of 640x480 (318.75 units) with its left at "indicatorShiftX_<v>" - 200 and its bottom
+// at "indicatorShiftY_<v>" - 200 under the middle (upper view) or the bottom (lower view) of the screen; drawn
+// mirrored (uv 1,0 .. 0,1, 0x56d7c0). In split_sp2 (red) and split_sp3 (yellow) the turbo's tube runs from
+// "indicatorAngMin_0" -34 to "indicatorAngMax_0" 126 degrees (clockwise from the top in the picture) for 100 units of
+// the tank, the speed's from "indicatorAngMin_1" -54 to "indicatorAngMax_1" -213 for 50 km/h (0x4b3100): yellow up
+// to what the car can reach, red up to the value. split_sp4's cap sits on the reach, its clamp on the value: a strip
+// from the dial's top to its middle turned to the angle (0.484..0.516 wide of the dial, the picture's 0.1875..0.4375
+// across; the clamp 0.48..0.52, 0.46875..0.78125)
+constexpr float SplitDialSize = 255.f/640.f*800.f;
+constexpr float SplitDialX[2] = {172-200,172-200}, SplitDialY[2] = {210-200+300,230-200+600};
+constexpr float SplitAng[2][2] = {{-34,126},{-54,-213}};
+constexpr float SplitScale[2]  = {100,50};
+constexpr float SplitRingCX = 128, SplitRingCY = 128.5f;
+// the numbers and labels (0x4b32f0), in pixels of the screen (ours: units of 800x600): a line of two pixels under
+// the dial's middle, 70 in from its sides; above it the turbo's number (cock_num, right-aligned 3 right of the middle,
+// its bottom on the line) and "dopalacz" (Smash26, from 2 right of the middle, its bottom 3 above the line), under
+// it, their tops 9 down, the speed and "km/h". The original draws a glyph's rows from the font's top row on (cock_num
+// 16..55 of its 64 high cells, Smash26 5..25 of 28: 0x46ffa0, 0x4704c0); ours draw the whole cell
+constexpr float SplitTextIn = 70, SplitTextMid = 3, SplitLabelX = 2, SplitBelow = 9, SplitAbove = 3;
+constexpr float NumTop = 16, NumH = 40, Smash26Top = 5, Smash26H = 21;
+// the bar (0x4b09a0), in pixels of the screen (ours: units of 800x600): split_uzel 64x64 at "splitUzelPosX" 0.257 of
+// the width, +-30 by +-32 around the screen's middle; the capsule's body (u 0.03125..0.0625) from the left edge to
+// it, the tube (u 0.9375..0.96875) from it to the right edge. split_arrows over the tube from 30 right of the node to
+// 32 short of the right edge, +-8 high: grey (v 0..0.125) all along, red (v 0.125..0.25) to `lo`, yellow
+// (v 0.25..0.375) on to `hi`; the laps' notches (u 0.375..0.625, v 0.375..0.5, +-8); the upper player's mark pointing
+// down (u 0.25..0.75, v 0.5..0.6875, +-16, from 16 above the middle to 8 under it), the lower one's pointing up
+// (v 0.6875..0.875, 8 above to 16 under). The race's time in the capsule (0x4afdc0): centred both ways in 4 .. the
+// node - 16 across and +-32 around the middle moved down by "timeTotalPosY_0" (2)
+constexpr float SplitNodeX = 0.257f, SplitNodeW = 30, SplitNodeH = 32;
+constexpr float SplitBarH  = 8, SplitBarEnd = 32;
+constexpr float SplitTimeX = 4, SplitTimeEnd = 16, SplitTimeY = 2;
 constexpr float GateFlash  = 1.2f;                  // the checkpoint just passed flashes green
 constexpr float GateRange  = 150.f;                 // checkpoints farther away are not outlined
 
@@ -164,6 +207,13 @@ Hud::Hud(Device& device, Resources& res) : Canvas(device,res) {
   gaugePieces = tex("cockpit_sp4");
   overtaking  = tex("overtaking");
   panel       = tex("messagebox");
+  for(int i=0; i<4; ++i)
+    if(auto t = res.texture("split_sp"+std::to_string(i+1)))
+      splitSp[i] = &t->tex;
+  if(auto t = res.texture("split_uzel"))
+    splitNode = &t->tex;
+  if(auto t = res.texture("split_arrows"))
+    splitArrows = &t->tex;
   mapArrow  = tex("map_arrow");
   mapCp     = tex("map_cp");
   for(int c=0; c<2; ++c)
@@ -472,7 +522,7 @@ void Hud::trackMap(const rc::Race& race, const Info& info) {
     return std::array<float,2>{mapK[0]*p.x-mapK[1]*p.z+mapOffset[0], mapK[1]*p.x+mapK[0]*p.z+mapOffset[1]};
     };
   // the frame: messagebox.csi's box (x 0..128 of 256, open on the right) and the same mirrored
-  const float x = px(MapX,true), y = py(MapY), size = MapSize*scale;
+  const float x = px(MapX,true), y = py(MapY+mapShift), size = MapSize*scale;
   if(panel!=nullptr) {
     quad(*panel,256,128,{0,0,64,128},x,y,size*0.5f,size,Color{1,1,1,1});
     quad(*panel,256,128,{64,0,0,128},x+size*0.5f,y,size*0.5f,size,Color{1,1,1,1});
@@ -575,13 +625,232 @@ void Hud::numberText(std::string_view s, float x, float y, int align) {
 
 
 
+void Hud::drawView(const rc::Race& race, const Info& info) {
+  // RCCars.exe 0x4afdc0 for view 0 or 1 of modes 9 and 10: the place, "okrążenie" with the lap, the map, the lap's
+  // time and the messages of this player; no chat and no arrow (0x4b0fa0, 0x4eb200); the dial (0x4b1610) and the
+  // bar between the views (0x4b09a0) instead of the gauges and the brackets
+  const Color white4 = {1,1,1,1};
+  const Color yellow = {1.f,0.85f,0.2f,1};
+  const bool  blink  = std::fmod(clock,0.5f)<0.3f;
+  const float dy     = view==1 ? 1.f : 0.f;
+
+  if(info.gates)
+    gates(race,info.viewProj);
+  checkpointArrow(race,info.viewProj);
+  if(view==0)
+    splitBar();
+
+  if(lapLabel.loaded) {
+    const float x = px(LapX,true), y = py(LapY+SplitLapDY*dy);
+    quad(lapLabel.tex,lapLabel.w,lapLabel.h,{0,0,float(lapLabel.w),float(lapLabel.h)},x,y,
+         float(lapLabel.w)*scale,float(lapLabel.h)*scale,white4);
+    // mode 10 has no laps to count up to: "%i" (0x4afdc0)
+    const std::string lap = info.endless ? std::to_string(race.lap())
+                                         : std::to_string(race.lap())+"/"+std::to_string(race.laps());
+    numberText(lap,x+LapNumDX*scale,py(LapNumY+SplitLapNumDY*dy),-1);
+    }
+  if(info.showMap) {
+    mapShift = SplitMapDY*dy;
+    trackMap(race,info);
+    mapShift = 0;
+    }
+  if(clock-lapAt<LapBlink && !race.lapTimes().empty() && blink) {
+    const bool best = race.lapTimes().back()<=race.bestLap();
+    text(font,formatTime(race.lapTimes().back()),px(400),py(SplitTimeLapY[view]),26,best ? yellow : white4,0);
+    }
+  splitGauge(info);
+  // the place over the dial
+  if(info.place>=1 && info.place<=6 && place[info.place-1].loaded) {
+    const Image& im = place[info.place-1];
+    quad(im.tex,im.w,im.h,{0,0,float(im.w),float(im.h)},pl(SplitPlaceX[view]),py(SplitPlaceY[view]),
+         float(im.w)*scale,float(im.h)*scale,white4);
+    }
+
+  const float* v  = SplitViewY[view];
+  const float  vk = (v[1]-v[0])/600.f;
+  messages(race,info,px(400),py((v[0]+v[1])*0.5f+SplitMsgY[view]*vk),0.6f);
+  }
+
+void Hud::splitGauge(const Info& info) {
+  if(splitSp[0]==nullptr || splitSp[1]==nullptr || splitSp[2]==nullptr)
+    return;
+  constexpr float Deg = 3.14159265f/180.f;
+  const float k  = SplitDialSize/256.f*scale;
+  const float x0 = pl(SplitDialX[view]);
+  const float y0 = py(SplitDialY[view]-SplitDialSize);
+  // texels of the pictures -> the screen, mirrored as the original draws them (uv 1,0 .. 0,1)
+  auto at = [&](float u, float v) {
+    return std::array<float,2>{x0+(256.f-u)*k, y0+v*k};
+    };
+  auto add = [&](const Texture2d& tex, const std::array<float,2>* uv, size_t n) {
+    if(draws.empty() || draws.back().tex!=&tex || draws.back().depth)
+      draws.push_back({&tex,verts.size(),0,false});
+    for(size_t i=0; i<n; ++i) {
+      const auto p = at(uv[i][0],uv[i][1]);
+      verts.push_back(Vertex{{p[0],p[1]},{uv[i][0]/256.f,uv[i][1]/256.f},{1,1,1,1}});
+      }
+    draws.back().count += n;
+    };
+  // the tube from angle a0 to a1 (degrees clockwise from the top of the picture): thin slices around its middle
+  auto tube = [&](const Texture2d& tex, float a0, float a1) {
+    constexpr float R0 = 60, R1 = 96;
+    if(a1<a0)
+      std::swap(a0,a1);
+    for(float s0=a0; s0<a1; s0+=2.f) {
+      const float s1 = std::min(s0+2.f,a1);
+      auto p = [](float r, float a) {
+        return std::array<float,2>{SplitRingCX+r*std::sin(a*Deg),SplitRingCY-r*std::cos(a*Deg)};
+        };
+      const std::array<float,2> q[6] = {p(R0,s0),p(R1,s0),p(R1,s1),p(R0,s0),p(R1,s1),p(R0,s1)};
+      add(tex,q,6);
+      }
+    };
+  // split_sp4's strip from the top of the dial to its middle, `w` of the dial wide, turned to `a`, the picture's
+  // columns u0..u1 (texels) along it
+  auto piece = [&](float a, float w, float u0, float u1) {
+    if(splitSp[3]==nullptr)
+      return;
+    const float c = std::cos(a*Deg), s = std::sin(a*Deg);
+    auto turn = [&](float x, float y) {   // around the middle of the dial, x across, y up from it
+      return std::array<float,2>{SplitRingCX+x*c+y*s, SplitRingCY+x*s-y*c};
+      };
+    const float hw = w*256.f*0.5f;
+    const std::array<float,2> pos[4] = {turn(-hw,128),turn(hw,128),turn(hw,0),turn(-hw,0)};
+    const std::array<float,2> uv[4]  = {{u0,0},{u1,0},{u1,256},{u0,256}};
+    if(draws.empty() || draws.back().tex!=splitSp[3] || draws.back().depth)
+      draws.push_back({splitSp[3],verts.size(),0,false});
+    for(int i:{0,1,2,0,2,3}) {
+      const auto p = at(pos[i][0],pos[i][1]);
+      verts.push_back(Vertex{{p[0],p[1]},{uv[i][0]/256.f,uv[i][1]/256.f},{1,1,1,1}});
+      }
+    draws.back().count += 6;
+    };
+
+  quad(*splitSp[0],256,256,{256,0,0,256},x0,y0,256.f*k,256.f*k,Color{1,1,1,1});
+  // 0: the turbo in units of the tank (100 full), 1: the speed, km/h; the values and how far they can go
+  const float tank  = info.turbo*info.turboMax*100.f;
+  const float value[2] = {tank, info.speed};
+  const float reach[2] = {info.turboMax*100.f, info.speedMax>0 ? info.speedMax : SplitScale[1]};
+  for(int i=0; i<2; ++i) {
+    const float* g  = SplitAng[i];
+    const float  ar = g[0]+(g[1]-g[0])*std::clamp(reach[i]/SplitScale[i],0.f,1.f);
+    const float  av = g[0]+(g[1]-g[0])*std::clamp(value[i]/SplitScale[i],0.f,1.f);
+    tube(*splitSp[2],g[0],ar);
+    if(value[i]>0)
+      tube(*splitSp[1],g[0],av);
+    piece(ar,0.03125f,48,112);
+    piece(av,0.04f,120,200);
+    }
+
+  // the line across the middle, the numbers and the labels (0x4b32f0)
+  const float l = x0+SplitTextIn*scale, r = x0+(SplitDialSize-SplitTextIn)*scale, mid = (l+r)*0.5f;
+  const float cy = y0+SplitDialSize*0.5f*scale;
+  quad(*white,1,1,{0,0,1,1},l,cy,r-l,2.f*scale,Color{1,1,1,0.9f});
+  const int li = (lang=="Polish") ? 0 : 1;
+  numberText(std::to_string(int(tank)),mid+SplitTextMid*scale,cy-(NumH+NumTop)*scale,1);
+  numberText(std::to_string(int(info.speed)),mid+SplitTextMid*scale,cy+(SplitBelow-NumTop)*scale,1);
+  text(font,Texts[li][0],mid+SplitLabelX*scale,cy-(SplitAbove+Smash26H+Smash26Top)*scale,28,Color{1,1,1,1},-1);
+  text(font,Texts[li][1],mid+SplitLabelX*scale,cy+(SplitBelow-Smash26Top)*scale,28,Color{1,1,1,1},-1);
+  }
+
+void Hud::splitBar() {
+  // the screen's fractions, the bar running over the whole width of the window
+  const float W = float(scrW), H = float(scrH);
+  const float nodeX = SplitNodeX*W, midY = 0.5f*H;
+  const Color white4 = {1,1,1,1};
+  if(splitNode!=nullptr) {
+    quad(*splitNode,64,64,{2,0,4,64},0,midY-SplitNodeH*scale,nodeX-SplitNodeW*scale,2*SplitNodeH*scale,white4);
+    quad(*splitNode,64,64,{0,0,64,64},nodeX-SplitNodeW*scale,midY-SplitNodeH*scale,2*SplitNodeW*scale,2*SplitNodeH*scale,white4);
+    quad(*splitNode,64,64,{60,0,62,64},nodeX+SplitNodeW*scale,midY-SplitNodeH*scale,W-(nodeX+SplitNodeW*scale),2*SplitNodeH*scale,white4);
+    }
+  // the race's time inside the capsule
+  {
+    const float x0 = SplitTimeX*scale, x1 = nodeX-SplitTimeEnd*scale;
+    numberText(formatTime(bar.time),(x0+x1)*0.5f,midY+(SplitTimeY-NumH*0.5f-NumTop)*scale,0);
+  }
+  if(splitArrows==nullptr)
+    return;
+  const float bx0 = nodeX+SplitNodeW*scale, bx1 = W-SplitBarEnd*scale, bw = bx1-bx0;
+  auto strip = [&](float v0, float f0, float f1) {
+    if(f1>f0)
+      quad(*splitArrows,64,128,{0,v0*128.f,64,(v0+0.125f)*128.f},bx0+bw*f0,midY-SplitBarH*scale,bw*(f1-f0),2*SplitBarH*scale,
+           white4);
+    };
+  strip(0,0,1);
+  strip(0.125f,0,std::clamp(bar.lo,0.f,1.f));
+  strip(0.25f,std::clamp(bar.lo,0.f,1.f),std::clamp(bar.hi,0.f,1.f));
+  if(!bar.lag && bar.laps>1)
+    for(int i=1; i<bar.laps; ++i) {
+      const float x = bx0+bw*float(i)/float(bar.laps);
+      quad(*splitArrows,64,128,{24,48,40,64},x-8.f*scale,midY-SplitBarH*scale,16.f*scale,2*SplitBarH*scale,white4);
+      }
+  const float mw = 16.f*scale;
+  for(int p=0; p<2; ++p) {
+    const float x  = bx0+bw*std::clamp(bar.at[p],0.f,1.f);
+    const float v0 = p==0 ? 0.5f : 0.6875f;
+    const float y0 = p==0 ? midY-16.f*scale : midY-8.f*scale;
+    quad(*splitArrows,64,128,{16,v0*128.f,48,(v0+0.1875f)*128.f},x-mw,y0,2*mw,24.f*scale,white4);
+    }
+  }
+
+void Hud::messages(const rc::Race& race, const Info& info, float cx, float my, float k) {
+  const Color white4 = {1,1,1,1};
+  const bool  blink  = std::fmod(clock,0.5f)<0.3f;
+  const auto  phase  = race.phase();
+  if(info.demo) {
+    // none of the race's messages: the demo's cars are not the player's
+    }
+  else if(info.paused) {
+    sprite(msgPause,{0,0,float(msgPause.w),float(msgPause.h)},cx,my,k,white4);
+    }
+  else if(phase==rc::Race::Phase::Countdown && race.countdown()<=rc::Race::CountTime) {
+    // nothing yet during the entry delay (rc::Race::EntryDelay)
+    const float  left = race.countdown();
+    const float* r    = left>2.f ? Count3 : left>1.f ? Count2 : Count1;
+    // each number pops up and shrinks a little during its second
+    const float  t    = left-std::floor(left);
+    sprite(msg321,{r[0],r[1],r[2],r[3]},cx,my,(0.9f+0.4f*t)*k,white4);
+    }
+  else if(message==Message::Go && clock-messageAt<1.2f) {
+    sprite(msg321,{CountStart[0],CountStart[1],CountStart[2],CountStart[3]},cx,my,k,white4);
+    }
+  else if(message==Message::Finish && clock-messageAt<FinishShow) {
+    // RCCars.exe 0x4eaad0 -> 0x4afbb0 (message 8, 2 s, zooming): it grows from nothing for the first 0.8 s
+    // (0x4b02a5, 0x4b12b0), then stays until it is gone
+    const float grow = std::min(1.f,(clock-messageAt)/FinishGrow);
+    if(grow>1e-6f)
+      sprite(msg321,{CountFinish[0],CountFinish[1],CountFinish[2],CountFinish[3]},cx,my,grow*k,white4);
+    }
+  else if(info.lowSignal && phase!=rc::Race::Phase::Finished) {
+    // RCCars.exe picks it first of the messages after the start (0x4b020d), steady while the car is in the volume
+    sprite(msgLow,{0,0,float(msgLow.w),float(msgLow.h)},cx,my,k,white4);
+    }
+  else if(clock-hitAt<1.f) {
+    // msg_hits.csi: "Łup!" in the top half, "Wielkie Łup!" in the bottom one. RCCars.exe ranks it over the wrong way
+    // and the best lap and shows it for 1 s (0x4afba0, 0x56d2fc)
+    const float half = float(msgHits.h)*0.5f;
+    sprite(msgHits,{0,hitGreat ? half : 0.f,float(msgHits.w),hitGreat ? float(msgHits.h) : half},cx,my,k,white4);
+    }
+  else if(race.wrongWay()) {
+    if(blink)
+      sprite(msgWrong,{0,0,float(msgWrong.w),float(msgWrong.h)},cx,my,k,white4);
+    }
+  else if(message==Message::BestLap && clock-messageAt<2.5f) {
+    sprite(msgBest,{0,0,float(msgBest.w),float(msgBest.h)},cx,my,k,white4);
+    }
+  }
+
 void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const rc::Race& race, const Info& info) {
   begin(w,h);
+  if(view>=0) {
+    drawView(race,info);
+    flush(enc,frame);
+    return;
+    }
 
   const Color white4 = {1,1,1,1};
   const Color yellow = {1.f,0.85f,0.2f,1};
   const bool  blink  = std::fmod(clock,0.5f)<0.3f;
-  const auto  phase  = race.phase();
   const int   li     = (lang=="Polish") ? 0 : 1;
 
   if(info.gates && !info.demo)
@@ -646,48 +915,7 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
     }
 
   // one message in the middle at a time
-  const float my = py(MessageY);
-  if(info.demo) {
-    // none of the race's messages: the demo's cars are not the player's
-    }
-  else if(info.paused) {
-    sprite(msgPause,{0,0,float(msgPause.w),float(msgPause.h)},px(400),my,1,white4);
-    }
-  else if(phase==rc::Race::Phase::Countdown && race.countdown()<=rc::Race::CountTime) {
-    // nothing yet during the entry delay (rc::Race::EntryDelay)
-    const float  left = race.countdown();
-    const float* r    = left>2.f ? Count3 : left>1.f ? Count2 : Count1;
-    // each number pops up and shrinks a little during its second
-    const float  t    = left-std::floor(left);
-    sprite(msg321,{r[0],r[1],r[2],r[3]},px(400),my,0.9f+0.4f*t,white4);
-    }
-  else if(message==Message::Go && clock-messageAt<1.2f) {
-    sprite(msg321,{CountStart[0],CountStart[1],CountStart[2],CountStart[3]},px(400),my,1,white4);
-    }
-  else if(message==Message::Finish && clock-messageAt<FinishShow) {
-    // RCCars.exe 0x4eaad0 -> 0x4afbb0 (message 8, 2 s, zooming): it grows from nothing for the first 0.8 s
-    // (0x4b02a5, 0x4b12b0), then stays until it is gone
-    const float grow = std::min(1.f,(clock-messageAt)/FinishGrow);
-    if(grow>1e-6f)
-      sprite(msg321,{CountFinish[0],CountFinish[1],CountFinish[2],CountFinish[3]},px(400),my,grow,white4);
-    }
-  else if(info.lowSignal && phase!=rc::Race::Phase::Finished) {
-    // RCCars.exe picks it first of the messages after the start (0x4b020d), steady while the car is in the volume
-    sprite(msgLow,{0,0,float(msgLow.w),float(msgLow.h)},px(400),my,1,white4);
-    }
-  else if(clock-hitAt<1.f) {
-    // msg_hits.csi: "Łup!" in the top half, "Wielkie Łup!" in the bottom one. RCCars.exe ranks it over the wrong way
-    // and the best lap and shows it for 1 s (0x4afba0, 0x56d2fc)
-    const float half = float(msgHits.h)*0.5f;
-    sprite(msgHits,{0,hitGreat ? half : 0.f,float(msgHits.w),hitGreat ? float(msgHits.h) : half},px(400),my,1,white4);
-    }
-  else if(race.wrongWay()) {
-    if(blink)
-      sprite(msgWrong,{0,0,float(msgWrong.w),float(msgWrong.h)},px(400),my,1,white4);
-    }
-  else if(message==Message::BestLap && clock-messageAt<2.5f) {
-    sprite(msgBest,{0,0,float(msgBest.w),float(msgBest.h)},px(400),my,1,white4);
-    }
+  messages(race,info,px(400),py(MessageY),1);
 
   flush(enc,frame);
   }

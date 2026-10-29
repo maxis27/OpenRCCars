@@ -31,6 +31,8 @@ class Race {
     void   restart(const Mat4& start, bool again = false);
     // racing at once, without the countdown: the demo's DemoEntry ("0 StartRace" with no Show3 .. Show1)
     void   startNow();
+    // the race over where the car is (the split screen's race of the gap, RCCars.exe 0x4eab80); only while racing
+    void   finishNow();
     // `dt` seconds of game time with the car at `car` facing `heading` (its forward axis, world)
     Event  update(float dt, const Vec3& car, const Vec3& heading);
 

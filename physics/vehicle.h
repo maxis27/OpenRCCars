@@ -166,6 +166,8 @@ class Vehicle {
     // centres of mass, one of them maybe lifted), through the middle of it, so that they part at least as fast as
     // they met (0x534be0, 0x4f0750)
     static void                bounce(Vehicle& a, Vehicle& b, const Vec3& aCentre, const Vec3& bCentre);
+    // two players' cars (the split screen): bounce() when their bodies touch after the last step; true if they do
+    static bool                collide(PhysicsWorld& world, Vehicle& a, Vehicle& b);
     // stuck for StuckSteps steps in a row: the original puts the car back at the last checkpoint (0x508b30)
     static constexpr int       StuckSteps = 5;
     bool                       stuck() const { return stuckFor>=StuckSteps; }

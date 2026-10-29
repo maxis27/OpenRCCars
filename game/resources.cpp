@@ -18,10 +18,18 @@ Resources::Resources(Device& device, std::filesystem::path gameDir)
   }
 
 std::vector<uint8_t> Resources::readFile(const std::filesystem::path& relative) const {
-  std::ifstream f(root/relative,std::ios::binary);
+  std::ifstream f(root/relative,std::ios::binary|std::ios::ate);
   if(!f)
     throw std::runtime_error("unable to open: "+(root/relative).string());
-  return std::vector<uint8_t>((std::istreambuf_iterator<char>(f)),std::istreambuf_iterator<char>());
+  // in one read: byte by byte through istreambuf_iterator a music track took a good part of a second
+  const auto size = f.tellg();
+  if(size<0)
+    throw std::runtime_error("unable to read: "+(root/relative).string());
+  std::vector<uint8_t> ret(static_cast<size_t>(size));
+  f.seekg(0);
+  if(!f.read(reinterpret_cast<char*>(ret.data()),std::streamsize(ret.size())))
+    throw std::runtime_error("unable to read: "+(root/relative).string());
+  return ret;
   }
 
 Resources::Texture Resources::decode(const std::vector<uint8_t>& csi) {
@@ -33,6 +41,19 @@ Resources::Texture Resources::decode(const std::vector<uint8_t>& csi) {
   t.tex   = device.texture(pm,true);
   t.alpha = img.alpha;
   return t;
+  }
+
+bool Resources::hasTexture(const std::string& name) const {
+  for(const char* dir:{"Textures.1\\","Textures.2\\","Textures.3\\"})
+    if(archive.find(std::string(dir)+name+".csi")!=nullptr)
+      return true;
+  return false;
+  }
+
+void Resources::preload(const std::vector<std::string>& names) {
+  for(auto& n:names)
+    if(hasTexture(n))
+      texture(n);
   }
 
 const Resources::Texture* Resources::texture(const std::string& name) {

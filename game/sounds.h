@@ -3,6 +3,7 @@
 #include <Tempest/SoundDevice>
 #include <Tempest/SoundEffect>
 
+#include <future>
 #include <map>
 #include <memory>
 #include <string>
@@ -83,6 +84,7 @@ class Sounds {
     bool              enabled() const { return device!=nullptr; }
 
   private:
+    // starts reading and opening the next track on a worker thread; tick() plays it when it is ready
     void nextTrack();
     // the sound channels of a .sb file of the game's folder (none if it cannot be read)
     std::unique_ptr<rc::SoundLibrary> loadLibrary(const char* sbFile, const char* what);
@@ -103,6 +105,10 @@ class Sounds {
     // per road car: its own sound and its gun
     std::vector<rc::BankChannel> trafficChannels;
     bool                                         musicOn = false;
+    // the track being read (nextTrack()), and how many in a row could not be
+    std::future<std::unique_ptr<rc::Mp3Stream>>  loading;
+    std::string                                  loadingFile;
+    size_t                                       loadFailures = 0;
     bool                                         musicWanted = false;   // startMusic() and no stopMusic() since
     // the options: sound on, its volume, the music on, its volume (0..100), the system's volume
     bool                                         useSound = true, useMusic = true;

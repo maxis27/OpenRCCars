@@ -219,6 +219,16 @@ Menu::Menu(Device& device, Resources& res, Sounds& sounds) : Canvas(device,res),
   progressor = tex("Progressor");
   scrollbar  = tex("scrollbar");
   logo       = tex("logoRC_Main");
+  // the rest RCCars.exe reads with the interface (gmrLoadInterface, game_dbg.log), not when a page first shows it:
+  // the tracks' shots and the cockpit preview of the options
+  std::vector<std::string> more = {"opt_cock_all"};
+  for(size_t t=0; t<TrackCount; ++t)
+    for(int i=0; i<5; ++i)
+      more.push_back(shotPrefix(t)+"_"+std::to_string(i));
+  for(const char* part:{"opt_cock_a_","opt_cock_m_","opt_cock_l_","opt_cock_c_"})
+    for(const char* lit:{"0","1"})
+      more.push_back(std::string(part)+lit);
+  res.preload(more);
 
   auto spline = [&res](const char* name) {
     try {

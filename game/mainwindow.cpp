@@ -26,6 +26,31 @@ static const char* const Tracks[] = {
   "urban_1",  "urban_2",
   };
 
+// every texture the three cars may wear, as RCCars.exe reads them at the start (game_dbg.log: car_askin11..34,
+// car_bskin, tire2_*, tire3_*, turbo_*, overkill_*, hum_turbo_*, cubemap_racer before the menus): those of Car.sb's
+// models, the other liveries and tire levels ModelMesh swaps in, and the dirt laid over the paint
+static std::vector<std::string> carTextures(const rc::SbScene& sb) {
+  std::vector<std::string> ret;
+  for(auto& t:sb.textures)
+    if(t.embedded.empty())
+      ret.push_back(t.name);
+  for(char car='1'; car<='3'; ++car) {
+    for(char skin='1'; skin<='4'; ++skin)
+      for(const char* paint:{"car_askin","car_bskin"})
+        ret.push_back(std::string(paint)+car+skin);
+    for(char n='1'; n<='2'; ++n) {
+      ret.push_back(std::string("dirt_car")+car+"_"+n);
+      ret.push_back(std::string("dirt_car")+car+"_"+n+"a");
+      ret.push_back(std::string("dirt_car")+car+"_"+n+"b");
+      }
+    }
+  for(char level='1'; level<='4'; ++level)
+    for(const char* tire:{"tire2_","tire3_"})
+      ret.push_back(std::string(tire)+level);
+  ret.push_back("cubemap_racer");
+  return ret;
+  }
+
 // `Set <name> <value>` of a script next to RCCars.exe (Autoexec.gm, debug.gm), as a number; `def` when it is not
 // there
 static float scriptValue(const Resources& res, const char* file, const std::string& name, float def) {
@@ -56,6 +81,7 @@ MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, 
   setWindowTitle("OpenRCCars");
   resetSwapchain();
   carScene = rc::SbScene::load(res.readFile("RCCarsDB/Car.sb"));
+  res.preload(carTextures(carScene));
   hud      = std::make_unique<Hud>(device,res);
   fps      = std::make_unique<FpsCounter>(device,res);
   arrow    = std::make_unique<DirectionArrow>(device,res);
@@ -279,8 +305,10 @@ void MainWindow::setupGhosts() {
                                           p = rc::CarParams::load(resources.pack(),c+1);
                                           },
                                         [this](int32_t c) { return std::string(hud->gameText(uint32_t(40220+c))); });
+  // every look a ghost may take in this race, now: built at the end of a lap, it held up that frame
   for(size_t i=0; i<ghosts->size(); ++i)
     carModel((*ghosts)[i].look);
+  carModel(ghosts->ownLapLook());
   while(ghostSounds.size()<ghosts->size())
     ghostSounds.emplace_back(sounds->mixer(),sounds->library());
   Log::i("ghosts (",normal ? "normal" : "multi","): ",ghosts->size());

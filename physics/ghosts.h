@@ -97,6 +97,8 @@ class Ghosts {
     void                 start();
     // a lap done in `time` s (lap counter 2 ..): true if the own ghost took it
     bool                 lapDone(float time);
+    // how the own ghost looks once it takes one of the player's laps: the player's car in the next skin
+    Look                 ownLapLook() const;
     // back to the start (0x4f69e0): the recording over, the ghosts waiting at their first frames
     void                 restart();
     // `dt` s of the player's car; `keys` what was pressed (CarProfile::Frame::keys); `racing` false before the

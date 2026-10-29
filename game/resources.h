@@ -29,6 +29,11 @@ class Resources {
 
     // texture by name, searched in Textures.1 (best quality) .. Textures.3; nullptr if not found
     const Texture*               texture(const std::string& name);
+    // whether there is such a texture, without reading it
+    bool                         hasTexture(const std::string& name) const;
+    // reads the textures there are of `names` now, quietly skipping the missing ones: RCCars.exe reads all it may
+    // need while the game stands still (at the start, on the loading screen), never while it runs
+    void                         preload(const std::vector<std::string>& names);
     // texture from raw .csi data (e.g. lightmaps embedded in a scene); not cached
     Texture                      decode(const std::vector<uint8_t>& csi);
 

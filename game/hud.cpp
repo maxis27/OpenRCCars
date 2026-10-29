@@ -120,11 +120,12 @@ constexpr size_t ChatLines = 5;
 constexpr float ChatLife  = 5.f, ChatSlide = 0.25f;
 constexpr float ChatSize  = 28.f;  // Smash20's cell: drawn 1:1
 constexpr uint32_t DemoHint = 41903; // "Wciśnij <Enter>, aby załadować następne demo..."
-// The split screen (RCCars.exe 0x4afdc0 and 0x4b09a0 with the view, 0x4b1610): the lower view's parts lie lower by
-// <name>_1 - <name>_0 of cockpit.ini ("placePosX/Y", "lapPosY", "lapNumPosY"), cockpit_time.ini ("timeLapPosY") and
-// map.ini ("mapPosY"), 800x600 units
-constexpr float SplitPlaceDX = 3, SplitPlaceDY = 329, SplitLapDY = 323, SplitLapNumDY = 325, SplitTimeLapDY = 316;
-constexpr float SplitMapDY   = 322;
+// The split screen (RCCars.exe 0x4afdc0 and 0x4b09a0 with the view, 0x4b1610): each view's parts at <name>_0/_1 of
+// cockpit.ini, cockpit_time.ini and map.ini, 800x600 units. "lapPos", "lapNumPos" and "mapPos" _0 are the full
+// screen's, so the lower view's lie lower by _1 - _0; the place ("placePosX/Y_0" -8,-26, "_1" -5,303) and the lap's
+// time ("timeLapPosY_0" 2, "_1" 318) have their own
+constexpr float SplitPlaceX[2] = {-8,-5}, SplitPlaceY[2] = {-26,303}, SplitTimeLapY[2] = {2,318};
+constexpr float SplitLapDY = 323, SplitLapNumDY = 325, SplitMapDY = 322;
 // the views of 640x480: 0,0 .. 640,235 and 0,245 .. 640,480 (0x4a5320); the messages ("msgOffsetY_0/_1" of
 // cockpit_split.ini, -89 and -70) from the middle of the view, in its scale (ours: the original's message code is
 // not decoded for the split screen)
@@ -650,13 +651,13 @@ void Hud::drawView(const rc::Race& race, const Info& info) {
     }
   if(clock-lapAt<LapBlink && !race.lapTimes().empty() && blink) {
     const bool best = race.lapTimes().back()<=race.bestLap();
-    text(font,formatTime(race.lapTimes().back()),px(400),py(TimeLapY+SplitTimeLapDY*dy),26,best ? yellow : white4,0);
+    text(font,formatTime(race.lapTimes().back()),px(400),py(SplitTimeLapY[view]),26,best ? yellow : white4,0);
     }
   splitGauge(info);
   // the place over the dial
   if(info.place>=1 && info.place<=6 && place[info.place-1].loaded) {
     const Image& im = place[info.place-1];
-    quad(im.tex,im.w,im.h,{0,0,float(im.w),float(im.h)},pl(PlaceX+SplitPlaceDX*dy),py(PlaceY+SplitPlaceDY*dy),
+    quad(im.tex,im.w,im.h,{0,0,float(im.w),float(im.h)},pl(SplitPlaceX[view]),py(SplitPlaceY[view]),
          float(im.w)*scale,float(im.h)*scale,white4);
     }
 

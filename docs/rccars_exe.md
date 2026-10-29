@@ -554,6 +554,19 @@ i trzy pikapy (w kilku malowaniach), na urban_1 hummer, a na beach_4 pływający
   odtwarzający nagranie nie mają styków kół, więc szukamy lightmapy pod ich kołami tak, jak są narysowane
   (wywnioskowane, nie z oryginału). `rcinfo <gra> shade RCCarsDB/beach_2.sb` pokazuje lightmapę wzdłuż trasy
   i jasność, jaką daje.
+- **Jasność ludzi, strażników, rekwizytów i aut z ulicy** (0x532cf0 ustawia, 0x532d50 parametry, 0x532d80 co
+  aktualizację; `VIDEO_CharLight`, domyślnie włączone; `fx/carlight.*` `FeatureShade`): teksel lightmapy pod nimi
+  (promień od 0,1 m nad miejscem, gdzie stoją, 2 m w dół; ściana bez lightmapy daje 1, brak trafienia zostawia
+  jasność) × 255 przez `Splines/light_feat.bspl` (ta sama krzywa co aut; `feat_lmshd.ini` tylko ją nazywa, gra
+  i tak pyta o „light_feat”) / 255, obcięte do 0..1, czyli 0,62 w cieniu i 1 w słońcu. Idzie do współczynnika
+  tekstury Direct3D wszystkich ich siatek (0x451390 → węzeł +0x2fc, flaga 0x100; 0x464d08, 0x45c980: MODULATE
+  TEXTURE, TFACTOR) bez żadnego innego światła, więc w słońcu widać ich tekstury takie, jakie są. Co `interval` s
+  (ujemny: co aktualizację) bierze wartość spod nich za cel, potem goni go z prędkością `speed` na sekundę, gdy
+  różni się o więcej niż `delta`; na początku jasność 1. Rekwizyty (`STON` 0x50cb00): 2/s, 0,1, co klatkę, ziemia,
+  której dotyka bryła (u nas promień pod nimi). Ludzie (`PEOP` 0x510400): 2/s, 0,1, co 1 s, gdy są aktywni.
+  Strażnicy (`GUAM` 0x51a7d0): raz, przy ustawieniu. Auta z ulicy (`RDCR` 0x516f50, gdy są rysowane): 2/s,
+  `DeltaAlpha`/100 z `roadcar.ini` (0,14), co klatkę; ich reflektory zostają białe. Mewy, kraby, pająki, psy i sępy
+  tego nie mają (u nas zostają w świetle reszty modeli).
 - **Paski bieżnika na trasach** (`wt_wetsand`): to nie ślady aut, tylko część mapy z bitem `0x40000000`
   (mnożenie ×2, ten sam stan `0x121` co ślady opon): ich szare tło (128) zostawia piasek, a ciemniejszy bieżnik go
   przyciemnia. U nas `ScenePipelines::modulate` po nieprzezroczystych, bez światła; mgła ciągnie je do szarości,
@@ -603,14 +616,16 @@ i trzy pikapy (w kilku malowaniach), na urban_1 hummer, a na beach_4 pływający
   (płaszczyzna widoku, 0x500760) + `CamOffset` przed kamerą ku słońcu, w odległościach `Dist1..4` (dwie pierwsze
   ujemne, za tym punktem), piąta (`shine`) na słońcu; dodawane (SrcAlpha, One; flagi 0xa0200005) przed wszystkim.
   Przezroczystość: 255 × (1 − odsunięcie słońca od środka ekranu / (pół ekranu + pół tarczy)), mniejsza z osi,
-  razy narastanie. Założone: tarcza kwadratowa na każdym ekranie (oryginał rozciąga ją przy innym niż 4:3) i bez mgły.
+  razy narastanie. Tarcza jest kwadratowa na każdym ekranie: wysokość to szerokość / (proporcje × 0,75), a proporcje
+  gra bierze ze stałej 4/3 (0x48f520), nie z ekranu. Założone: bez mgły.
 - **Tekstury detali** (`Settings/Detail.ini`, 0x480a70; `VIDEO_Detailer` domyślnie włączone): sześć tekstur
   `detailer`, `detailer2..6` kładzionych na siatki, których pudełko jest bliżej kamery niż `DistObj` × 0,1 m
   (3 m): kolor × 2 × mix(0,5, detal, `Density`/256), detal powtórzony `Scale` × 0,1 razy na teksturę bazową,
   z przesunięciem mipmapy `LODBias` × 0,04 − 2. Gra trzyma numer detalu przy teksturze (+0x40) i dla ściany z
-  dwiema teksturami bierze mniejszy niezerowy (0x480ef0); skąd ten numer, nie znalazłem. **Zgadnięte:** bity 21..27
-  grup GLTX (`SbTexture::groups`) mają dokładnie te tekstury, którym pasowałby detal: bit 23 → skała (`detailer`),
-  22 i 24 → piasek, 25 → tynk/asfalt, 26 → żwir, 21 → drewno, 27 → szósty, którego nie ma w danych.
+  dwiema teksturami bierze mniejszy niezerowy (0x480ef0). Numer nadaje wczytanie `GLTX` sceny (0x48e350): najniższy
+  z bitów 23..28 grup `GLTX` (`SbTexture::groups`) daje `detailer` (23: kamień, bruk), `detailer2` (24: piasek),
+  `detailer3` (25: asfalt, beton), `detailer4` (26: żwir, ścieżki), `detailer5` (27: `floor`) albo `detailer6`
+  (28: nie ma go żadna tekstura ani w danych). Bity 21 (drewno, metal) i 22 (piasek, zawsze z 24) detalu nie dają.
 - **Ruchome dekoracje** (`AnimObj`, 0x52b7e0/0x52c110, ruch 0x52b860/0x52c180; `fx/animobjects.*`): każdy węzeł
   z „SUBMARINE” w nazwie (łódź `SUBMARINE_NC` na beach_4) dostaje przesunięcie w górę `Y0 + DY·cos(T·t)`
   (`Settings/submarine.ini`: −0,96 m, 1,44 m, 0,17 rad/s), czyli wynurza się i zanurza co 37 s. Pod węzłem

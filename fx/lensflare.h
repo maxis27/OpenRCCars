@@ -14,8 +14,8 @@ namespace rc::fx {
 // 0x479250 and 0x4797c0). The sun stands at the track's marker SUN_AF (0x478fd0; on the sky dome, the urban
 // tracks have none):
 // - the disc (0x479070): the texture sun_disc in ColorR/G/BSun, alpha blended (0x4791e0, render flags 0xa0000003),
-//   at the sun's depth, so what stands in front of it hides it; vpW x SizeSun pixels across, vpW/(aspect x 0.75)
-//   high, square on a 4:3 screen (here square on any screen);
+//   at the sun's depth, so what stands in front of it hides it; vpW x SizeSun pixels across and vpW/(aspect x 0.75)
+//   high, where the aspect is the constant 4/3 (0x48f520), so square on any screen;
 // - the flare (0x479250): every TimeShootRay s a ray from the camera to the sun (0x456260) says whether it can be
 //   seen; it fades in or out over FadeTime. Its pieces lie on the line from the point C = 0.1 m + CamOffset in front
 //   of the camera (the view plane, 0x500760) towards the sun: C + dir x Dist1..4 (Dist1 and Dist2 behind C, so

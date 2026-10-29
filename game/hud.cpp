@@ -129,11 +129,9 @@ constexpr uint32_t DemoHint = 41903; // "Wciśnij <Enter>, aby załadować nast�
 constexpr float SplitPlaceX[2] = {-8,-5}, SplitPlaceY[2] = {-26,303}, SplitTimeLapY[2] = {2,318};
 constexpr float SplitLapDY = 323, SplitLapNumDY = 325, SplitMapDY = 322;
 // the views above and under 5 pixels around the middle (0x4a5320; at 640x480 0,0 .. 640,235 and 0,245 .. 640,480);
-// the messages ("msgOffsetY_0/_1" of
-// cockpit_split.ini, -89 and -70) from the middle of the view, in its scale (ours: the original's message code is
-// not decoded for the split screen)
-constexpr float SplitViewY[2][2] = {{0,295},{305,600}};
-constexpr float SplitMsgY[2]     = {-89,-70};
+// the messages (0x4b11e0) at their full size, their middle "msgOffsetY_0/_1" of cockpit_split.ini (-89 and -70)
+// from a quarter and three quarters of the screen's height (the full screen's: "msgOffsetY" from its half)
+constexpr float SplitMsgY[2]     = {150-89,450-70};
 // the dial (0x4b1610): 255x255 of 640x480 (318.75 units) with its left at "indicatorShiftX_<v>" - 200 and its bottom
 // at "indicatorShiftY_<v>" - 200 under the middle (upper view) or the bottom (lower view) of the screen; drawn
 // mirrored (uv 1,0 .. 0,1, 0x56d7c0). In split_sp2 (red) and split_sp3 (yellow) the turbo's tube runs from
@@ -666,9 +664,7 @@ void Hud::drawView(const rc::Race& race, const Info& info) {
          float(im.w)*scale,float(im.h)*scale,white4);
     }
 
-  const float* v  = SplitViewY[view];
-  const float  vk = (v[1]-v[0])/600.f;
-  messages(race,info,px(400),py((v[0]+v[1])*0.5f+SplitMsgY[view]*vk),0.6f);
+  messages(race,info,px(400),py(SplitMsgY[view]),1);
   }
 
 void Hud::splitGauge(const Info& info) {

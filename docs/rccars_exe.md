@@ -1105,7 +1105,8 @@ twórcy (0x4c3e40), 0x649 demo (komunikat 0x26d), 0x64a gra wielu graczy (0x4cd9
   0x14b0990 rośnie o dt (zerowany tylko na starcie); po 7,5 s meta obu (0x4eab80), kolejność wg pozycji (0x4ead70).
   `LevelFinish` dopiero gdy obaj skończyli (0x4a5100). Bez strzałki 3D i listy.
 - **Kokpit** (0x4afdc0 z widokiem, 0x4b09a0): pozycje `<nazwa>_0/_1` z `cockpit.ini`, `cockpit_time.ini`, `map.ini`
-  (`mapPosY_1` = 401) i `cockpit_split.ini` (`msgOffsetY_0/_1`); numer okrążenia „%i/%i”, w trybie 10 samo „%i”;
+  (`mapPosY_1` = 401) i `cockpit_split.ini` (`msgOffsetY_0/_1`: komunikaty 0x4b11e0 w pełnym rozmiarze, środek −89 od 1/4
+  i −70 od 3/4 wysokości ekranu, czyli 61 i 380 z 600); numer okrążenia „%i/%i”, w trybie 10 samo „%i”;
   czas całkowity tylko w kapsule `split_uzel` paska. Pasek: szary cały, czerwony 0..min, żółty min..max; tryb 9
   postęp = droga/(okrążenia · długość okrążenia) z kreskami okrążeń, tryb 10 f = odstęp/`lagMetre`, min/max =
   0,5 ∓ |f|/2, prowadzący na max; znacznik gracza 1 w dół, gracza 2 w górę.

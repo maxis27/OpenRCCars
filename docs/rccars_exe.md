@@ -754,6 +754,21 @@ Po wyścigu (szybki wyścig to tryb 1, 0x4d2dd5):
   w wyścigu użyto F9 albo N z `-dev`). „Jeszcze raz?” wyścigu nie zapisuje (0x4c46c6: tylko 0x27e, wyścig od
   nowa); rekord okrążenia (0x4c5560) jest już w profilu.
 
+## Po mecie
+
+Stan wyścigu auta (car+0x5d3c, pole +4: 0 odliczanie, 1 wyścig, 2 meta) ustawia na 2 meta 0x4eaad0, która też
+pisze w czacie 20106 i pokazuje komunikat 8 (napis „meta” z `msg_321_s_f`) na 2 s:
+
+- **Napis** (0x4afbb0 z flagą 1, 0x4b02a5, 0x4b12b0): rośnie od zera do pełnej wielkości przez pierwsze
+  min(2; 0,8) s, potem stoi do końca swoich 2 s i znika. Tabela przychodzi dopiero po 3 s.
+- **Auto gracza** (0x4f6c39, co klatkę dla każdego auta): skończone nie ma klawiszy (car+0x574c zerowane)
+  i trzyma `Brake` (0x5784 | 1, 0x5788 = 1), jak przy „Słabym sygnale”; toczy się i staje.
+- **Przeciwnik** (car+0x50 == 1; 0x4f6d0e, 0x4f7341): po swojej mecie licznik car+0x128 rośnie; przez 2 s
+  jedzie fizyką (0x4f5e50, jak zepchnięty z nagrania, flaga 0x4398), bez klawiszy, z ręcznym, a kąt kół 0x5c6c
+  wraca do zera 120°/s. Potem nie ma ani fizyki, ani nagrania: stoi tam, gdzie wyhamował. Odstawianie na trasę
+  (0x508160) działa dalej.
+- **Strzałka kierunku** (0x4b0fa0, 0x4e94e0) nie pyta o metę, więc zostaje na ekranie.
+
 ## Ekran mety
 
 `dlgFINISH` (tworzenie 0x4c4f90, obsługa 0x4c44e0, wypełnianie 0x4c47e0, układ 0x4c5b50, przyciski 0x4c5500):

@@ -1230,8 +1230,9 @@ void MainWindow::tick(float dt) {
   fog.tick(dt);
   if(vehicle!=nullptr) {
     rc::Vehicle::Input in;
-    if(race->holdCar() || shotTime>=0 || resetVolumes.lowSignal()) {
-      // waiting for the start, shot (RCCars.exe 0x4f6b20) or in a reset volume (0x4f6c87): no keys, Brake held
+    if(race->holdCar() || race->phase()==rc::Race::Phase::Finished || shotTime>=0 || resetVolumes.lowSignal()) {
+      // waiting for the start, past the finish (RCCars.exe 0x4f6c39), shot (0x4f6b20) or in a reset volume
+      // (0x4f6c87): no keys, Brake held
       in.handbrake = true;
       }
     else if(zeroCam==ZeroCam::Off && !flying) {
@@ -2058,8 +2059,9 @@ void MainWindow::render() {
         info.gates    = showGates;
         info.viewProj = viewProj;
         hud->draw(enc,frameId,int(w()),int(h()),*race,info);
-        // the direction arrow over everything, in a depth buffer of its own
-        if(race->phase()!=rc::Race::Phase::Finished && !checkpoints->empty() && showArrow && !demo.on) {
+        // the direction arrow over everything, in a depth buffer of its own; also past the finish (RCCars.exe
+        // 0x4b0fa0 does not ask)
+        if(!checkpoints->empty() && showArrow && !demo.on) {
           enc.setFramebuffer({{swapchain[swapchain.currentImage()],Tempest::Preserve,Tempest::Preserve}},
                              {zbuffer,1.f,Tempest::Discard});
           arrow->draw(enc,int(w()),int(h()));

@@ -108,6 +108,12 @@ class Opponent {
     Back                 trackRules(float dt);
     // back on the track at the last main checkpoint passed
     void                 putBack();
+    // over the finish line (RCCars.exe 0x4eaad0): off the recording, no keys and Brake held, the wheels turned
+    // straight; FinishStop s later it stands where it is (0x4f6d0e, 0x4f7341)
+    void                 finish();
+    bool                 finished() const { return stopTime>=0; }
+    static constexpr float FinishStop  = 2.f;   // s
+    static constexpr float FinishSteer = 120.f; // the wheels' degrees a second back to straight
     // a bullet hit it (RCCars.exe 0x508560): knocked off its recording and pushed away from `gun`
     // (Vehicle::shotFrom); put back on the track Vehicle::ShotHold s after the first hit (0x508ae0, in trackRules)
     void                 shotFrom(const Vec3& gun);
@@ -190,6 +196,8 @@ class Opponent {
     float                                 backTime   = 0;    // ... backing up for this long (0x4428)
     bool                                  backing    = false;
     float                                 steerDeg   = 0;    // the autopilot's wheel angle, + = left (0x5c6c)
+    float                                 stopTime   = -1;   // s since the finish (car+0x128), < 0 before
+    Mat4                                  stopPose;          // where it stands FinishStop s after it
     size_t                                nearFrame  = 0;    // nearest frame of the recording so far (0x43a0)
     // back on the recording: the knocked car's pose relative to the recording's fades away (0x503190)
     Mat4                                  resumeOffset;

@@ -30,6 +30,8 @@ const float CountFinish[4]={210,CellsY, 512,  2*CellsY};
 constexpr float LapX       = 613,  LapY      = -20; // "lapPosX/Y": the "okrążenie" picture, top left
 constexpr float TimeY      = -10;                    // cock_num cells: the digits begin 7 px from the top as in the original
 constexpr float TimeLapY   = 43;                    // "timeLapPosY"
+constexpr float FinishShow = 2.f;                    // "meta" for this long ..
+constexpr float FinishGrow = 0.8f;                   // .. growing to its size in this
 constexpr float LapBlink   = 4.2f;                  // "timeLapBlinkInSec": a finished lap's time blinks
 constexpr float MessageY   = 300-142;               // "msgOffsetY" from the middle of the screen
 
@@ -812,8 +814,12 @@ void Hud::messages(const rc::Race& race, const Info& info, float cx, float my, f
   else if(message==Message::Go && clock-messageAt<1.2f) {
     sprite(msg321,{CountStart[0],CountStart[1],CountStart[2],CountStart[3]},cx,my,k,white4);
     }
-  else if(phase==rc::Race::Phase::Finished) {
-    sprite(msg321,{CountFinish[0],CountFinish[1],CountFinish[2],CountFinish[3]},cx,my,k,white4);
+  else if(message==Message::Finish && clock-messageAt<FinishShow) {
+    // RCCars.exe 0x4eaad0 -> 0x4afbb0 (message 8, 2 s, zooming): it grows from nothing for the first 0.8 s
+    // (0x4b02a5, 0x4b12b0), then stays until it is gone
+    const float grow = std::min(1.f,(clock-messageAt)/FinishGrow);
+    if(grow>1e-6f)
+      sprite(msg321,{CountFinish[0],CountFinish[1],CountFinish[2],CountFinish[3]},cx,my,grow*k,white4);
     }
   else if(info.lowSignal && phase!=rc::Race::Phase::Finished) {
     // RCCars.exe picks it first of the messages after the start (0x4b020d), steady while the car is in the volume

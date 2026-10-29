@@ -241,6 +241,7 @@ void Opponent::restart() {
   wheelTurn    = 0;
   steerAngle   = 0;
   finishTime   = -1;
+  stopTime     = -1;
   lapAt        = 0;
   bestLap      = -1;
   drownTimer   = 0;
@@ -260,6 +261,26 @@ void Opponent::update(float dt, float rate, float ahead, bool band, bool seen) {
   if(band && !bandSpline.empty())
     r *= bandSpline.at(ahead);
   lastRate = r;
+  if(stopTime>=0) {
+    // past the finish (0x4f6c39, 0x4f6d0e): braking on its own for a while, then it stands there
+    const bool was = stopTime<FinishStop;
+    stopTime += dt;
+    if(stopTime<FinishStop) {
+      steerDeg += std::clamp(-steerDeg,-FinishSteer*dt,FinishSteer*dt);
+      Vehicle::Input in;
+      in.handbrake = true;
+      in.steer     = std::clamp(steerDeg/std::max(prm.steerAngle,1.f),-1.f,1.f);
+      driven->update(in,dt);
+      }
+    else {
+      if(was)
+        stopPose = driven->pose();
+      driven->hold(stopPose);
+      }
+    currentSpeed = driven->speed();
+    tracker.update(driven->pose().translation(),lapCount);
+    return;
+    }
   if(driven!=nullptr)
     drive(dt,seen);
   if(driven!=nullptr) {
@@ -381,6 +402,17 @@ void Opponent::knock() {
     ++nearFrame;
   }
 
+void Opponent::finish() {
+  if(stopTime>=0)
+    return;
+  // the wheels as they were turned on the recording, straightened from there
+  const bool was = knocked();
+  knock();
+  if(!was)
+    steerDeg = steerAngle*180.f/3.14159265f;
+  stopTime = 0;
+  }
+
 void Opponent::setTrack(const Vec3& mn, const Vec3& mx, const ResetVolumes& volumes) {
   hasTrack = true;
   boxMin   = mn;
@@ -430,6 +462,8 @@ void Opponent::putBack() {
                                                               : checkpoints.poseAt(last,geom.min.y);
   knock();
   driven->reset(to);
+  if(stopTime>=FinishStop)
+    stopPose = to;   // finished: it stands there now
   ++putBacks;
   shotTime   = -1;
   driveTime  = 0;
@@ -751,6 +785,7 @@ void Opponents::update(float dt, bool racing, const Vec3& playerPos, size_t play
       }
     if(c->finishTime<0 && int(c->laps())>=laps) {
       c->finishTime = raceTime;
+      c->finish();
       told.push_back({News::Finished,i});
       }
     else if(c->finishTime<0 && c->laps()>was)

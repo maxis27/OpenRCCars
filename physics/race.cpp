@@ -24,6 +24,14 @@ void Race::startNow() {
   startAt = clock;
   }
 
+void Race::finishNow() {
+  if(state!=Phase::Racing)
+    return;
+  finishAt = time();
+  state    = Phase::Finished;
+  wrong    = false;
+  }
+
 float Race::bestLap() const {
   return times.empty() ? 0.f : *std::min_element(times.begin(),times.end());
   }

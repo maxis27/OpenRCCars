@@ -34,8 +34,12 @@ class Effects {
 
     // all gone (a new race); with `keep` (the car put back) the particles only: the tracks stay, and the dirt
     void clear(bool keep = false);
-    // how dirty the player's car is: 0 clean .. 2 (CarEffects::dirt)
-    float dirt() const;
+    // how dirty the player's car is: 0 clean .. 2 (CarEffects::dirt); `p` 1: player 2's of the split screen
+    float dirt(size_t p = 0) const;
+    // the split screen's player 2: its car's effects as the player's, and only its particles gone (put back)
+    void tickSecond(float dt, const rc::Vehicle& car, const rc::CollisionMesh& track, const rc::Vec3& camera, bool gas,
+                    bool brake);
+    void clearSecond(bool keep);
     // the track's own effects (fx/worldfx.h): splashes at its water_splash_N markers, waves breaking at its
     // water_wave_N markers on `sea` (the main sea's waves, null: none), the guards' gunfire, the smoke out of its
     // coolers (*KOOLER* nodes)
@@ -91,6 +95,7 @@ class Effects {
     bool                                loaded = false;
     rc::fx::Random                      rnd;
     std::unique_ptr<rc::fx::CarEffects> player;
+    std::unique_ptr<rc::fx::CarEffects> player2;   // the split screen's
     float                               fogDensity = 0;
     uint32_t                            fogColor   = 0;
     std::vector<Opponent>               opponents;
@@ -102,6 +107,8 @@ class Effects {
     rc::fx::Footprints                  footprints;
     rc::fx::HatchSmoke                  hatch;
 
+    void tickCar(rc::fx::CarEffects& fx, float dt, const rc::Vehicle& car, const rc::CollisionMesh& track,
+                 const rc::Vec3& camera, bool gas, bool brake);
     // `tracks`: the tyre tracks, otherwise the wake and the foam
     void drawMarks(Tempest::Encoder<Tempest::CommandBuffer>& enc, uint8_t frame, const rc::Mat4& viewProj,
                    const rc::Vec3& eye, bool tracks);
@@ -117,8 +124,8 @@ class Effects {
     const Tempest::Texture2d*           white   = nullptr;
     Tempest::RenderPipeline             pso;
     Tempest::RenderPipeline             psoTrack, psoWake;
-    Tempest::VertexBuffer<Vertex>       vbo[2];
-    Tempest::VertexBuffer<MarkVertex>   markVbo[2][2];   // [tracks or not][frame]
+    Tempest::VertexBuffer<Vertex>       vbo[4];   // by the frame in flight and the view (two in the split screen)
+    Tempest::VertexBuffer<MarkVertex>   markVbo[2][4];   // [tracks or not][frame and view]
     std::vector<rc::fx::Billboard>      sprites;
     std::vector<Vertex>                 verts;
     std::vector<rc::fx::Mark>           marks;

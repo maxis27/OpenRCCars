@@ -175,10 +175,10 @@ std::string Controls::name(int32_t code) {
   return code!=0 ? "#"+std::to_string(code) : std::string();
   }
 
-void Controls::load(const rc::ConfigFile& f) {
+void Controls::load(const rc::ConfigFile& f, int player) {
   // the layout of the player: Klaw.1, Klaw.2 or the player's own (a joystick's is not ours: the player's own)
-  const int32_t layout = f.integer("Input","Player1Layout",Keys1);
-  table = layout==Keys1 || layout==Keys2 ? preset(layout) : read(f,0);
+  const int32_t layout = f.integer("Input",player==0 ? "Player1Layout" : "Player2Layout",player==0 ? Keys1 : Keys2);
+  table = layout==Keys1 || layout==Keys2 ? preset(layout) : read(f,player);
   }
 
 bool Controls::held(Action a, const bool* down) const {

@@ -112,7 +112,7 @@ class Canvas {
     std::vector<Vertex>              verts;
     float                            sharpen = 0;   // for the quads being added: see Draw::sharpen (-1: opaque)
     std::vector<Draw>                draws;
-    Tempest::VertexBuffer<Vertex>    vbo[2];
+    Tempest::VertexBuffer<Vertex>    vbo[4];   // by the frame in flight and the view (two in the split screen)
 
     int                              scrW = 0, scrH = 0;
     float                            scale = 1, offsetX = 0;

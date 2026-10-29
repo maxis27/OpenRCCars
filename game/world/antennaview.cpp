@@ -172,7 +172,7 @@ void AntennaView::add(size_t car, const std::vector<rc::Mat4>& joints, const Mod
 void AntennaView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, const LevelMesh::Push& push) {
   if(verts.empty())
     return;
-  vbo[frame%2] = device.vbo(BufferHeap::Upload,verts);
+  vbo[frame%4] = device.vbo(BufferHeap::Upload,verts);
   for(auto& d:draws) {
     const Model& md = models[d.car];
     enc.setPipeline(pso.get(md.mode));
@@ -193,6 +193,6 @@ void AntennaView::draw(Encoder<CommandBuffer>& enc, uint8_t frame, const LevelMe
     enc.setBinding(3,*md.tex);
     enc.setBinding(4,pso.noWater);
     enc.setBinding(5,res.white());
-    enc.draw(vbo[frame%2],d.first,d.count);
+    enc.draw(vbo[frame%4],d.first,d.count);
     }
   }

@@ -1279,6 +1279,23 @@ bool contactOf(const Vec3& from, const Vec3& to, Vec3& at, Vec3& n) {
   }
 }
 
+bool Vehicle::collide(PhysicsWorld& world, Vehicle& a, Vehicle& b) {
+  auto& disp = *world.bullet().getDispatcher();
+  for(int k=0; k<disp.getNumManifolds(); ++k) {
+    const btPersistentManifold* m = disp.getManifoldByIndexInternal(k);
+    const bool pair = (m->getBody0()==a.body.get() && m->getBody1()==b.body.get()) ||
+                      (m->getBody0()==b.body.get() && m->getBody1()==a.body.get());
+    if(!pair)
+      continue;
+    for(int c=0; c<m->getNumContacts(); ++c)
+      if(m->getContactPoint(c).getDistance()<=0) {
+        bounce(a,b,a.centre(),b.centre());
+        return true;
+        }
+    }
+  return false;
+  }
+
 void Vehicle::bounce(Vehicle& a, Vehicle& b, const Vec3& aCentre, const Vec3& bCentre) {
   Vec3 at, n;
   if(!contactOf(bCentre,aCentre,at,n))

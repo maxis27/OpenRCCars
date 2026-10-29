@@ -46,6 +46,10 @@ class Sounds {
     // the next race track of the playlist (Autoexec.gm), and on to the next one whenever a track ends
     void startMusic();
     void stopMusic();
+    // the intro's sound in the music's place (RCCars.exe 0x4a1eb0): at (SoundBkVolume - 100) * 0.4 dB, silent at 0,
+    // whether or not the music is on; stopFilm() puts the music's volume back
+    void startFilm(std::unique_ptr<rc::Stream> s);
+    void stopFilm();
     // RCCars.crs [Sound] as "Efekty dźwiękowe" sets it: Use_Sound, SoundVolume, Use_BkSound, SoundBkVolume and
     // Snd_Style (0x4835ff .., 0x485d0e)
     void setOptions(const rc::ConfigFile& f);

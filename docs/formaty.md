@@ -182,7 +182,8 @@ szyku daje `PlayerPath` i `start.dat`.
 - `Language/Game/<język>.tbl` i `Language/System/<język>.tbl`: teksty gry, elementy `HSRC`, `CSRC`, `LSRC`, `DSRC`
   z tekstami zaszyfrowanymi XOR-em kluczem z `CSRC`, w Windows-1250 (polski) albo ASCII (`formats/texttable.h`,
   `RCCars.exe` 0x401920).
-- `Tracks/`: muzyka MP3; `Tracks/Intro.dat` (84 MB) to intro w nieznanym formacie.
+- `Tracks/`: muzyka MP3; `Tracks/Intro.dat` (84 MB) to intro: strumień MPEG-1 (wideo 640x480, 25 kl/s, dźwięk MP2
+  44,1 kHz stereo), części z `Scripts/intro.ini`.
 
 ## Gracze (Players, RCCars.crs)
 

@@ -973,6 +973,29 @@ zmienia się tylko środek (komunikaty 0x26f/0x270 chowają i pokazują kontrolk
   miejsca i komunikatów wyścigu. Kule ×1,1 i opóźnienie stanu 0x50acf0 nie są przeniesione (nasze zderzenia aut to
   bryły Bullet).
 
+## Intro i ekran startowy
+
+- **Kolejność startu** (0x4a2ae4, kroki 0x0f..0x13): intro (0x4a3030), potem ekran startowy, pod którym gra się
+  wczytuje (0x4dd5e0), i menu główne. Intro nie gra w trybie deweloperskim (0x147d204) ani gdy zmienna skryptów
+  `AutoRunIntro` jest 0 (rejestrowana jako 1 w 0x4902a2, `Config.gm` ustawia 1).
+- **Scripts\intro.ini** (`INTRO_INFO`): `introName` = `"intro.dat"` (szukany w folderze rodzaju „Track”, 0x489390,
+  czyli `Tracks\Intro.dat`), `introNum` = 3 (najwyżej 4; brak albo < 1: bez intro), `part_<n>` = od, do sekund
+  (brak: 0, 0; do < 0: do końca filmu). Tu 0–10 s (logo 1C), 10–17 s (logo Creat Studio), 17,2 s do końca (film).
+- **Film**: `Intro.dat` to zwykły strumień MPEG-1 (wideo MPEG-1 640x480, 25 kl/s; dźwięk MP2 44,1 kHz stereo;
+  104,6 s). Odtwarza go DirectShow (0x4a20d0: FilterGraph, okno 800x600; 0x4a1eb0: `RenderFile`, okno filmu
+  w kliencie okna gry). Części grają po kolei (0x4a1d80 `SetPositions` od, do), koniec części to `EC_COMPLETE`
+  (0x4a2340) albo Esc (0x4a2f10 → 0x4a23b0, tylko w krokach 2–3: Esc kończy bieżącą część, nie całe intro).
+- **Głośność** (0x4a1fe2): `IBasicAudio::put_Volume((SoundBkVolume − 100) · 40)` w setnych dB, od −3999 w dół
+  −10000 (cisza), czyli (v − 100) · 0,4 dB; nie zależy od `Use_BkSound`.
+- **Ekran startowy** (0x4a2ae4 krok 0x13, tablica 0x56b8a0: nazwa, x0, y0, x1, y1 jako części ekranu): `Desktop`
+  (0, 0, 1, 1), `LogoRC` (0,16, 0,04, 0,8, 0,8933), `Logo1C` (0,03125, 0,01167, 0,19125, 0,225), `LogoCR`
+  (0,80875, 0,01167, 0,96875, 0,225) i 41920 „Wczytywanie...” czcionką 0x1499d58 (0x4a17b7, siatka 25x28 jak Smash)
+  w prostokącie 0, 390..640, 480 ekranu 640x480, flagi 0x110001 (0x10000 środek w poziomie, 0x100000 w pionie,
+  0x4706a0). Obrazki są w `Language\<język>\` (`Desktop.csi` polski ma już małe loga 1C i Creat w rogu).
+- **U nas** (`Intro`, `rc::Film` na pl_mpeg, `MainWindow::renderIntro`): film 4:3 na środku okna, dźwięk w miejscu
+  muzyki; ekran startowy podczas wczytywania gry (`MainWindow::init`), loga w rogach przy krawędziach ekranu na
+  szerokim ekranie. Intro nie gra też z `-l` (od razu wyścig). Czcionka napisu to Smash26.
+
 ## Opcje i twórcy
 
 Przyciski menu głównego mają identyfikatory ekranów 0x641.. (0x4c9500), a 0x4ca290 wybiera ekran: 0x642 „Wyjdź”

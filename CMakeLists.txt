@@ -90,8 +90,9 @@ add_library(rcaudio STATIC
   audio/carsound.h audio/carsound.cpp
   audio/music.h    audio/music.cpp
   audio/ambient.h  audio/ambient.cpp
+  audio/film.h     audio/film.cpp
   )
-target_include_directories(rcaudio PRIVATE lib/dr_mp3)
+target_include_directories(rcaudio PRIVATE lib/dr_mp3 lib/pl_mpeg)
 target_link_libraries(rcaudio PUBLIC rcformats)
 
 # --- particle effects of the cars: dust, water spray (no GPU) ---
@@ -139,6 +140,7 @@ add_library(rcengine STATIC
   game/championship.h      game/championship.cpp
   game/hud.h               game/hud.cpp
   game/fpscounter.h        game/fpscounter.cpp
+  game/intro.h             game/intro.cpp
   game/arrow.h             game/arrow.cpp
   game/effects.h           game/effects.cpp
   game/sounds.h            game/sounds.cpp

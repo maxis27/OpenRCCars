@@ -86,7 +86,13 @@ int main(int argc, const char** argv) {
     Log::i("GPU: ",device.properties().name);
 
     Resources res(device,argv[1]);
-    Level     level(device,res,argv[2]);
+    // RCSHOT_QUALITY=<RenderQual>: the track as the options' "Jakość grafiki" draws it (game/quality.h)
+    const int32_t renderQual = std::getenv("RCSHOT_QUALITY") ? std::atoi(std::getenv("RCSHOT_QUALITY")) : 2;
+    Level     level(device,res,argv[2],renderQual);
+    {
+      const bool m = renderQual!=0, h = m && renderQual!=1;
+      level.mesh().setFeatures({m,m,m,h});
+    }
     Camera    cam = level.startCamera();
     ChaseCamera chase(ChaseCamera::Settings::load([&res](const std::string& f){ return res.pack().read(f); }));
     ChaseCamera::Car chaseCar;

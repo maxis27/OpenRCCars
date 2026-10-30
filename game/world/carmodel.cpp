@@ -19,8 +19,8 @@ CarModel::Distances CarModel::Distances::load(rc::PackFile& pack) {
     auto step = [&](std::string_view key, int32_t def) {
       return float(std::clamp(f.raw(key,def),1,100)-1)*(100.f/99.f)*0.1f;
       };
-    const float lod0 = 2.f+step("DistLOD1SwitchOn",1);
-    d.lod1 = lod0+step("Delta12",60);
+    d.lod0 = 2.f+step("DistLOD1SwitchOn",1);
+    d.lod1 = d.lod0+step("Delta12",60);
     d.lod2 = d.lod1+step("Delta23",10);
     }
   catch(const std::exception& e) {

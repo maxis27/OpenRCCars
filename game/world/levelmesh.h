@@ -112,8 +112,19 @@ class LevelMesh {
     // the shore; `track` names the WLOD_<track>_<object>.ini files of the sea
     // `groups`: the moving scenery (rc::fx::AnimatedObjects::groups), the group each of the scene's meshes goes
     // with, 0 for those that stay
+    // `renderQuality`: the options' RenderQual (0..2), how fine the sea is (hiddenMeshes)
     LevelMesh(Tempest::Device& device, Resources& res, const rc::SbScene& scene, const rc::CollisionMesh* ground = nullptr,
-              std::string_view track = {}, const std::vector<int32_t>* groups = nullptr);
+              std::string_view track = {}, const std::vector<int32_t>* groups = nullptr, int32_t renderQuality = 2);
+
+    // what the graphics' quality leaves of the track (game/quality.h): its lightmaps (without them the textures
+    // are drawn as they are), the reflections on the sea, the foam along the shore, the detail textures
+    struct Features {
+      bool lightMaps = true;
+      bool envMap    = true;
+      bool coast     = true;
+      bool detail    = true;
+      };
+    void         setFeatures(const Features& f) { features = f; }
 
 
     // opaque and alpha-tested batches first, then (after the cars) the see-through ones: water, shore foam ...
@@ -138,8 +149,9 @@ class LevelMesh {
     // the waves of the main sea (the node "more1", else the first sea with waves), null if none
     const rc::WaterWaves* mainSea() const;
 
-    // low detail copies (_LOD<n>) that are not drawn, per SbScene::meshes
-    static std::vector<bool> hiddenMeshes(const rc::SbScene& scene);
+    // low detail copies (_LOD<n>) that are not drawn, per SbScene::meshes; `renderQuality` (RenderQual 0..2)
+    // picks how fine the sea is
+    static std::vector<bool> hiddenMeshes(const rc::SbScene& scene, int32_t renderQuality = 2);
 
   private:
     struct Batch {
@@ -171,7 +183,9 @@ class LevelMesh {
     std::vector<std::pair<int32_t,size_t>> embeddedIndex;
     ScenePipelines                pso;
     const Tempest::Texture2d*     env = nullptr;
+    const Tempest::Texture2d*     white = nullptr;
     std::shared_ptr<SeaSurface>   seaSurface;
     rc::Vec3                      bbox[2];
     Stats                         info;
+    Features                      features;
   };

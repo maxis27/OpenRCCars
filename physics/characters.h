@@ -126,6 +126,7 @@ class Characters {
     struct State;
     struct Settings {
       float speedForw     = 0.3f;   // People: not used by the path
+      float peopleRate    = 1.f;    // MAX_IMPULSE.ini coeffPeople (0.5..1.5): 1.116, people's time per second (0x51044c)
       float gullRun       = 0.21f, gullFlight = 0.25f, gullHeight = 1.5f, gullAngle = 45.f;
       float gullIdle      = 0.22f, gullTurn = 2.57f;
       float spiderRad     = 0.23f, spiderFloor = 0.01f, spiderFloorDead = 0;

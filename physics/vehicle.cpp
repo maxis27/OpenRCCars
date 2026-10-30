@@ -389,8 +389,10 @@ void Vehicle::addBoost(float units) {
 void Vehicle::update(const Input& in, float dt) {
   const float ls = vel.length();
   frameForce = frameTorque = {};
-  // the keys that keep the car awake (0x4f59a0)
-  keysHeld = in.throttle!=0 || in.steer!=0 || in.boost;
+  // the keys that keep the car awake (0x4f59a0: Forw, Back, Left, Right and Jump of the key bits 0x574c + 8 n)
+  keysHeld = in.throttle!=0 || in.steer!=0 || in.jump;
+  rollKey  = std::clamp(in.steer,-1.f,1.f);
+  jumpKey  = in.jump;
   movingTime += dt;
 
   // steering (RCCars.exe): the position runs towards the side held, slower the faster the car goes, until the
@@ -582,12 +584,56 @@ bool Vehicle::asleep(float h) {
 void Vehicle::step(float h) {
   if(h<=0)
     return;
+  if(!settling && rollOver(h)) {
+    syncChassis();
+    return;
+    }
   if(!settling && asleep(h)) {
     syncChassis();
     return;
     }
   move(h);
   syncChassis();
+  }
+
+// RCCars.exe 0x509080, before every step (0x4f5e50). A car slower than 0.8 m/s whose forward axis is within 30
+// degrees of level (or straight up or down), with its up axis at least 70 degrees from the level direction to the
+// right of its forward axis (0x5092c0: on its roof, on its left side or upright, never on its right side), and a
+// steering key held, the left one first (0x5091b0), gets only a torque about its forward axis instead of the step:
+// momentFloorBackABS times (1 + how far the key is in), negative for the left key. Gravity and the momentum stay
+// out of it: one Euler step moves it by its velocity and turns it (0x509460). Where that puts a sphere in the
+// track it is tried 9 mm higher; still in, the car is left as it was and takes the step.
+bool Vehicle::rollOver(float h) {
+  constexpr float Deg = 180.f/3.14159265f;
+  if(rollKey==0 || vel.length()>0.8f)
+    return false;
+  auto angle = [](const Vec3& a, const Vec3& b) {
+    return std::acos(std::clamp(Vec3::dot(a,b),-1.f,1.f))*Deg;
+    };
+  const Vec3 fwd  = axis(2);
+  const Vec3 flat = {fwd.x,0,fwd.z};
+  if(flat.length()>1e-6f && angle(fwd,flat.normalized())>30.f)
+    return false;
+  const Vec3 side = Vec3{fwd.z,0,-fwd.x}.normalized();
+  if(angle(axis(1),side)<70.f)
+    return false;
+  const float torque = prm.rollTorque*(1.f+std::abs(rollKey))*(rollKey>0 ? -1.f : 1.f);
+
+  const Body was = st;
+  Body to = st;
+  to.x = st.x+vel*h;
+  turned(st.q,omega,h,to.q);
+  to.L = st.L+fwd*(torque*h);
+  inside.clear();
+  for(int i=0; i<2; ++i) {
+    Body b = to;
+    b.x.y += float(i)*0.009f;
+    set(b);
+    if(!penetrates(AllSpheres))
+      return true;
+    }
+  set(was);
+  return false;
   }
 
 // gears and brakes (RCCars.exe, 0x4ee5e0), anew for every Euler step of the body that has a wheel on the ground:
@@ -920,11 +966,11 @@ void Vehicle::unstick() {
 void Vehicle::move(float h) {
   float rest = h;
   for(int part=0; part<3 && rest>1e-4f; ++part) {
-    // 0x4f5770
-    if(const float p = st.P.length(); p>20.f*prm.mass)
-      st.P = st.P*(20.f*prm.mass/p);
-    if(const float l = st.L.length(); l>1.f)
-      st.L = st.L*(1.f/l);
+    // 0x4f5770: MAX_IMPULSE.ini
+    if(const float p = st.P.length(); p>prm.limits.linear*prm.mass)
+      st.P = st.P*(prm.limits.linear*prm.mass/p);
+    if(const float l = st.L.length(); l>prm.limits.angular)
+      st.L = st.L*(prm.limits.angular/l);
     set(st);
 
     // the wheels on the track; one keeps the car's stillness timer going (0x4f0230, 0x4f5980)

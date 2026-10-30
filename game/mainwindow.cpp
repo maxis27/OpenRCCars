@@ -1175,6 +1175,7 @@ void MainWindow::tickDemo(float dt) {
   const bool racing = !race->holdCar();
   vehicle->hold(demo.park);
   opponents->collide(*vehicle,dt);
+  opponents->setViewers({{camera.position,camera.forward()}});
   opponents->update(dt,racing,demo.park.translation(),0,false,race->clockTime(),race->laps());
   if(objects)
     objects->update(dt);
@@ -1352,9 +1353,15 @@ void MainWindow::tick(float dt) {
       hud->hit(hit==rc::Vehicle::Hit::Great);
       Log::i(hit==rc::Vehicle::Hit::Great ? "great hit" : "hit"," at ",Hud::formatTime(race->time()));
       }
-    if(opponents)
+    if(opponents) {
+      // the views' cameras of the last frame
+      std::vector<rc::Opponents::Viewer> views = {{camera.position,camera.forward()}};
+      if(split())
+        views.push_back({two.rider->camera.position,two.rider->camera.forward()});
+      opponents->setViewers(std::move(views));
       opponents->update(dt,!race->holdCar(),carPose.translation(),checkpoints->laps(),playerFinish>=0,race->clockTime(),
                         race->laps());
+      }
     if(objects)
       objects->update(dt);
     physics->step(dt);
@@ -2284,10 +2291,12 @@ void MainWindow::render() {
           Hud::Info info = hudInfo();
           info.gates    = showGates;
           info.viewProj = vps[0];
+          info.eye      = camera.position;
           hud->draw(enc,frameId,W,H,*race,info);
           Hud::Info info2 = riderHud();
           info2.gates    = showGates;
           info2.viewProj = vps[1];
+          info2.eye      = two.rider->camera.position;
           two.rider->hud->draw(enc,frameId,W,H,*two.rider->race,info2);
           }
         }
@@ -2297,6 +2306,7 @@ void MainWindow::render() {
           Hud::Info info = hudInfo();
           info.gates    = showGates;
           info.viewProj = viewProj;
+          info.eye      = camera.position;
           hud->draw(enc,frameId,int(w()),int(h()),*race,info);
           // the direction arrow over everything, in a depth buffer of its own; also past the finish (RCCars.exe
           // 0x4b0fa0 does not ask)

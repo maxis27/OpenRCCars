@@ -35,8 +35,9 @@ constexpr float StuckSpeed  = 0.5555556f; // m/s (2 km/h)
 constexpr float BackUpTime  = 1.5f;    // s of backing up when stuck
 }
 
-// the player sees a car this close in front (a guess: RCCars.exe asks every viewport, 0x487300(i, pos, 50, 100))
+// a camera sees a point this close and this far off the way it looks (RCCars.exe 0x406ab0(view, pos, 50, 100))
 static constexpr float SeeDistance = 50.f;
+static constexpr float SeeAngle    = 100.f;  // degrees
 // a knocked car back on the recording blends into it in this many seconds (0x503190)
 static constexpr float ResumeFade  = 1.f;
 
@@ -176,6 +177,7 @@ Opponent::Opponent(PhysicsWorld& world, const CarGeometry& g, std::vector<CarPro
   // the lap's end: where each recording comes back to cp_1 in the second half of its loop, within the computer's
   // radius of it as in RCCars.exe (Checkpoints::passes)
   for(auto& r:profiles) {
+    r.jumpSpeed = 1.5f*prm.limits.linear;
     float line = r.duration();
     if(!route.empty()) {
       const size_t end  = route.route().size()-1;
@@ -256,7 +258,7 @@ void Opponent::restart() {
   body->setInterpolationAngularVelocity(btVector3(0,0,0));
   }
 
-void Opponent::update(float dt, float rate, float ahead, bool band, bool seen) {
+void Opponent::update(float dt, float rate, float ahead, bool band, const std::function<bool(const Vec3&)>& seen) {
   float r = rate;
   if(band && !bandSpline.empty())
     r *= bandSpline.at(ahead);
@@ -514,7 +516,7 @@ void Opponent::resume(size_t frame) {
 // RCCars.exe 0x4fe1f0: a knocked car drives at the frame of its recording Autopilot::Aim ahead of the nearest one,
 // the speed and the wheels set as 0x4fddd0 does; it backs up for a moment when stuck (0x4fe490). It replays again
 // from a frame it is back on (0x4fdb50), or is put back on the nearest frame where the player does not see it.
-void Opponent::drive(float dt, bool seen) {
+void Opponent::drive(float dt, const std::function<bool(const Vec3&)>& seen) {
   using namespace Autopilot;
   driveTime  += dt;
   sinceTouch += dt;
@@ -578,7 +580,7 @@ void Opponent::drive(float dt, bool seen) {
     }
   else {
     // back on the recording (0x4fdb50)
-    if(driveTime>PutBack && !seen) {
+    if(driveTime>PutBack && seen && !seen(at) && !seen(framePoint(nearFrame))) {
       resume(nearFrame);
       return;
       }
@@ -759,6 +761,20 @@ void Opponents::update(float dt, bool racing, const Vec3& playerPos, size_t play
   if(active!=nullptr)
     playerPose = active->pose();
   told.clear();
+  // 0x4fd440, 0x406ab0: within SeeDistance of a view's camera and SeeAngle of where it looks
+  auto seen = [this](const Vec3& p) {
+    auto sees = [&p](const Viewer& v) {
+      const Vec3  d = p-v.eye;
+      const float l = d.length();
+      return l<=SeeDistance && (l<1e-6f || std::acos(std::clamp(Vec3::dot(d*(1.f/l),v.forward),-1.f,1.f))*180.f/3.14159265f<=SeeAngle);
+      };
+    if(viewers.empty())
+      return sees({playerPose.translation(),playerPose.vector({0,0,1})});
+    for(auto& v:viewers)
+      if(sees(v))
+        return true;
+    return false;
+    };
   for(size_t i=0; i<cars.size(); ++i) {
     auto& c = cars[i];
     if(!racing) {
@@ -766,8 +782,6 @@ void Opponents::update(float dt, bool racing, const Vec3& playerPos, size_t play
         c->place();
       continue;
       }
-    const Vec3 to   = c->pose().translation()-playerPose.translation();
-    const bool seen = to.length()<SeeDistance && Vec3::dot(to,playerPose.vector({0,0,1}))>0;
     const size_t was = c->laps();
     const float ahead = c->progress()-(active!=nullptr ? active->progress() : player.progress());
     c->update(dt,baseRate,ahead,active!=nullptr || !playerDone,seen);

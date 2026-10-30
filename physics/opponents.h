@@ -79,9 +79,11 @@ class Opponent {
     // back to the first frame of the recording, on the grid
     void                 restart();
     // `dt` seconds of the race; `rate` is the replay speed without the rubber band, `ahead` metres along the route
-    // this car is ahead of the player (positive) or behind (negative); `band` false: no rubber band. `seen`: the
-    // player can see the car (a car knocked off long ago is put back on its recording only where nobody sees it)
-    void                 update(float dt, float rate, float ahead, bool band, bool seen = true);
+    // this car is ahead of the player (positive) or behind (negative); `band` false: no rubber band. `seen`: a
+    // point is in sight (a car knocked off long ago is put back on its recording only where nobody sees either it
+    // or the frame it goes to); none: everything is
+    void                 update(float dt, float rate, float ahead, bool band,
+                                const std::function<bool(const Vec3&)>& seen = {});
     // keeps the Bullet body where the car is drawn; called on every update()
     void                 place();
 
@@ -157,7 +159,7 @@ class Opponent {
 
   private:
     // the autopilot of a knocked car
-    void                                  drive(float dt, bool seen);
+    void                                  drive(float dt, const std::function<bool(const Vec3&)>& seen);
     // back on the recording at frame `frame` of the current one
     void                                  resume(size_t frame);
     // the point of the current recording at its frame `i`
@@ -245,6 +247,10 @@ class Opponents {
                                 float raceTime, int laps);
     // what update() has seen
     const std::vector<News>& news() const { return told; }
+    // the cameras of the views, which tell where a knocked car may be put back unseen (RCCars.exe asks every view,
+    // 0x487300); none: the player's car looks forward from where it is
+    struct Viewer { Vec3 eye, forward; };
+    void                 setViewers(std::vector<Viewer> v) { viewers = std::move(v); }
     // the demo: the car `i` is the active one (the script's SetActive '$CAR' <i>) instead of the player: the
     // rubber band measures the others against it (RCCars.exe 0x4fd5e0 takes the active car, 0x4870c0) and it is
     // the one that sees whether a car stuck behind it may be put back; -1 the player again
@@ -284,6 +290,7 @@ class Opponents {
     PhysicsWorld&                          owner;
     Level                                  lvl;
     Mat4                                   playerPose;     // as of the last collide()
+    std::vector<Viewer>                    viewers;
     float                                  playerSinceCar = 1e3f;
     float                                  baseRate = 1;   // CoeffCommonOpponents x difficulty
     CarProfile                             startProfile;   // PlayerPath

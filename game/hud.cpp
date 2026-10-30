@@ -102,14 +102,12 @@ const char* const Texts[2][2] = {
   {"dopalacz", "km/h"},
   {"boost",    "km/h"},
   };
-// Settings/anim_cp.ini: Size 146, Shift 128, MinDist 237, MaxDist 900, BlinkDelta 10. Shift reads as texels of
-// the 256 high picture: it is raised by half its height, so the shadow drawn at its bottom lies on the ground under
-// the marker. The rest is read as centimetres and hundredths of a second per frame (a guess, the game's code that
-// uses them is not decoded): the arrow is 1.46 m big, hidden when the camera is closer than 2.37 m, and farther
-// than 9 m it keeps the size it has on the screen at 9 m (growing upwards from the ground), so that it shows the
-// way from afar.
+// Settings/anim_cp.ini, each slider / 100 (RCCars.exe 0x52b370; drawn by 0x52abc0): Size 146 is half the side of
+// the square picture (2.92 m), Shift 128 how high its middle stands over the checkpoint's ground (its glow at the
+// bottom then lies on the ground), MinDist 237 and MaxDist 900 where it fades in (none closer than 2.37 m to the
+// camera across, all of it from 9 m on), BlinkDelta 10 the seconds each of its three frames is shown
 constexpr float CpArrowSize    = 1.46f;
-constexpr float CpArrowShift   = 128.f/256.f;
+constexpr float CpArrowShift   = 1.28f;
 constexpr float CpArrowMinDist = 2.37f;
 constexpr float CpArrowMaxDist = 9.f;
 constexpr float CpArrowFrame   = 0.1f;
@@ -400,48 +398,54 @@ void Hud::gates(const rc::Race& race, const rc::Mat4& vp) {
     }
   }
 
-void Hud::checkpointArrow(const rc::Race& race, const rc::Mat4& vp) {
+void Hud::checkpointArrow(const rc::Race& race, const rc::Mat4& vp, const rc::Vec3& eye) {
   const auto& route = race.checkpoints().route();
   if(route.size()<2 || race.phase()==rc::Race::Phase::Finished)
     return;
-  // red over cp_1, where the lap ends; green over the other main checkpoints. The frames go 1 2 3 2 1 ..
+  // red (cp_ar_3) over cp_1, where the lap ends; green (cp_ar_2) over the other main checkpoints; frames 1 2 3
   const size_t   next   = race.checkpoints().next();
   const int      colour = next+1==route.size() ? 1 : 0;
-  const int      step   = int(clock/CpArrowFrame)%4;
-  const auto*    tex    = cpArrow[colour][step==3 ? 1 : step];
+  const auto*    tex    = cpArrow[colour][int(clock/CpArrowFrame)%3];
   if(tex==nullptr)
     return;
   const auto&    p  = route[next];
-  const rc::Vec3 foot = {p.position.x,p.ground,p.position.z};
-  float depth = 0;
-  auto project = [&](const rc::Vec3& v, float& sx, float& sy) {
-    const float w = vp.m[3][0]*v.x+vp.m[3][1]*v.y+vp.m[3][2]*v.z+vp.m[3][3];
-    const rc::Vec3 c = vp.point(v);
-    sx    = (c.x/w*0.5f+0.5f)*float(scrW);
-    sy    = (c.y/w*0.5f+0.5f)*float(scrH);
-    depth = c.z/w;
-    return w;
-    };
-  float x0, y0, x1, y1;
-  const float dist = project(foot,x1,y1);
+  const rc::Vec3 at = {p.position.x,p.ground+CpArrowShift,p.position.z};
+  // turned about the upright towards the camera
+  const rc::Vec3 to = {at.x-eye.x,0,at.z-eye.z};
+  const float dist  = to.length();
   if(dist<CpArrowMinDist)
     return;
-  // the size: kept from growing smaller on the screen beyond MaxDist
-  const float    size = CpArrowSize*std::max(1.f,dist/CpArrowMaxDist);
-  const rc::Vec3 at   = foot+rc::Vec3{0,size*CpArrowShift,0};
-  // a flat picture facing the camera at the arrow's distance, brought half a metre nearer so that the ground right
-  // under it does not cut off its shadow: terrain and objects in front of it hide it. The 4th row of the matrix is
-  // the camera's forward direction.
-  const rc::Vec3 fwd = {vp.m[3][0],vp.m[3][1],vp.m[3][2]};
-  float sx, sy;
-  project(at-fwd*0.5f,sx,sy);
-  const float z = depth;
-  // its height on the screen from the foot to the top, the width the same
-  project(foot+rc::Vec3{0,size,0},x0,y0);
-  const float h     = std::abs(y1-y0);
-  const float x     = x1;
-  const float alpha = std::min(1.f,dist-CpArrowMinDist);   // fades in over the first metre
-  quadAt(*tex,x-h*0.5f,std::min(y0,y1),h,h,z,Color{1,1,1,alpha});
+  const rc::Vec3 side = rc::Vec3{-to.z,0,to.x}*(1.f/dist);   // to the right on the screen
+  const rc::Vec3 up   = {0,1,0};
+  // 0x52b1d0: the alpha goes from 50 to 250 and back in 0.4 s each way, no more than 220, and fades in from
+  // MinDist to MaxDist
+  const float ph    = std::fmod(clock,0.8f);
+  const float blink = std::min(ph<0.4f ? 50.f+500.f*ph : 250.f-500.f*(ph-0.4f),220.f)/255.f;
+  const float alpha = blink*std::min((dist-CpArrowMinDist)/(CpArrowMaxDist-CpArrowMinDist),1.f);
+
+  // a grid of small quads, each corner projected, so that the picture is not bent where the square is seen
+  // at a slant
+  constexpr int N = 4;
+  constexpr float Near = 0.1f;
+  std::array<float,3> pt[N+1][N+1];
+  bool ok[N+1][N+1];
+  for(int i=0; i<=N; ++i)
+    for(int j=0; j<=N; ++j) {
+      const float u = float(i)/N, v = float(j)/N;
+      const rc::Vec3 w = at+side*(CpArrowSize*(2.f*u-1.f))+up*(CpArrowSize*(1.f-2.f*v));
+      const float    cw = vp.m[3][0]*w.x+vp.m[3][1]*w.y+vp.m[3][2]*w.z+vp.m[3][3];
+      const rc::Vec3 c  = vp.point(w);
+      ok[i][j] = cw>Near;
+      pt[i][j] = {(c.x/cw*0.5f+0.5f)*float(scrW),(c.y/cw*0.5f+0.5f)*float(scrH),c.z/cw};
+      }
+  for(int i=0; i<N; ++i)
+    for(int j=0; j<N; ++j) {
+      if(!ok[i][j] || !ok[i+1][j] || !ok[i+1][j+1] || !ok[i][j+1])
+        continue;
+      const float u0 = float(i)/N, u1 = float(i+1)/N, v0 = float(j)/N, v1 = float(j+1)/N;
+      quadAt(*tex,{pt[i][j],pt[i+1][j],pt[i+1][j+1],pt[i][j+1]},{{{u0,v0},{u1,v0},{u1,v1},{u0,v1}}},
+             Color{1,1,1,alpha});
+      }
   }
 
 void Hud::gauge(bool right, float value, float reach, const std::string& number, std::string_view label) {
@@ -636,7 +640,7 @@ void Hud::drawView(const rc::Race& race, const Info& info) {
 
   if(info.gates)
     gates(race,info.viewProj);
-  checkpointArrow(race,info.viewProj);
+  checkpointArrow(race,info.viewProj,info.eye);
   if(view==0)
     splitBar();
 
@@ -856,7 +860,7 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
   if(info.gates && !info.demo)
     gates(race,info.viewProj);
   if(!info.demo)
-    checkpointArrow(race,info.viewProj);
+    checkpointArrow(race,info.viewProj,info.eye);
 
   // top right: "okrążenie" and the lap number
   if(lapLabel.loaded) {

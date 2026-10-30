@@ -99,6 +99,7 @@ struct CarState {
   Vec3               velocity;             // m/s
   bool               gas = false, brake = false;
   bool               boost = false;        // the turbo is on
+  bool               jump = false;         // the jump key went down (RCCars.exe's key bit 0x577c)
   int                upgrade = 0;          // 0..3: the tyres and the booster bought
   std::vector<Wheel> wheels;
   std::optional<Exhaust> exhaust;          // the booster's end, if the model has it
@@ -157,7 +158,7 @@ class CarEffects {
     // exhaust (0x5303c0): the puff when the turbo comes on, the smoke's grey, the emitter
     Emitter               exhaust{100};
     float                 explode = 0;      // s of the puff left
-    bool                  boostWas = false;
+    bool                  jumpWas = false;
     float                 grey = 255;
     bool                  puff = false, boostSmoke = false;
     // dirt: grows with the dust the wheels raise, washed off in water, up to 3000

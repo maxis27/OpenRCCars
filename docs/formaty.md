@@ -150,6 +150,17 @@ adres auta numer 2), `=` w `Set "Zmienna" = "wartość"` tylko rozdziela. Trasy 
 - Zostały w danych z edytora, a `RCCars.exe` ich nie czyta: `splAccelBase<N>.bspl`, `splAccelGrav<N>.bspl`,
   `Height2Stiffness.bspl`, `AngleSteer2RearDrift.spl` i `Settings/Water.ini` (`speedDropCenter`, `speedDropOther`,
   `DampingVelocity2`).
+- Czytane, ale nigdzie potem nieużywane (sprawdzone w `RCCars.exe`): `OpponentBehav.ini` (0x4f765e czyta
+  `distEquil`, `coeffAccel|WaitMAX|MIN`, `deltaFromEquil*`, nikt ich nie odczytuje), `Scripts/aiShiftsFuncWaitAccel.ini`
+  (`eqSHIFTS`, 0x4f756c, dwa razy, bez użycia), `NoiseParams.ini` (`freq`, `ampl`, 0x4f7840), `particles.ini` (`IsWork`
+  czytany, ale 0x4fa160 i tak zeruje flagę 0x14c4910, więc tryb `CarSpeed` 0x4eea75 nigdy nie działa). Nieczytane
+  w ogóle: `XXX.ini` `speedWheelDown` i `Stone.ini` (`Friction`, `CoeffHook`; tych nazw nie ma ani w `RCCars.exe`,
+  ani w `CRSGame20.dll`). Żywe z tej grupy: `MAX_IMPULSE.ini`, `XXX.ini` `momentFloorBackABS` (fizyka auta,
+  ludzie, nagrania) i kształty rekwizytów `BALLON|BOTTLE|BUCKET|kettle|SHELL|CYLINDER.ini` (0x4fa2e0–0x4fb050, kule
+  rekwizytów 0x50dc50).
+- Suwaki z `Mask float` gra czyta przez zmienne `CRSGame20.dll` (0x404950, typ 3) przeliczone na `FValues`
+  (np. `Camera.ini` `CDT_*`, `MAX_IMPULSE.ini`); DLL wczytuje z `Settings` najpierw wszystkie `.ini`, potem `.crs`
+  (0x487920, 0x487c30).
 
 ## Nagrania przeciwników (CarProfiles)
 

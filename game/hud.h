@@ -60,6 +60,7 @@ class Hud : public Canvas {
       int   lap       = 0;
       bool  demoHint  = false;
       rc::Mat4 viewProj;       // the camera, for the debug spheres and the checkpoint arrows
+      rc::Vec3 eye;            // and where it is
       // the split screen's race of the gap (mode 10): the lap without the race's laps
       bool  endless   = false;
       };
@@ -118,7 +119,7 @@ class Hud : public Canvas {
     void   drawView(const rc::Race& race, const Info& info);
     void   splitGauge(const Info& info);
     void   splitBar();
-    void   checkpointArrow(const rc::Race& race, const rc::Mat4& viewProj);
+    void   checkpointArrow(const rc::Race& race, const rc::Mat4& viewProj, const rc::Vec3& eye);
     // the gauges' numbers: white to grey, outlined
     // the cockpit's numbers (time, lap, gauges) in cock_num, 1:1; `y` is the top of its 64 high cells
     void   numberText(std::string_view s, float x, float y, int align);

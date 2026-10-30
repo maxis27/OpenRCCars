@@ -10,6 +10,17 @@
 
 namespace rc {
 
+// Settings\MAX_IMPULSE.ini, read once by RCCars.exe (0x4f7760) through the sliders' FValues; without the file the
+// code's own values (1, 20, 1) stay
+struct ImpulseLimits {
+  float angular = 1.f;   // maxImpAng (0.1..1): 0.545, the most angular momentum of a car (0x4f5770) and a prop (0x50ed70)
+  float linear  = 20.f;  // maxImpLinear (10..30): 15.86 m/s, the most momentum per kg of them; a recording moving
+                         // faster than 1.5 times it between two frames is not blended between them (0x502ea0)
+  float people  = 1.f;   // coeffPeople (0.5..1.5): 1.116, people (PEOP) live this much faster than the clock (0x510400)
+
+  static ImpulseLimits load(PackFile& pack);
+  };
+
 // Driving parameters of one car (1 = Overkill, 2 = Buggy, 3 = Hummer), from RCCars.pack:
 //   Settings\engine<N>.ini, springs<N>.ini, tires<N>.ini, steering<N>.ini, resistance<N>.ini, cdt<N>.ini,
 //   Splines\OVERKILL|BUGGY|HUMMER.bspl (engine), Splines\steering<N>.bspl, Scripts\upgrades.ini.
@@ -100,6 +111,11 @@ struct CarParams {
   std::vector<Sphere> body;         // CdtRadUp<i> / CdtDeltaX..Z<i>, i = 1..3, each also shifted by
                                     // shiftRoofBaseLefter to the left and to the right
   float   comHeight   = 0.032f; // m above the model's origin: CenterMassOY (0..0.2 m)
+
+  ImpulseLimits limits;
+  // Settings\XXX.ini momentFloorBackABS (0.01..1): 0.30, the torque the steering keys roll a lying car with
+  // (Vehicle::rollOver, 0x5091b0); its speedWheelDown is not read
+  float   rollTorque  = 0.3f;
 
   // resistance (RCCars.exe): a = airDrag * v^2 + rolling against the motion
   float   rolling     = 0.5f;   // m/s^2, resistance<N>.ini coeffFrictionBearings

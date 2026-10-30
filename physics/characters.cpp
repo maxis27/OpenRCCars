@@ -220,6 +220,7 @@ void Characters::load(const Reader& pack) {
     return f.find(key) ? float(f.raw(key))*0.01f : def;
     };
   prm.speedForw  = pc(people,"speedForw",prm.speedForw);
+  prm.peopleRate = ini("MAX_IMPULSE.ini").real("coeffPeople",prm.peopleRate);
   prm.gullRun    = pc(gull,"SpeedRun",prm.gullRun);
   prm.gullFlight = pc(gull,"SpeedFlight",prm.gullFlight);
   prm.gullHeight = pc(gull,"FlightHeight",prm.gullHeight);
@@ -518,7 +519,7 @@ bool Characters::update(float dt, Vehicle* player, std::vector<Car>& cars) {
     s.actor.sound.clear();
     s.actor.silence = false;
     switch(s.actor.kind) {
-      case Kind::Person:  person (s,dt,player,cars); break;
+      case Kind::Person:  person (s,dt*prm.peopleRate,player,cars); break;
       case Kind::Guard:   guard  (s,dt,player,cars); break;
       case Kind::Seagull: seagull(s,dt,player,cars); break;
       case Kind::Crab:    crab   (s,dt,player,cars); break;

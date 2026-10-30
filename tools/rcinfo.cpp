@@ -1469,6 +1469,79 @@ static int cmdRam(const fs::path& game, const fs::path& track, rc::PackFile& pac
 
 // "rcinfo <game> drown <track> [car]": the reset volumes and the collision box of a track, then the car let down
 // into water of a few depths, and how long until it counts as drowned (RCCars.exe: 2 s, 0.5 s when deep)
+// a car upright, on its roof and on each side, settled and then with each steering key held: how the keys roll a
+// lying car (RCCars.exe 0x509080, Vehicle::rollOver)
+static int cmdRoll(const fs::path& game, const fs::path& track, rc::PackFile& pack, int car) {
+  // "flat": level ground of 1 m squares, 20 m around the origin
+  rc::SbScene scene;
+  if(track=="flat") {
+    rc::SbMesh m;
+    m.name = "flat";
+    constexpr int N = 40;
+    for(int z=0; z<=N; ++z)
+      for(int x=0; x<=N; ++x)
+        m.positions.push_back({float(x-N/2),0,float(z-N/2)});
+    for(int z=0; z<N; ++z)
+      for(int x=0; x<N; ++x) {
+        rc::SbFace f;
+        const uint32_t a = uint32_t(z*(N+1)+x);
+        f.pos = {a,a+uint32_t(N+1),a+uint32_t(N+2),a+1};
+        m.faces.push_back(f);
+        }
+    scene.meshes.push_back(m);
+    auto& g = scene.collision;
+    g.dims[0] = g.dims[1] = g.dims[2] = 1;
+    g.min = {-float(N/2),-5,-float(N/2)};
+    g.max = { float(N/2), 5, float(N/2)};
+    g.cellEntries = {1};
+    g.entries.push_back({0,uint32_t(N*N),0});
+    g.masks.assign(size_t(N*N+7)/8,0xff);
+    rc::SbMarker cp;
+    cp.name = "cp_1";
+    scene.markers.push_back(cp);
+    }
+  else
+    scene = rc::SbScene::load(readFile(game/track));
+  auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
+  rc::CollisionMesh coll(scene);
+  coll.setSeas(rc::Seas::load(scene,pack,track.stem().string()));
+  const auto geom = rc::carGeometry(cars,"Car"+std::to_string(car));
+  const auto prm  = rc::CarParams::load(pack,car,0);
+  std::printf("MAX_IMPULSE: angular %.4f, linear %.3f, people %.4f; momentFloorBackABS %.3f\n",prm.limits.angular,
+              prm.limits.linear,prm.limits.people,prm.rollTorque);
+  rc::Checkpoints cps(scene,coll);
+  const rc::Vec3 p = cps.empty() ? rc::Vec3{} : cps.route()[0].position;
+  const auto ground = coll.groundHeight(rc::Vec3{p.x,p.y+2.f,p.z});
+  if(!ground)
+    return 1;
+  const float dt = 1.f/60.f;
+  const float RollFirst = std::getenv("RC_ROLL_RIGHT") ? -1.f : 1.f;
+  struct Start { const char* name; float roll; };
+  for(const Start& st:{Start{"upright",0},Start{"roof",180},Start{"left side",90},Start{"right side",-90}}) {
+    rc::PhysicsWorld world(coll);
+    const rc::Mat4   at = rc::Mat4::translate({p.x,*ground+0.25f,p.z})*rc::Mat4::rotate(2,st.roll);
+    rc::Vehicle      veh(world,geom,prm,at);
+    auto report = [&](const char* phase) {
+      const rc::Mat4 m  = veh.pose();
+      const rc::Vec3 up = m.vector({0,1,0}), fwd = m.vector({0,0,1});
+      const float    roll = std::atan2(rc::Vec3::dot(up,rc::Vec3::cross(fwd,rc::Vec3{0,1,0}).normalized()),up.y)*57.29578f;
+      std::printf("  %-10s up (%.2f %.2f %.2f), roll %6.1f deg, %.2f m/s\n",phase,up.x,up.y,up.z,roll,veh.speed());
+      };
+    std::printf("%s:\n",st.name);
+    rc::Vehicle::Input in;
+    for(float t=0; t<3.f; t+=dt) { veh.update(in,dt); world.step(dt); }
+    report("settled");
+    for(const auto& [name,steer]:{std::pair<const char*,float>{"left 1 s",RollFirst},{"left 3 s",RollFirst},{"free 2 s",0.f},
+                                  {"right 3 s",-RollFirst},{"free 2 s",0.f}}) {
+      in.steer = steer;
+      const float len = name[5]=='1' ? 1.f : name[0]=='f' ? 2.f : (name[0]=='l' ? 2.f : 3.f);
+      for(float t=0; t<len; t+=dt) { veh.update(in,dt); world.step(dt); }
+      report(name);
+      }
+    }
+  return 0;
+  }
+
 static int cmdDrown(const fs::path& game, const fs::path& track, rc::PackFile& pack, int car) {
   auto scene = rc::SbScene::load(readFile(game/track));
   auto cars  = rc::SbScene::load(readFile(game/"RCCarsDB"/"Car.sb"));
@@ -1860,6 +1933,8 @@ int main(int argc, char** argv) {
       return cmdShots(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1,argc>5 ? float(std::atof(argv[5])) : 10.f);
     if(cmd=="drown" && argc>3)
       return cmdDrown(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1);
+    if(cmd=="roll" && argc>3)
+      return cmdRoll(game,argv[3],pack,argc>4 ? std::atoi(argv[4]) : 1);
     if(cmd=="shade" && argc>3)
       return cmdShade(game,argv[3],pack);
     if(cmd=="gates" && argc>3)

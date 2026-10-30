@@ -9,6 +9,9 @@ using namespace Tempest;
 
 Objects::Objects(Device& device, Resources& res, rc::ObjectLibrary& library, const rc::SbScene& track,
                  rc::PhysicsWorld& world) {
+  // the spheres of the shapes (Settings\*.ini, 0x4f7760); each prop is placed resting on the track, asleep
+  // (0x50cea0): no settling before the race
+  const rc::PropShapes shapes = rc::PropShapes::load(res.pack());
   for(auto& p:library.place(track)) {
     auto& model = *p.model;
     // characters, animals and road traffic move in the original (animations, AI, paths): not yet
@@ -25,31 +28,17 @@ Objects::Objects(Device& device, Resources& res, rc::ObjectLibrary& library, con
     it.scale  = rc::Vec3{at.m[0][0],at.m[1][0],at.m[2][0]}.length();
     const rc::SbScript*  s   = model.scene->script(model.id);
     const rc::PropParams prm = rc::PropParams::parse(s ? s->text : std::string());
-    it.prop = std::make_unique<rc::Prop>(world,rc::propGeometry(*model.scene,model.id,model.origin),prm,at);
+    it.prop = std::make_unique<rc::Prop>(world,shapes,rc::propGeometry(*model.scene,model.id,model.origin),prm,at);
     items.push_back(std::move(it));
     }
-  // the editor left most props a little above the ground: let them drop and come to rest before the race,
-  // they then sleep until something touches them
-  for(int i=0; i<int(2.f/rc::PhysicsWorld::FixedDt); ++i)
-    world.step(rc::PhysicsWorld::FixedDt);
   Log::i("objects: ",items.size()," props, ",meshes.size()," models");
   }
 
 Objects::~Objects() = default;
 
-void Objects::update(float dt) {
+void Objects::afterStep() {
   for(auto& it:items)
-    it.prop->blow(dt);
-  }
-
-void Objects::afterStep(rc::PhysicsWorld& world) {
-  for(auto& it:items)
-    it.hit = false;
-  const auto touched = rc::Prop::touched(world);
-  for(auto& it:items)
-    for(auto* p:touched)
-      if(p==it.prop.get())
-        it.hit = true;
+    it.hit = it.prop->takeKnock();
   }
 
 std::vector<Objects::Sound> Objects::sounds() const {

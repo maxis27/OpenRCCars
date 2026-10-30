@@ -15,9 +15,6 @@
 #include "resetvolumes.h"
 #include "vehicle.h"
 
-class btBoxShape;
-class btRigidBody;
-struct btDefaultMotionState;
 
 namespace rc {
 
@@ -62,9 +59,8 @@ class RouteTracker {
 // opponent drives the recording and its variants in turn (over1, over1_2, over1_3, over1 ..): they all start
 // the same way, so they join there too. A lap counts when the replay crosses the line of cp_1 near the end of
 // a recording, wherever the recorded driver went (the checkpoints only judge the player).
-// While it replays, the car is a kinematic body in the Bullet world: it pushes the props and nothing pushes it.
-// When another car comes at it, it is knocked off the recording (knock(), RCCars.exe 0x533990 -> 0x4fd9d0): from
-// then on it is a car like the player's (Vehicle, with its own CarParams), driven by the game's autopilot back
+// While it replays, nothing pushes the car. When another car or a prop comes at it, it is knocked off the
+// recording (knock(), RCCars.exe 0x533990, 0x533ee0 -> 0x4fd9d0): from then on it is a car like the player's (Vehicle, with its own CarParams), driven by the game's autopilot back
 // onto the recording (0x4fdb50 .. 0x4fe490, see drive()), and replays again once it is there.
 // The game puts its cars back on the track as it does the player's (0x508160, see trackRules()): out of the
 // collision box, drowned or in a reset volume. The car goes to the last main checkpoint it has passed (its grid
@@ -82,15 +78,13 @@ class Opponent {
     // this car is ahead of the player (positive) or behind (negative); `band` false: no rubber band. `seen`: the
     // player can see the car (a car knocked off long ago is put back on its recording only where nobody sees it)
     void                 update(float dt, float rate, float ahead, bool band, bool seen = true);
-    // keeps the Bullet body where the car is drawn; called on every update()
-    void                 place();
 
     // off the recording, driving back to it
     bool                 knocked() const { return driven!=nullptr; }
     // something came at the car: off the recording, if it was on it
     void                 knock();
-    // the Bullet body the other cars hit: the replay's kinematic box, or the knocked car's chassis
-    btRigidBody&         chassis();
+    // the spheres the other objects meet (0x4ef9e0): the recording's car where it is drawn, or the knocked car's
+    void                 balls(std::vector<Ball>& out) const;
     // the knocked car, nullptr while it replays
     Vehicle*             vehicle() { return driven.get(); }
     // world, m/s and rad/s in the car's axes
@@ -182,11 +176,6 @@ class Opponent {
     float                                 wheelTurn = 0; // radians the wheels have rolled
     float                                 steerAngle = 0;
     float                                 wheelBase = 0, wheelRadius = 0.05f;
-    Vec3                                  boxCenter;
-
-    std::unique_ptr<btBoxShape>           box;
-    std::unique_ptr<btDefaultMotionState> motion;
-    std::unique_ptr<btRigidBody>          body;
 
     // knocked off the recording (RCCars.exe keeps these at car+0x4390 ..)
     std::unique_ptr<Vehicle>              driven;
@@ -291,6 +280,7 @@ class Opponents {
     std::vector<std::unique_ptr<Opponent>> cars;
     std::vector<News>                      told;
     int                                    focus = -1;     // follow()
+    std::vector<std::vector<Ball>>         ballBuf;        // collide(): the player's, then each opponent's
   };
 
 }

@@ -14,7 +14,7 @@ class Resources;
 namespace rc { class PhysicsWorld; }
 
 // Objects placed on one track (INST nodes). For now the props from stone.sb: cans, bottles, balls, buckets,
-// cones ..., rigid bodies the car knocks around. Characters, animals and road traffic (people.sb, AIChars.sb,
+// cones ..., rigid bodies the car knocks around (rc::Prop). Characters, animals and road traffic (people.sb, AIChars.sb,
 // Roadcar.sb) move along paths, with animations and AI: rc::Characters and rc::Traffic, drawn by CharacterView and
 // TrafficView.
 class Objects {
@@ -23,10 +23,8 @@ class Objects {
             rc::PhysicsWorld& world);
     ~Objects();
 
-    // the wind on the props that blow about (rc::Prop::blow), before rc::PhysicsWorld::step
-    void   update(float dt);
-    // after rc::PhysicsWorld::step: which props are knocked (rc::Prop::touched)
-    void   afterStep(rc::PhysicsWorld& world);
+    // after rc::PhysicsWorld::step: which props were knocked (rc::Prop::takeKnock)
+    void   afterStep();
 
     // a prop for its sound: the model (stone.sb keeps its sound channel in it), where it is, knocked now
     struct Sound {

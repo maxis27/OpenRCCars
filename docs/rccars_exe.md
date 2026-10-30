@@ -31,8 +31,8 @@ Oryginał ma własny silnik fizyki: auto waży 1 kg, grawitacja to 10 m/s², wi�
 każdego auta są w `Settings/engine|springs|tires|steering|resistance|cdt<N>.ini`; suwak `s` (1..100) przechodzi
 w `od + (s-1)·(do-od)/99`, gdzie zakres jest wpisany w kod (`physics/carparams.cpp` robi to samo). Ulepszenia
 (dopalacze `BOOSTERS`, rezonatory `RESONATORS`, opony `TIRES`) są w `Scripts/upgrades.ini`. U nas ten model liczy
-`physics/vehicle.*`; [Bullet](https://github.com/bulletphysics/bullet3) porusza tylko rekwizyty i mówi autu, czego
-dotyka.
+`physics/vehicle.*`, rekwizyty `physics/props.*` (klasa STON), a spotkania obiektów `PhysicsWorld::step` z kulami
+z `physics/balls.h` (0x533430). Zewnętrznego silnika fizyki nie ma.
 
 - **Silnik** (`engine<N>.ini`): bez dopalacza przyspieszenie = krzywa auta (`Splines/OVERKILL|BUGGY|HUMMER.bspl`:
   przyspieszenie w m/s² od prędkości w km/h, Overkill 6 → 0 przy 32 km/h, Buggy 9 → 0 przy 38, Hummer 4 → 0 przy 30)
@@ -185,8 +185,27 @@ Zderzenia aut z innymi ciałami liczy własny moduł gry (0x534d00, raz na klatk
   przeciwnik) ma środek liczony 10 cm wyżej, więc dostaje impuls lekko w górę.
 - **Auto z rekwizytem**: odbijają się sprężyście wzdłuż linii środków mas, przez jej środek, co najmniej z prędkością
   0,2 m/s (0x533ee0, 0x4f0750 z drugim ciałem: impuls na podwójną prędkość zbliżania). Koła nie stają na rekwizytach
-  (oryginał pyta o podłoże tylko trasę, 0x4fbd70), lecz w nie uderzają. Oryginał bierze kule rekwizytu z tablic
-  kształtów (0x50dc50), my styk z Bulleta.
+  (oryginał pyta o podłoże tylko trasę, 0x4fbd70), lecz w nie uderzają. Środek masy rekwizytu jest przy tym
+  przesunięty o losowy 1 cm (u gracza; u nas przy każdym aucie), a auto na rekwizycie zawieszonym na nagraniu
+  przeciwnika strąca go z nagrania (0x4fd9d0).
+- **Spotkania obiektów** (0x533430, raz na klatkę po fizyce): obiekty w promieniu 10 m od widzów (auta graczy,
+  0x487300), pary z tablicy 0x534d00, tylko gdy ich początki są bliżej niż 2,5 m; pierwsza para stykających się kul
+  (0x533740) woła obsługę pary z punktem w połowie środków i normalną od B do A. Kule: auto 0x4ef9e0 (koła, potem
+  nadwozie), rekwizyt 0x50dc50, człowiek 0x511e30 (3 × 0,2 m na 0/0,2/0,4 m), strażnik 0x51a350 (2 × 0,2 m na
+  0/0,2 m), pies 0x518820 (5 na kościach; u nas jedna), auto z ulicy 0x516480 (tylko kule kół, bez pudła).
+  Rekwizyt z rekwizytem (0x534240) odbijają się jak auto z rekwizytem; auto z ulicy pcha rekwizyt impulsem
+  normalna × masa w jego środku (0x5348d0).
+- **Rekwizyty** (klasa STON, 0x50c700..0x50f420): bryła sztywna z kul. Kształt z SCRI (`Geom type` 1..8: kula,
+  walec, pachołek, butelka, wiadro, muszla, czajnik, balon; brak lub inny → kula), kule z `Settings\CYLINDER.ini`,
+  `BOTTLE.ini`, `BUCKET.ini`, `SHELL.ini`, `kettle.ini`, `BALLON.ini` (pachołek wpisany w kod 0x50e190, kula ma
+  promień 0,9 × przekątna pudła / 2√3). Domyślne środek masy, masa, tarcie, odbicie 0x50d0d0 (kula 0, 0,5, 1, 0,7;
+  walec i balon 0, 0,1, 1, 0,3; pachołek 0,03, 1, 1, 0,3; butelka, muszla, czajnik 0,02, 0,4, 1, 0,3; wiadro 0,1,
+  0,3, 1, 0,3), SCRI je nadpisuje; bezwładność 0x50cd10. Stawiany promieniem w dół od każdej kuli (0x50cea0), śpi od
+  startu, jeśli stoi prosto (do 10°). Rusza się tylko, gdy auto gracza jest w promieniu 50 m, nie więcej niż 20 m
+  nad nim i patrzy w jego stronę (0x50ec10); zasypia po 2 s spokoju (0x50efa0). Krok 0x50f190: do 4 części,
+  `MAX_IMPULSE.ini` ogranicza pęd, metoda punktu środkowego (0x50dba0), grawitacja, opór, hamowanie obrotu przy
+  ziemi (0x50d670), styk z trasą z tarciem Mirticha (0x475c80). Wiatr (`fWindBlow`, 0x50d3f0) działa tylko w grze
+  sieciowej (0x4a0b00), więc u nas nigdy.
 - **Auto z człowiekiem, strażnikiem i psem**: odpychają samo auto od punktu styku do 0,05 m/s (0x534340, 0x5344f0,
   0x5349d0). Ciało człowieka i strażnika to trzy kule po 0,2 m jedna nad drugą (0x511e30), a auto zatrzymuje się na
   nich jak na przeszkodzie (0x4f0730, impuls bez odbicia). Potrącenie liczy prędkość auta sprzed zderzenia. Pies
@@ -1000,8 +1019,7 @@ zmienia się tylko środek (komunikaty 0x26f/0x270 chowają i pokazują kontrolk
   w 3 dopiero po 3 s. Wyniku w demie się nie zapisuje (flaga 0x200, 0x4c5583).
 - **U nas** (`MainWindow::startDemo`, `tickDemo`): `DemoEntry` czytany z `SCRI` trasy (`rc::GameScript`), auto
   gracza trzymane nad trasą, poza wszystkim; kokpit pokazuje prędkość i okrążenie śledzonego auta, bez strzałki,
-  miejsca i komunikatów wyścigu. Kule ×1,1 i opóźnienie stanu 0x50acf0 nie są przeniesione (nasze zderzenia aut to
-  bryły Bullet).
+  miejsca i komunikatów wyścigu. Kule ×1,1 i opóźnienie stanu 0x50acf0 nie są przeniesione.
 
 ## Intro i ekran startowy
 

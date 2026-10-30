@@ -231,7 +231,6 @@ Trasy w `ailayouts.ini` i `championship.ini` mają nazwy z gry: 1 Surf (beach_1)
 (beach_3), 4 AAD (urban_2), 5 Mines (country_2), 6 Camping (beach_2), 7 Avax (urban_1), 8 Rancho (country_1),
 9 Silo (country_4), 10 War path (beach_4).
 
-Mapy kokpitu `trackmap_1..10` (512x512) są obrócone dowolnie; która należy do której trasy i jak leży na niej świat,
-dopasowaliśmy do pomarańczowych kropek (to `map_cp` w miejscach głównych punktów `cp_N`) i do narysowanej trasy:
-beach_1..4 → 1, 6, 3, 10; country_1..4 → 8, 5, 2, 9; urban_1..2 → 7, 4 (tabela `TrackMaps` w `game/hud.cpp`;
-odchyłki do kilku texeli). `map.ini` podaje róg mapy (620, 79).
+Mapy kokpitu `trackmap_1..10` (512x512) są obrócone dowolnie: beach_1..4 → 1, 6, 3, 10; country_1..4 → 8, 5, 2, 9;
+urban_1..2 → 7, 4. Jak leży na nich świat i gdzie są kropki punktów kontrolnych, gra ma w tabelach w exe
+(zob. [rccars_exe.md](rccars_exe.md#kokpit), tabela `TrackMaps` w `game/hud.cpp`). `map.ini` podaje róg mapy (620, 79).

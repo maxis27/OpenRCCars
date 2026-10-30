@@ -140,9 +140,10 @@ class Hud : public Canvas {
     const Tempest::Texture2d*        panel       = nullptr; // messagebox: the map's frame
     const Tempest::Texture2d*        mapArrow  = nullptr; // 64x32: green (the player), violet (the others)
     const Tempest::Texture2d*        mapCp     = nullptr; // 64x32: an orange dot, a glow
-    // the track's map: world (x,z) -> map texels u+iv = k*(x+iz)+offset
+    // the track's map: world (x,z) -> map texels (u,v) = mapAffine*(x,z,1); the checkpoints' dots in texels
     const Tempest::Texture2d*        map       = nullptr;
-    std::array<float,2>              mapK      = {}, mapOffset = {};
+    std::array<std::array<float,3>,2> mapAffine = {};
+    std::vector<std::array<float,2>> mapDots;
 
     const Tempest::Texture2d*        splitSp[4] = {};    // split_sp1 .. 4: the dial, red, yellow, the cap and clamp
     const Tempest::Texture2d*        splitNode  = nullptr; // split_uzel: the capsule's end on the bar

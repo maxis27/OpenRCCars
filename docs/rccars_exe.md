@@ -259,6 +259,11 @@ z `Settings/cockpit.ini`.
   `opt_cock_[aclm]_*` pokazują części kokpitu: miejsce i tabela, mapa, czat i turbo).
 - **Mapa**: pod numerem okrążenia mapa trasy (`trackmap_<n>`, zob. [formaty.md](formaty.md#nazwy-tras)) wokół auta
   w ramce `messagebox`, z punktami głównymi (`map_cp`, następny świeci) i autami (`map_arrow`: gracz i przeciwnicy).
+  Mapę i jej położenie wczytuje 0x4a9840 (`trackmap_%i`, numer mapy z 0x4a4c60): tabela 0x56c378 daje trzy punkty
+  świata (x, z), a 0x56c468 miejsca tych punktów na mapie (w 1/512). 0x4b8500 rozkłada punkt świata na dwa boki tego
+  trójkąta (0x410430) i składa z nich punkt mapy; tak trafiają na mapę auta. Kropki punktów kontrolnych (0x4b7a84,
+  0x4b7c30) idą inaczej: 0x4a9ca0 bierze je z osobnej tabeli 0x56c558 (do 8 na mapę, cp_1 pierwszy), to miejsca
+  pomarańczowych kropek namalowanych na mapach. Z położenia `cp_N` przez trójkąt wychodziłyby do ok. 10 texeli obok.
 - **Strzałka kierunku** (0x4af3c9, 0x4b0fa0, 0x4b1360, 0x4e8f00), w nawiasach z `overtaking.csi`: model `Arrow`
   z `cockpit.sb` to dwa szewrony (`extru9` z bokami `extru9_2_body` i 0,324 m za nim `extru9_3` z `extru9_1_body`),
   wszystko z teksturą `coc_str_2`, rysowane bez światła i bez przezroczystości (boki biorą srebrny pasek z dolnej,

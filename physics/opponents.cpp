@@ -3,13 +3,9 @@
 #include <algorithm>
 #include <cmath>
 
-#include <BulletCollision/CollisionShapes/btCompoundShape.h>
-
-#include "btconvert.h"
 #include "vehicle.h"
 
 using namespace rc;
-using namespace rc::bt;
 
 static const char* const CarModels[] = {"Car1", "Car2", "Car3"}; // Overkill, Buggy, Hummer
 
@@ -71,54 +67,6 @@ static Mat4 blendPose(const Mat4& a, const Mat4& b, float k) {
 // `from` is +Z), as RCCars.exe's 0x410150
 static float yawAngle(const Vec3& from, const Vec3& to) {
   return std::atan2(from.z*to.x-from.x*to.z,from.x*to.x+from.z*to.z)*180.f/3.14159265f;
-  }
-
-// the box of a car's body: a btBoxShape, or the one child of a btCompoundShape (Vehicle)
-static bool boxOf(const btRigidBody& b, btTransform& t, btVector3& half) {
-  const btCollisionShape* s = b.getCollisionShape();
-  t = b.getWorldTransform();
-  if(s->getShapeType()==COMPOUND_SHAPE_PROXYTYPE) {
-    auto c = static_cast<const btCompoundShape*>(s);
-    if(c->getNumChildShapes()!=1)
-      return false;
-    t = t*c->getChildTransform(0);
-    s = c->getChildShape(0);
-    }
-  if(s->getShapeType()!=BOX_SHAPE_PROXYTYPE)
-    return false;
-  half = static_cast<const btBoxShape*>(s)->getHalfExtentsWithMargin();
-  return true;
-  }
-
-// the two boxes, each grown by `grow` (Bullet's units), overlap (separating axis test)
-static bool boxesMeet(const btRigidBody& a, const btRigidBody& b, float grow) {
-  btTransform ta, tb;
-  btVector3   ha, hb;
-  if(!boxOf(a,ta,ha) || !boxOf(b,tb,hb))
-    return false;
-  ha += btVector3(grow,grow,grow);
-  hb += btVector3(grow,grow,grow);
-  const btMatrix3x3& A = ta.getBasis();
-  const btMatrix3x3& B = tb.getBasis();
-  const btVector3    d = tb.getOrigin()-ta.getOrigin();
-  auto apart = [&](const btVector3& axis) {
-    if(axis.length2()<1e-8f)
-      return false;
-    btScalar ra = 0, rb = 0;
-    for(int i=0; i<3; ++i) {
-      ra += ha[i]*btFabs(axis.dot(A.getColumn(i)));
-      rb += hb[i]*btFabs(axis.dot(B.getColumn(i)));
-      }
-    return btFabs(d.dot(axis))>ra+rb;
-    };
-  for(int i=0; i<3; ++i)
-    if(apart(A.getColumn(i)) || apart(B.getColumn(i)))
-      return false;
-  for(int i=0; i<3; ++i)
-    for(int j=0; j<3; ++j)
-      if(apart(A.getColumn(i).cross(B.getColumn(j))))
-        return false;
-  return true;
   }
 
 float RouteTracker::update(const Vec3& car, size_t laps) {
@@ -200,36 +148,13 @@ Opponent::Opponent(PhysicsWorld& world, const CarGeometry& g, std::vector<CarPro
     }
   wheelBase = front>rear ? front-rear : 0.f;
 
-  // the body: the chassis outline from the wheel hubs up, as Vehicle has it
-  float hubY = geom.bodyMin.y;
-  for(auto& wh:geom.wheels)
-    hubY = std::max(hubY,wh.center.y);
-  Vec3 bmin = geom.bodyMin, bmax = geom.bodyMax;
-  bmin.y    = std::min(hubY,bmax.y-0.02f);
-  boxCenter = (bmin+bmax)*0.5f;
-  box    = std::make_unique<btBoxShape>(toBt((bmax-bmin)*0.5f)*S);
-  motion = std::make_unique<btDefaultMotionState>();
-  btRigidBody::btRigidBodyConstructionInfo ci(0.f,motion.get(),box.get());
-  ci.m_friction    = 0.3f;
-  ci.m_restitution = 0.1f;
-  body = std::make_unique<btRigidBody>(ci);
-  body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_KINEMATIC_OBJECT);
-  body->setActivationState(DISABLE_DEACTIVATION);
-  body->setUserIndex(PhysicsWorld::CarTag);
   restart();
-  owner.bullet().addRigidBody(body.get());
   }
 
-Opponent::~Opponent() {
-  if(driven==nullptr)
-    owner.bullet().removeRigidBody(body.get());
-  }
+Opponent::~Opponent() = default;
 
 void Opponent::restart() {
-  if(driven!=nullptr) {
-    driven.reset();
-    owner.bullet().addRigidBody(body.get());
-    }
+  driven.reset();
   sinceCar     = 1e3f;
   shakeLeft    = 0;
   shotTime     = -1;
@@ -251,11 +176,6 @@ void Opponent::restart() {
   current      = profiles[0].pose(0);
   tracker.reset();
   tracker.update(current.translation(),0);
-  place();
-  // no motion carried over from where it was
-  body->setInterpolationWorldTransform(body->getWorldTransform());
-  body->setInterpolationLinearVelocity(btVector3(0,0,0));
-  body->setInterpolationAngularVelocity(btVector3(0,0,0));
   }
 
 void Opponent::update(float dt, float rate, float ahead, bool band, const std::function<bool(const Vec3&)>& seen) {
@@ -332,13 +252,13 @@ void Opponent::update(float dt, float rate, float ahead, bool band, const std::f
     }
   steer       = std::clamp(steer,-0.45f,0.45f);
   steerAngle += (steer-steerAngle)*std::min(1.f,dt*10.f);
-  place();
   }
 
-void Opponent::place() {
-  const btTransform t = toBt(current*Mat4::translate(boxCenter));
-  motion->setWorldTransform(t);
-  body->setWorldTransform(t);
+void Opponent::balls(std::vector<Ball>& out) const {
+  if(driven!=nullptr)
+    driven->balls(out);
+  else
+    Vehicle::ballsAt(geom,prm,current,out);
   }
 
 CarRig::Pose Opponent::rigPose() const {
@@ -365,10 +285,6 @@ float Opponent::speed() const {
   return driven!=nullptr ? driven->speed() : currentSpeed;
   }
 
-btRigidBody& Opponent::chassis() {
-  return driven!=nullptr ? driven->chassis() : *body;
-  }
-
 Vec3 Opponent::velocity() const {
   if(driven!=nullptr)
     return driven->velocity();
@@ -387,7 +303,6 @@ void Opponent::knock() {
   if(driven!=nullptr)
     return;
   const Vec3 v = velocity();
-  owner.bullet().removeRigidBody(body.get());
   driven = std::make_unique<Vehicle>(owner,geom,prm,current);
   driven->place(current,v,Vec3{});
   driveTime  = 0;
@@ -508,9 +423,6 @@ void Opponent::resume(size_t frame) {
   resumeFade   = (was.translation()-rec.translation()).length()<=2.f ? 1.f : 0.f;
   current      = was;
   driven.reset();
-  owner.bullet().addRigidBody(body.get());
-  place();
-  body->setInterpolationWorldTransform(body->getWorldTransform());
   }
 
 // RCCars.exe 0x4fe1f0: a knocked car drives at the frame of its recording Autopilot::Aim ahead of the nearest one,
@@ -520,8 +432,8 @@ void Opponent::drive(float dt, const std::function<bool(const Vec3&)>& seen) {
   using namespace Autopilot;
   driveTime  += dt;
   sinceTouch += dt;
-  if(driven->contact().surface!=0)
-    sinceTouch = 0;   // the body against the track or a prop
+  if(driven->takeObjectTouch() || driven->contact().surface!=0)
+    sinceTouch = 0;   // the body against the track or a prop (0x533ee0)
 
   const Mat4  m   = driven->pose();
   const Vec3  at  = m.translation();
@@ -777,11 +689,8 @@ void Opponents::update(float dt, bool racing, const Vec3& playerPos, size_t play
     };
   for(size_t i=0; i<cars.size(); ++i) {
     auto& c = cars[i];
-    if(!racing) {
-      if(!c->knocked())
-        c->place();
+    if(!racing)
       continue;
-      }
     const size_t was = c->laps();
     const float ahead = c->progress()-(active!=nullptr ? active->progress() : player.progress());
     c->update(dt,baseRate,ahead,active!=nullptr || !playerDone,seen);
@@ -853,73 +762,84 @@ Vehicle::Hit Opponents::collide(Vehicle& pl, float dt) {
   for(auto& c:cars)
     c->sinceCar += dt;
 
-  // about to be touched: by the player or by a knocked car, within two frames at their speeds
-  for(auto& c:cars) {
+  // the spheres of every car (0x4ef9e0): the player's, then the opponents'
+  constexpr float Around = 10.f;     // m from the player: the objects that meet (0x533340)
+  const Vec3 seen = playerPose.translation();
+  auto& balls = ballBuf;
+  balls.resize(cars.size()+1);
+  pl.balls(balls[0]);
+  for(size_t i=0; i<cars.size(); ++i)
+    cars[i]->balls(balls[i+1]);
+  auto origin = [&](int i) { return i<0 ? seen : cars[size_t(i)]->pose().translation(); };
+  auto speed  = [&](int i) { return i<0 ? pl.velocity() : cars[size_t(i)]->velocity(); };
+  auto meet   = [&](int a, int b, float grow) {
+    if((origin(a)-origin(b)).length()>=BallsReach+2.f*grow || (origin(a)-seen).length()>=Around ||
+       (origin(b)-seen).length()>=Around)
+      return false;
+    auto& ba = balls[size_t(a+1)];
+    auto& bb = balls[size_t(b+1)];
+    return ballsMeet(ba.data(),ba.size(),bb.data(),bb.size(),nullptr,nullptr,grow);
+    };
+
+  // about to be touched: by the player or by a knocked car, within two frames at their speeds; a car on its
+  // recording that touches a prop is knocked off it too (0x533ee0)
+  for(size_t i=0; i<cars.size(); ++i) {
+    auto& c = cars[i];
     if(c->knocked())
       continue;
-    auto near = [&](btRigidBody& other, const Vec3& v) {
-      const float grow = ((v-c->velocity()).length()*2.f*dt+0.01f)*S;
-      return boxesMeet(c->chassis(),other,grow);
+    auto near = [&](int o) {
+      return meet(int(i),o,(speed(o)-c->velocity()).length()*2.f*dt+0.01f);
       };
-    bool hit = near(pl.chassis(),pl.velocity());
-    for(auto& o:cars)
-      if(!hit && o!=c && o->knocked())
-        hit = near(o->chassis(),o->velocity());
-    if(hit)
+    bool hit = near(-1);
+    for(size_t o=0; o<cars.size(); ++o)
+      if(!hit && o!=i && cars[o]->knocked())
+        hit = near(int(o));
+    if(!hit && (c->pose().translation()-seen).length()<Around)
+      hit = owner.touchesProp(balls[i+1],c->pose().translation());
+    if(hit) {
       c->knock();
+      c->balls(balls[i+1]);
+      }
     }
 
-  // the cars touching: -1 the player, else the opponent's index
-  auto who = [&](const btCollisionObject* b) -> int {
-    if(b==&pl.chassis())
-      return -1;
-    for(size_t i=0; i<cars.size(); ++i)
-      if(b==&cars[i]->chassis())
-        return int(i);
-    return -2;
-    };
-  auto& disp = *owner.bullet().getDispatcher();
-  for(int k=0; k<disp.getNumManifolds(); ++k) {
-    const btPersistentManifold* m = disp.getManifoldByIndexInternal(k);
-    bool touching = false;
-    for(int c=0; c<m->getNumContacts() && !touching; ++c)
-      touching = m->getContactPoint(c).getDistance()<=0;
-    if(!touching)
-      continue;
-    const int a = who(m->getBody0()), b = who(m->getBody1());
-    if(a<-1 || b<-1 || a==b)
-      continue;
-    for(int i:{a,b})
-      if(i>=0) {
-        cars[size_t(i)]->knock();
-        cars[size_t(i)]->touched();
+  // the cars touching (0x533430): -1 the player, else the opponent's index
+  for(int a=-1; a<int(cars.size()); ++a)
+    for(int b=a+1; b<int(cars.size()); ++b) {
+      if(!meet(a,b,0))
+        continue;
+      for(int i:{a,b})
+        if(i>=0) {
+          cars[size_t(i)]->knock();
+          cars[size_t(i)]->touched();
+          }
+      float&     sa = a<0 ? playerSinceCar : cars[size_t(a)]->sinceCar;
+      float&     sb = b<0 ? playerSinceCar : cars[size_t(b)]->sinceCar;
+      const bool fresh = sa>CarHitPause && sb>CarHitPause;
+      if(fresh) {
+        sa = 0;
+        sb = 0;
         }
-    float&     sa = a<0 ? playerSinceCar : cars[size_t(a)]->sinceCar;
-    float&     sb = b<0 ? playerSinceCar : cars[size_t(b)]->sinceCar;
-    const bool fresh = sa>CarHitPause && sb>CarHitPause;
-    if(fresh) {
-      sa = 0;
-      sb = 0;
+      Vehicle* va = a<0 ? &pl : cars[size_t(a)]->vehicle();
+      Vehicle* vb = b<0 ? &pl : cars[size_t(b)]->vehicle();
+      if(va==nullptr || vb==nullptr)
+        continue;
+      va->touchedCar();
+      vb->touchedCar();
+      Vec3 ca = va->centre(), cb = vb->centre();
+      if(fresh && (a<0 || b<0)) {
+        // the slower one by more than a tenth, or about as fast, the opponent
+        const float fa = flat(va->velocity()).length(), fb = flat(vb->velocity()).length();
+        const bool  liftA = fa*1.1f<fb ? true : (fb*1.1f<fa ? false : b<0);
+        (liftA ? ca : cb).y += Lift;
+        }
+      Vehicle::bounce(*va,*vb,ca,cb);
+      if(!fresh || (a>=0 && b>=0))
+        continue;
+      // the player hit opponent `o`: judged
+      Opponent& o = *cars[size_t(a<0 ? b : a)];
+      o.shakeLeft = ShakeTime;
+      o.shake     = Vec3{};
       }
-    Vehicle* va = a<0 ? &pl : cars[size_t(a)]->vehicle();
-    Vehicle* vb = b<0 ? &pl : cars[size_t(b)]->vehicle();
-    if(va==nullptr || vb==nullptr)
-      continue;
-    Vec3 ca = va->centre(), cb = vb->centre();
-    if(fresh && (a<0 || b<0)) {
-      // the slower one by more than a tenth, or about as fast, the opponent
-      const float fa = flat(va->velocity()).length(), fb = flat(vb->velocity()).length();
-      const bool  liftA = fa*1.1f<fb ? true : (fb*1.1f<fa ? false : b<0);
-      (liftA ? ca : cb).y += Lift;
-      }
-    Vehicle::bounce(*va,*vb,ca,cb);
-    if(!fresh || (a>=0 && b>=0))
-      continue;
-    // the player hit opponent `o`: judged
-    Opponent& o = *cars[size_t(a<0 ? b : a)];
-    o.shakeLeft = ShakeTime;
-    o.shake     = Vec3{};
-    }
 
   // how hard the player knocked them: the opponent's average rotation in the window, in its own axes, x the
   // pitch and z the roll (0x4f6460)

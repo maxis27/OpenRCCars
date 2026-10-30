@@ -39,30 +39,6 @@ add_library(rcformats STATIC
   )
 target_include_directories(rcformats PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-# --- Bullet (only LinearMath, BulletCollision and BulletDynamics) ---
-include(FetchContent)
-FetchContent_Declare(bullet
-  GIT_REPOSITORY https://github.com/bulletphysics/bullet3.git
-  GIT_TAG        3.25
-  GIT_SHALLOW    TRUE
-  SOURCE_SUBDIR  do-not-add-subdirectory
-  )
-FetchContent_MakeAvailable(bullet)
-# Not Bullet's bt*All.cpp unity files: some of its sources define BT_USE_SSE_IN_API before their includes,
-# which breaks the other sources of a unity build with MSVC (SSE is on by default there).
-file(GLOB_RECURSE BULLET_SOURCES
-  ${bullet_SOURCE_DIR}/src/LinearMath/*.cpp
-  ${bullet_SOURCE_DIR}/src/BulletCollision/*.cpp
-  ${bullet_SOURCE_DIR}/src/BulletDynamics/*.cpp
-  )
-add_library(bullet STATIC ${BULLET_SOURCES})
-target_include_directories(bullet SYSTEM PUBLIC ${bullet_SOURCE_DIR}/src)
-if(MSVC)
-  target_compile_options(bullet PRIVATE /W0)
-else()
-  target_compile_options(bullet PRIVATE -w)
-endif()
-
 # --- driving physics: car geometry and parameters, RCCars.exe's car model on the COLL track (no GPU) ---
 add_library(rcphysics STATIC
   physics/cargeometry.h physics/cargeometry.cpp
@@ -79,9 +55,8 @@ add_library(rcphysics STATIC
   physics/traffic.h     physics/traffic.cpp
   physics/aiemu.h       physics/aiemu.cpp
   physics/antenna.h     physics/antenna.cpp
-  physics/btconvert.h
   )
-target_link_libraries(rcphysics PUBLIC rcformats PRIVATE bullet)
+target_link_libraries(rcphysics PUBLIC rcformats)
 
 # --- sound: software mixer, the original's engine and channel logic, MP3 music (no audio device needed) ---
 add_library(rcaudio STATIC

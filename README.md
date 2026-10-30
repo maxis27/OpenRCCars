@@ -45,8 +45,10 @@ plików w [docs/formaty.md](docs/formaty.md).
   gdy teren zasłania auto), która nie schodzi pod wodę.
 - **Fizyka jazdy jak w `RCCars.exe`**: własny model auta oryginału (bryła 1 kg, kule nadwozia z `cdt<N>.ini`, koła
   jako kule na sprężynach, opony z poślizgiem, silnik z krzywej auta, dopalacz i turbo, skręt, skok, opory, głęboki
-  piasek i woda) z jego własnym ruchem i zderzeniami z trasą, autami, rekwizytami i postaciami.
-  [Bullet](https://github.com/bulletphysics/bullet3) porusza tylko rekwizyty.
+  piasek i woda) z jego własnym ruchem i zderzeniami z trasą, autami, rekwizytami i postaciami. Rekwizyty
+  (puszki, butelki, piłki, wiadra, pachołki, balony) to bryły z kul jak w oryginale (`CYLINDER.ini`, `BOTTLE.ini`
+  ...), z jego tarciem i odbiciami, ruszane tylko przed autem gracza; obiekty spotykają się kulami jak w
+  `RCCars.exe`. Bez zewnętrznego silnika fizyki.
 - **Nawierzchnie i woda**: rodzaj nawierzchni z bitów materiału tekstury; jazdę zmieniają tylko głęboki piasek i
   woda, reszta różni się kurzem i śladami. W głębokiej wodzie auto tonie i wraca na ostatni punkt kontrolny; tak
   samo po R, po wyjechaniu poza pudło kolizji trasy i w strefach `car_reset_volume_*` („Słaby sygnał”).
@@ -129,7 +131,7 @@ Wymagania:
 - Visual Studio 2022 z obciążeniem *Programowanie aplikacji klasycznych w C++* (zawiera CMake)
 - [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) **1.4.357 lub nowszy** (Tempest używa nowych rozszerzeń; instalator
   ustawia zmienną `VULKAN_SDK`)
-- Git (CMake przy pierwszej konfiguracji sam pobiera [Bullet](https://github.com/bulletphysics/bullet3) 3.25)
+- Git
 
 ```bat
 git clone --recursive https://github.com/maxis27/OpenRCCars.git
@@ -347,15 +349,16 @@ formats/        formaty danych, czyste C++ bez zależności
   texttable.*   teksty gry Language/Game|System/<język>.tbl
   playerprofile.* gracze Players/*.scp, zdjęcia z .tga
   gamescript.*  skrypty czasowe gry (RCCars.sb Level Entry, DemoEntry tras)
-physics/        fizyka jazdy i świat gry (RCCars.exe, Bullet dla rekwizytów, bez GPU)
+physics/        fizyka jazdy i świat gry (RCCars.exe, bez GPU)
   cargeometry.* koła i nadwozie auta z Car.sb
   carparams.*   parametry auta z ustawień gry
   carrig.*      jak oryginał rysuje koła i zawieszenie: wychylenie osi, wahacze, skręt, amortyzatory
-  vehicle.*     auto jak w RCCars.exe (sprężyny, opony, kule kół, ruch i zderzenia), świat Bulleta, nawierzchnie i woda
+  vehicle.*     auto jak w RCCars.exe (sprężyny, opony, kule kół, ruch i zderzenia), świat z rekwizytami i spotkaniami obiektów, nawierzchnie i woda
   checkpoints.* punkty kontrolne w kolejności, zaliczanie (1,6 m), korytarz trasy, powrót do ostatniego punktu
   race.*        wyścig: odliczanie, okrążenia, czasy, zły kierunek, meta
   resetvolumes.* strefy car_reset_volume_*
-  props.*       rekwizyty: parametry ze skryptu SCRI, kształt, bryła sztywna
+  props.*       rekwizyty jak klasa STON oryginału: parametry ze skryptu SCRI, kule kształtów, bryła sztywna
+  balls.h       kule, którymi obiekty spotykają się ze sobą (0x533430)
   characters.*  ludzie i zwierzęta: zachowanie każdego rodzaju, kopnięcia i rzuty autem, „Wielkie Łup!”
   traffic.*     ruch uliczny: odjazdy, jazda po ścieżce, koła, światła, odpychanie aut, wieża BTR
   opponents.*   przeciwnicy: odtwarzanie nagrań w tempie z gumką, autopilot, okrążenia, kolejność, auta dema

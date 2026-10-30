@@ -1,77 +1,145 @@
 #include "vehicle.h"
 
-#include <btBulletDynamicsCommon.h>
-
 #include <algorithm>
 #include <cmath>
 #include <functional>
 #include <iterator>
 
-#include "btconvert.h"
+#include "props.h"
 
 using namespace rc;
-using namespace rc::bt;
 
 namespace {
 constexpr float Pi = 3.14159265f;
 }
 
 PhysicsWorld::PhysicsWorld(const CollisionMesh& track) : coll(track) {
-  config     = std::make_unique<btDefaultCollisionConfiguration>();
-  dispatcher = std::make_unique<btCollisionDispatcher>(config.get());
-  broadphase = std::make_unique<btDbvtBroadphase>();
-  solver     = std::make_unique<btSequentialImpulseConstraintSolver>();
-  world      = std::make_unique<btDiscreteDynamicsWorld>(dispatcher.get(),broadphase.get(),solver.get(),config.get());
-  world->setGravity(btVector3(0,-Gravity*S,0));
-
-  // static track: triangle soup of the COLL faces, without water
-  size_t solid = 0;
-  for(auto& t:track.triangles()) {
-    if(t.surface==Surface::Water)
-      continue;
-    ++solid;
-    solidTris.push_back(uint32_t(&t-track.triangles().data()));
-    for(const Vec3* p:{&t.a,&t.b,&t.c}) {
-      indices.push_back(int(vertices.size()/3));
-      vertices.push_back(p->x*S);
-      vertices.push_back(p->y*S);
-      vertices.push_back(p->z*S);
-      }
-    }
-  btCollisionShape* shape = nullptr;
-  if(solid>0) {
-    meshData  = std::make_unique<btTriangleIndexVertexArray>(int(solid),indices.data(),3*int(sizeof(int)),
-                                                             int(vertices.size()/3),vertices.data(),3*int(sizeof(float)));
-    meshShape = std::make_unique<btBvhTriangleMeshShape>(meshData.get(),true);
-    shape     = meshShape.get();
-    }
-  static btEmptyShape empty;
-  btRigidBody::btRigidBodyConstructionInfo ci(0,nullptr,shape ? shape : &empty);
-  ci.m_friction    = 0.6f;
-  ci.m_restitution = 0.1f;
-  groundBody = std::make_unique<btRigidBody>(ci);
-  world->addRigidBody(groundBody.get());
   }
 
-PhysicsWorld::~PhysicsWorld() {
-  // vehicles remove themselves; only the ground is left
-  world->removeRigidBody(groundBody.get());
-  }
-
-uint8_t PhysicsWorld::groundSound(int triangle) const {
-  if(triangle<0 || size_t(triangle)>=solidTris.size())
-    return SoundSurface::None;
-  return coll.triangles()[solidTris[size_t(triangle)]].sound;
-  }
+PhysicsWorld::~PhysicsWorld() = default;
 
 void PhysicsWorld::step(float dt) {
   for(Vehicle* c:cars)
     c->advance(dt);
-  // what Bullet keeps of the frame time (btDiscreteDynamicsWorld::stepSimulation)
-  localTime += dt;
-  if(localTime>=FixedDt)
-    localTime -= float(int(localTime/FixedDt))*FixedDt;
-  world->stepSimulation(dt,8,FixedDt);
+  // 0x50cb00 -> 0x50f190: a prop moves while a viewer is near it (0x50ec10)
+  for(Prop* p:propList)
+    p->step(dt,inFront(p->origin()));
+  meet();
+  }
+
+bool PhysicsWorld::nearViewer(const Vec3& at, float reach) const {
+  if(viewers.empty()) {
+    for(Vehicle* c:cars)
+      if((c->pose().translation()-at).length()<reach)
+        return true;
+    return false;
+    }
+  for(auto& v:viewers)
+    if((v.translation()-at).length()<reach)
+      return true;
+  return false;
+  }
+
+bool PhysicsWorld::inFront(const Vec3& at) const {
+  // 0x50ec10: no more than 20 m below the viewer, within 50 m of it, and at most 90 degrees to the left of where it
+  // looks across the ground (the angle has a sign, 0x410150: anything to the right counts too)
+  auto check = [&](const Mat4& v) {
+    const Vec3 p = v.translation(), f = v.vector({0,0,1});
+    if(at.y<p.y-20.f)
+      return false;
+    const Vec3 d = at-p;
+    if(d.length()>50.f)
+      return false;
+    const float dl = std::sqrt(d.x*d.x+d.z*d.z), fl = std::sqrt(f.x*f.x+f.z*f.z);
+    if(dl<1e-6f || fl<1e-6f)
+      return true;
+    float a = std::acos(std::clamp((d.x*f.x+d.z*f.z)/(dl*fl),-1.f,1.f))*180.f/Pi;
+    if(d.z*f.x-f.z*d.x<0)
+      a = -a;
+    return a<=90.f;
+    };
+  if(viewers.empty()) {
+    for(Vehicle* c:cars)
+      if(check(c->pose()))
+        return true;
+    return false;
+    }
+  for(auto& v:viewers)
+    if(check(v))
+      return true;
+  return false;
+  }
+
+void PhysicsWorld::meet() {
+  // 0x533340: the objects within 10 m of a viewer; 0x533200 / 0x5335a0: each pair of them closer than 2.5 m, by
+  // the first two of their spheres that touch
+  constexpr float Around = 10.f;
+  std::vector<Prop*> near;
+  for(Prop* p:propList)
+    if(nearViewer(p->origin(),Around))
+      near.push_back(p);
+  if(near.empty())
+    return;
+  auto& a = ballBuf[0];
+  auto& b = ballBuf[1];
+  for(Vehicle* c:cars) {
+    const Vec3 at = c->pose().translation();
+    if(!nearViewer(at,Around))
+      continue;
+    c->balls(a);
+    for(Prop* p:near) {
+      if((p->origin()-at).length()>=BallsReach)
+        continue;
+      p->balls(b);
+      if(ballsMeet(a.data(),a.size(),b.data(),b.size()))
+        c->meet(*p,rngState);
+      }
+    }
+  for(size_t i=0; i<near.size(); ++i) {
+    near[i]->balls(a);
+    for(size_t j=i+1; j<near.size(); ++j) {
+      if((near[j]->origin()-near[i]->origin()).length()>=BallsReach)
+        continue;
+      near[j]->balls(b);
+      if(!ballsMeet(a.data(),a.size(),b.data(),b.size()))
+        continue;
+      // 0x534240: both sound, and bounce apart along the line between their centres of mass
+      Prop& p = *near[i];
+      Prop& q = *near[j];
+      p.knock();
+      q.knock();
+      Vec3 at, n;
+      if(contactOf(p.centre(),q.centre(),at,n))
+        Vehicle::exchange(p,q,at,n);
+      p.balls(a);
+      }
+    }
+  }
+
+void PhysicsWorld::pushProps(const std::vector<Ball>& balls, const Vec3& origin) {
+  auto& b = ballBuf[1];
+  for(Prop* p:propList) {
+    if((p->origin()-origin).length()>=BallsReach)
+      continue;
+    p->balls(b);
+    Vec3 n;
+    if(!ballsMeet(b.data(),b.size(),balls.data(),balls.size(),nullptr,&n))
+      continue;
+    p->knock();
+    p->applyImpulse(n*(1.f/p->invMass()),p->centre());
+    }
+  }
+
+bool PhysicsWorld::touchesProp(const std::vector<Ball>& balls, const Vec3& origin) const {
+  std::vector<Ball> b;
+  for(Prop* p:propList) {
+    if((p->origin()-origin).length()>=BallsReach)
+      continue;
+    p->balls(b);
+    if(ballsMeet(balls.data(),balls.size(),b.data(),b.size()))
+      return true;
+    }
+  return false;
   }
 
 namespace {
@@ -176,22 +244,6 @@ Vehicle::Vehicle(PhysicsWorld& w, const CarGeometry& g, const CarParams& p, cons
     }
   springK = wheels.empty() ? 0.f : prm.mass*PhysicsWorld::Gravity/(float(wheels.size())*std::max(prm.springSag,1e-3f));
 
-  // the shape other bodies find the car by: the spheres of cdt<N>.ini, and the wheels' spheres, which
-  // Vehicle::suspension keeps where the wheels are (a little higher, so that the ground under a wheel is left to
-  // its spring)
-  shape = std::make_unique<btCompoundShape>();
-  auto  sphere   = [&](const Vec3& at, float r) {
-    sphereShapes.push_back(std::make_unique<btSphereShape>(r*S));
-    btTransform local;
-    local.setIdentity();
-    local.setOrigin(toBt(at-com)*S);
-    shape->addChildShape(local,sphereShapes.back().get());
-    };
-  for(auto& s:prm.body)
-    sphere(s.at,s.radius);
-  for(auto& wh:wheels)
-    sphere(wh.mount-Vec3{0,prm.springMin,0},wh.radius);
-
   // inertia (0x4f2270, 0x4752b0): a solid box over the whole model, the Buggy's about its forward axis doubled
   const Vec3 size = geom.max-geom.min;
   const float m12 = prm.mass/12.f;
@@ -200,17 +252,6 @@ Vehicle::Vehicle(PhysicsWorld& w, const CarGeometry& g, const CarParams& p, cons
                  m12*(size.x*size.x+size.y*size.y)};
   if(prm.car==2)
     inertiaBody.z *= 2;
-
-  // kinematic and without a response of its own: Bullet neither moves it nor pushes anything with it, but finds
-  // what it touches, the other kinematic bodies (people, the road traffic, the other cars) included
-  motion = std::make_unique<btDefaultMotionState>();
-  btRigidBody::btRigidBodyConstructionInfo ci(0,motion.get(),shape.get());
-  body = std::make_unique<btRigidBody>(ci);
-  body->setCollisionFlags(body->getCollisionFlags()|btCollisionObject::CF_KINEMATIC_OBJECT|
-                          btCollisionObject::CF_NO_CONTACT_RESPONSE);
-  body->setActivationState(DISABLE_DEACTIVATION);
-  body->setUserIndex(PhysicsWorld::CarTag);
-  owner.bullet().addRigidBody(body.get(),btBroadphaseProxy::DefaultFilter,btBroadphaseProxy::AllFilter);
 
   owner.cars.push_back(this);
 
@@ -230,52 +271,9 @@ Vehicle::Vehicle(PhysicsWorld& w, const CarGeometry& g, const CarParams& p, cons
 
 Vehicle::~Vehicle() {
   owner.cars.erase(std::remove(owner.cars.begin(),owner.cars.end(),this),owner.cars.end());
-  owner.bullet().removeRigidBody(body.get());
   }
 
 namespace {
-// the rotation of a Mat4 as a quaternion w, x, y, z
-void toQuat(const Mat4& m, float q[4]) {
-  const float t = m.m[0][0]+m.m[1][1]+m.m[2][2];
-  if(t>0) {
-    const float s = std::sqrt(t+1.f)*2.f;
-    q[0] = 0.25f*s;
-    q[1] = (m.m[2][1]-m.m[1][2])/s;
-    q[2] = (m.m[0][2]-m.m[2][0])/s;
-    q[3] = (m.m[1][0]-m.m[0][1])/s;
-    }
-  else if(m.m[0][0]>m.m[1][1] && m.m[0][0]>m.m[2][2]) {
-    const float s = std::sqrt(1.f+m.m[0][0]-m.m[1][1]-m.m[2][2])*2.f;
-    q[0] = (m.m[2][1]-m.m[1][2])/s;
-    q[1] = 0.25f*s;
-    q[2] = (m.m[0][1]+m.m[1][0])/s;
-    q[3] = (m.m[0][2]+m.m[2][0])/s;
-    }
-  else if(m.m[1][1]>m.m[2][2]) {
-    const float s = std::sqrt(1.f+m.m[1][1]-m.m[0][0]-m.m[2][2])*2.f;
-    q[0] = (m.m[0][2]-m.m[2][0])/s;
-    q[1] = (m.m[0][1]+m.m[1][0])/s;
-    q[2] = 0.25f*s;
-    q[3] = (m.m[1][2]+m.m[2][1])/s;
-    }
-  else {
-    const float s = std::sqrt(1.f+m.m[2][2]-m.m[0][0]-m.m[1][1])*2.f;
-    q[0] = (m.m[1][0]-m.m[0][1])/s;
-    q[1] = (m.m[0][2]+m.m[2][0])/s;
-    q[2] = (m.m[1][2]+m.m[2][1])/s;
-    q[3] = 0.25f*s;
-    }
-  }
-
-Mat4 fromQuat(const float q[4]) {
-  const float w = q[0], x = q[1], y = q[2], z = q[3];
-  Mat4 m;
-  m.m[0][0] = 1-2*(y*y+z*z); m.m[0][1] = 2*(x*y-w*z);   m.m[0][2] = 2*(x*z+w*y);
-  m.m[1][0] = 2*(x*y+w*z);   m.m[1][1] = 1-2*(x*x+z*z); m.m[1][2] = 2*(y*z-w*x);
-  m.m[2][0] = 2*(x*z-w*y);   m.m[2][1] = 2*(y*z+w*x);   m.m[2][2] = 1-2*(x*x+y*y);
-  return m;
-  }
-
 // q turned by the angular velocity w for t s (0x4f5400: dq/dt = 1/2 (0, w) q), normalised (0x4078d0)
 void turned(const float q[4], const Vec3& w, float t, float out[4]) {
   const float h = 0.5f*t;
@@ -311,14 +309,6 @@ Vec3 Vehicle::pointVelocity(const Vec3& p) const {
   return vel+Vec3::cross(omega,p-st.x);
   }
 
-void Vehicle::syncChassis() {
-  Mat4 m = rot;
-  m.m[0][3] = st.x.x; m.m[1][3] = st.x.y; m.m[2][3] = st.x.z;
-  const btTransform t = toBt(m);
-  body->setWorldTransform(t);
-  motion->setWorldTransform(t);
-  }
-
 void Vehicle::reset(const Mat4& start) {
   // drop in from slightly above the given pose so the springs settle
   place(start*Mat4::translate(Vec3{0,0.02f,0}),{},{});
@@ -332,7 +322,6 @@ void Vehicle::place(const Mat4& pose, const Vec3& velocity, const Vec3& spin) {
   st.P = velocity*prm.mass;
   st.L = inertia(spin);
   set(st);
-  syncChassis();
   frameForce = frameTorque = {};
   stepTouch  = Contact{};
   stuckFor   = 0;
@@ -363,7 +352,7 @@ void Vehicle::place(const Mat4& pose, const Vec3& velocity, const Vec3& spin) {
   lastHit      = Hit::None;
   sinceProp    = 1e3f;
   touch        = Contact{};
-  bump         = false;
+  carBumped         = false;
   carBefore    = false;
   }
 
@@ -584,16 +573,9 @@ bool Vehicle::asleep(float h) {
 void Vehicle::step(float h) {
   if(h<=0)
     return;
-  if(!settling && rollOver(h)) {
-    syncChassis();
+  if(!settling && (rollOver(h) || asleep(h)))
     return;
-    }
-  if(!settling && asleep(h)) {
-    syncChassis();
-    return;
-    }
   move(h);
-  syncChassis();
   }
 
 // RCCars.exe 0x509080, before every step (0x4f5e50). A car slower than 0.8 m/s whose forward axis is within 30
@@ -1028,7 +1010,6 @@ void Vehicle::move(float h) {
 // What each spring changed by is its damper's (0x4f0f80), none after such a stop.
 bool Vehicle::suspension(float h, bool hit) {
   constexpr float Moving    = 1.388889f; // m/s, 5 km/h
-  constexpr float WheelLift = 0.3f;
   const float speed = velocity().length();
 
   Mat4 m = rot*Mat4::translate(com*-1.f);
@@ -1152,13 +1133,7 @@ bool Vehicle::suspension(float h, bool hit) {
   for(size_t i=0; i<wheels.size(); ++i) {
     auto& wh = wheels[i];
     wh.change = stopped || i>=std::size(before) ? 0.f : wh.length-before[i];
-    // the wheel's sphere in the shape, for the bodies the wheel runs into
-    btTransform local;
-    local.setIdentity();
-    local.setOrigin(toBt(wh.mount-Vec3{0,std::max(wh.length-WheelLift*wh.radius,prm.springMin),0}-com)*S);
-    shape->updateChildTransform(int(prm.body.size())+int(i),local,false);
     }
-  shape->recalculateLocalAabb();
   return stopped;
   }
 
@@ -1280,83 +1255,49 @@ void Vehicle::tires(float h, Vec3& force, Vec3& torque) {
     }
   }
 
-namespace {
-// what RCCars.exe needs of a body to push it (0x4754a0, 0x4756c0)
-struct Pushed {
-  std::function<float()>            invMass;
-  std::function<Vec3(const Vec3&)>  invInertia;  // world
-  Vec3                              centre;
-  std::function<Vec3()>             velocity;    // of the centre of mass
-  std::function<void(const Vec3&,const Vec3&)> push; // impulse, at
-  };
-
-// RCCars.exe 0x4f0750 for one contact of two bodies at `at`, its normal `n` out of b towards a (0x534be0): over
-// up to 10 passes, the first always, while they part at most at 0.02 m/s (their centres' velocities, those
-// parting at less than 1 m/s counted as not parting), each pass pushes them apart by an impulse that would part
-// them at twice the speed they meet at, at least 0.2 m/s (0x5543ec, 0x5544f0), equal and opposite (0x4f0840)
-void exchange(Pushed& a, Pushed& b, const Vec3& at, const Vec3& n) {
-  const Vec3 ra = at-a.centre, rb = at-b.centre;
-  for(int pass=0; pass<10; ++pass) {
-    float vn = Vec3::dot(a.velocity()-b.velocity(),n);   // 0x4f04e0
-    if(vn>0 && vn<1.f)
-      vn = 0;
-    if(pass>0 && vn>StillSpeed)
-      break;
-    const float dv = std::max(-2.f*vn,0.2f);
-    const float k  = a.invMass()+Vec3::dot(Vec3::cross(a.invInertia(Vec3::cross(ra,n)),ra),n)
-                   + b.invMass()+Vec3::dot(Vec3::cross(b.invInertia(Vec3::cross(rb,n)),rb),n);
-    if(k<1e-6f)
-      return;
-    const Vec3 j = n*(dv/k);
-    a.push(j,at);
-    b.push(j*-1.f,at);
-    }
-  }
-
-// the line from `from` to `to` as 0x534be0 makes a contact of it: through the middle, the normal towards `to`
-bool contactOf(const Vec3& from, const Vec3& to, Vec3& at, Vec3& n) {
-  const Vec3  d = to-from;
-  const float l = d.length();
-  at = (from+to)*0.5f;
-  if(l<1e-6f)
+bool Vehicle::collide(Vehicle& a, Vehicle& b) {
+  // 0x533430 for the players' two cars: closer than 2.5 m and a pair of their spheres touching (0x533740)
+  if((a.pose().translation()-b.pose().translation()).length()>=BallsReach)
     return false;
-  n = d*(1.f/l);
+  std::vector<Ball> sa, sb;
+  a.balls(sa);
+  b.balls(sb);
+  if(!ballsMeet(sa.data(),sa.size(),sb.data(),sb.size()))
+    return false;
+  a.touchedCar();
+  b.touchedCar();
+  bounce(a,b,a.centre(),b.centre());
   return true;
-  }
-}
-
-bool Vehicle::collide(PhysicsWorld& world, Vehicle& a, Vehicle& b) {
-  auto& disp = *world.bullet().getDispatcher();
-  for(int k=0; k<disp.getNumManifolds(); ++k) {
-    const btPersistentManifold* m = disp.getManifoldByIndexInternal(k);
-    const bool pair = (m->getBody0()==a.body.get() && m->getBody1()==b.body.get()) ||
-                      (m->getBody0()==b.body.get() && m->getBody1()==a.body.get());
-    if(!pair)
-      continue;
-    for(int c=0; c<m->getNumContacts(); ++c)
-      if(m->getContactPoint(c).getDistance()<=0) {
-        bounce(a,b,a.centre(),b.centre());
-        return true;
-        }
-    }
-  return false;
   }
 
 void Vehicle::bounce(Vehicle& a, Vehicle& b, const Vec3& aCentre, const Vec3& bCentre) {
   Vec3 at, n;
-  if(!contactOf(bCentre,aCentre,at,n))
+  if(!contactOf(aCentre,bCentre,at,n))
     return;
-  auto of = [](Vehicle& v) {
-    Pushed p;
-    p.invMass    = [&v]() { return 1.f/v.prm.mass; };
-    p.invInertia = [&v](const Vec3& x) { return v.invInertia(x); };
-    p.centre     = v.st.x;
-    p.velocity   = [&v]() { return v.vel; };
-    p.push       = [&v](const Vec3& j, const Vec3& at) { v.applyImpulse(j,at); };
-    return p;
-    };
-  Pushed pa = of(a), pb = of(b);
-  exchange(pa,pb,at,n);
+  // 0x4f0750 on the line between the centres given, though each car is pushed about its own centre of mass
+  exchange(a,b,at,n);
+  }
+
+void Vehicle::balls(std::vector<Ball>& out) const {
+  auto& sp = const_cast<std::vector<Sphere>&>(sphereBuf[1]);
+  spheres(sp,AllSpheres);
+  out.clear();
+  for(auto& s:sp)
+    out.push_back({s.c,s.r});
+  }
+
+void Vehicle::ballsAt(const CarGeometry& g, const CarParams& p, const Mat4& pose, std::vector<Ball>& out) {
+  out.clear();
+  for(auto& gw:g.wheels)
+    out.push_back({pose.point(gw.center),gw.front ? p.wheelRadius : p.rearWheelRadius});
+  for(auto& b:p.body)
+    out.push_back({pose.point(b.at),b.radius});
+  }
+
+void Vehicle::bump(const Vec3& point) {
+  Vec3 at, n;
+  if(contactOf(st.x,point,at,n))
+    resolve({Touch{at,n,false,0}});
   }
 
 // RCCars.exe gives the player's car a hit, shown as "Łup!" or "Wielkie Łup!" (msg_hits.csi) for a second and worth
@@ -1367,86 +1308,52 @@ void Vehicle::bounce(Vehicle& a, Vehicle& b, const Vec3& aCentre, const Vec3& bC
 // Road traffic, crabs, spiders and gulls give nothing.
 //
 // What the car touches pushes it as in the original's handlers (0x534d00), once a frame:
-//  - a prop (0x533ee0): the two bounce apart along the line between their centres of mass (exchange);
-//  - a person, a guard or a dog (0x534340, 0x5344f0, 0x5349d0): the car alone, along the line from the point
-//    touched to its centre of mass, through the middle, until it leaves at 0.05 m/s (0x4f0750);
+//  - a prop (0x533ee0, Vehicle::meet): the two bounce apart along the line between their centres of mass (exchange);
+//  - a person, a guard or a dog (0x534340, 0x5344f0, 0x5349d0, Vehicle::bump): the car alone, along the line from
+//    the point touched to its centre of mass, through the middle, until it leaves at 0.05 m/s (0x4f0750);
 //  - the road traffic (0x534880) and the other cars (Opponents::collide) have their own.
 namespace {
 constexpr float PropHitSpeed  = 1.944445f; // m/s, 7 km/h
 constexpr float PropHitPause  = 0.3f;
 }
 
+void Vehicle::meet(Prop& p, uint32_t& rng) {
+  // 0x533ee0: a hit when the car is fast enough and the last one was long enough ago
+  if(sinceProp>PropHitPause && vel.length()>PropHitSpeed) {
+    propHit   = true;
+    sinceProp = 0;
+    }
+  objectNow = true;
+  p.knock();
+  // the prop's centre of mass a random 1 cm off (0x4bb5f0 -> a random direction), so that a car standing on a
+  // prop's centre line does not push it straight on forever
+  auto next = [&rng]() { rng = rng*1103515245u+12345u; return float((rng>>8)&0xffff)/65535.f*2.f-1.f; };
+  Vec3 dir{next(),next(),next()};
+  const float l = dir.length();
+  dir = l>1e-6f ? dir*(0.01f/l) : Vec3{0,0.01f,0};
+  Vec3 at, n;
+  if(!contactOf(st.x,p.centre()+dir,at,n))
+    return;
+  // the sound of the touch: wood (objects -> 7, 0x4f68a0)
+  note(stepTouch,pointVelocity(at)-p.velocity(),n,SoundSurface::Wood);
+  exchange(*this,p,at,n);
+  }
+
 void Vehicle::hits(float dt) {
   lastHit    = Hit::None;
   sinceProp += dt;
 
-  // the track, from the steps since the last update
+  // the track and the props, from the steps since the last update
   touch          = stepTouch;
   stepTouch      = Contact{};
-  if(touch.surface==0)
-    touch.impact = -1;   // none yet
 
-  bool prop = false, car = false;
-  auto& disp = *owner.bullet().getDispatcher();
-  for(int i=0; i<disp.getNumManifolds(); ++i) {
-    const btPersistentManifold* m = disp.getManifoldByIndexInternal(i);
-    const btCollisionObject*    other = nullptr;
-    if(m->getBody0()==body.get())
-      other = m->getBody1();
-    else if(m->getBody1()==body.get())
-      other = m->getBody0();
-    if(other==nullptr || other==&owner.ground())
-      continue;
-    const btManifoldPoint* deepest = nullptr;
-    for(int c=0; c<m->getNumContacts(); ++c)
-      if(m->getContactPoint(c).getDistance()<=0 && (deepest==nullptr || m->getContactPoint(c).getDistance()<deepest->getDistance()))
-        deepest = &m->getContactPoint(c);
-    if(deepest==nullptr)
-      continue;
-    const int tag = other->getUserIndex();
-    car |= tag==PhysicsWorld::CarTag;
-    if(tag==PhysicsWorld::PropTag) {
-      prop = true;
-      contacts(*m,other);
-      auto* pr = const_cast<btRigidBody*>(btRigidBody::upcast(other));
-      if(pr==nullptr || pr->getInvMass()<=0)
-        continue;
-      pr->activate(true);
-      const Vec3 pc = fromBt(pr->getCenterOfMassPosition())*(1.f/S);
-      Vec3 at, n;
-      if(!contactOf(pc,st.x,at,n))
-        continue;
-      Pushed me, it;
-      me.invMass    = [this]() { return 1.f/prm.mass; };
-      me.invInertia = [this](const Vec3& x) { return invInertia(x); };
-      me.centre     = st.x;
-      me.velocity   = [this]() { return vel; };
-      me.push       = [this](const Vec3& j, const Vec3& p) { applyImpulse(j,p); };
-      it.invMass    = [pr]() { return float(pr->getInvMass()); };
-      it.invInertia = [pr](const Vec3& x) { return fromBt(pr->getInvInertiaTensorWorld()*toBt(x))*(S*S); };
-      it.centre     = pc;
-      it.velocity   = [pr]() { return fromBt(pr->getLinearVelocity())*(1.f/S); };
-      it.push       = [pr](const Vec3& j, const Vec3& p) {
-        pr->applyImpulse(toBt(j)*S,toBt(p)*S-pr->getCenterOfMassPosition());
-        };
-      exchange(me,it,at,n);
-      }
-    else if(tag==PhysicsWorld::CharacterTag) {
-      const bool first = m->getBody0()==body.get();
-      const Vec3 p = fromBt(first ? deepest->getPositionWorldOnB() : deepest->getPositionWorldOnA())*(1.f/S);
-      Vec3 at, n;
-      if(contactOf(p,st.x,at,n))
-        resolve({Touch{at,n,false,0}});
-      }
-    }
-  if(touch.impact<0)
-    touch = Contact{};
-  bump      = car && !carBefore;
-  carBefore = car;
+  carBumped     = carNow && !carBefore;
+  carBefore = carNow;
+  carNow    = false;
 
-  if(prop && sinceProp>PropHitPause && vel.length()>PropHitSpeed) {
-    lastHit   = Hit::Hit;
-    sinceProp = 0;
+  if(propHit) {
+    propHit = false;
+    lastHit = Hit::Hit;
     addHitBoost();
     }
   }
@@ -1460,25 +1367,6 @@ void Vehicle::note(Contact& into, const Vec3& v, const Vec3& n, uint8_t surface)
   // the strongest one: a hit before a touch, then the harder one
   if(into.surface==0 || (ct.hit && !into.hit) || (ct.hit==into.hit && ct.impact>into.impact))
     into = ct;
-  }
-
-void Vehicle::contacts(const btPersistentManifold& m, const btCollisionObject* other) {
-  const bool  first = m.getBody0()==body.get();
-  const auto* otherBody = btRigidBody::upcast(other);
-  for(int c=0; c<m.getNumContacts(); ++c) {
-    const btManifoldPoint& pt = m.getContactPoint(c);
-    if(pt.getDistance()>0)
-      continue;
-    // the normal out of the other body, towards the car
-    const Vec3 n  = fromBt(first ? pt.m_normalWorldOnB : -pt.m_normalWorldOnB);
-    const Vec3 at = fromBt(first ? pt.getPositionWorldOnA() : pt.getPositionWorldOnB())*(1.f/S);
-    Vec3       v  = pointVelocity(at);
-    if(otherBody!=nullptr && otherBody->getInvMass()>0)
-      v = v-fromBt(otherBody->getVelocityInLocalPoint(toBt(at)*S-otherBody->getCenterOfMassPosition()))*(1.f/S);
-    Contact ct = touch.impact<0 ? Contact{} : touch;
-    note(ct,v,n,SoundSurface::Wood);
-    touch = ct;
-    }
   }
 
 void Vehicle::surfaces(float dt) {
@@ -1605,7 +1493,6 @@ void Vehicle::hold(const Mat4& at) {
   b.x = at.point(com);
   toQuat(at,b.q);
   set(b);
-  syncChassis();
   }
 
 float Vehicle::speed() const {

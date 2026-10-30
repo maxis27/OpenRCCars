@@ -64,7 +64,7 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
 
 ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std::string_view model,
                      const rc::Vec3& origin, const Options& opt, const CarLook& look)
-  :modelName(model), pso(device) {
+  :modelName(model), pso(device), antennaShown(look.antenna) {
   const int skin = look.skin;
   const int32_t modelId = sb.findModel(model);
   if(modelId<0)
@@ -103,8 +103,6 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
         return -1;
       return under(mesh,opt.parts)+1;
       }
-    if(!look.antenna && under(mesh,{"ANTENNA"})>=0)
-      return -1;
     rc::CarAddOns addOns;
     if(!look.lod)
       addOns = {look.boost,look.resonator};
@@ -145,8 +143,8 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
       }
     return {};
     };
-  // key: part, texture, environment map, head light variant (Batch::lit)
-  std::map<std::tuple<size_t,int32_t,float,int8_t>,std::vector<LevelMesh::Vertex>> buckets;
+  // key: part, texture, environment map, head light variant (Batch::lit), the car's ANTENNA (Batch::antenna)
+  std::map<std::tuple<size_t,int32_t,float,int8_t,bool>,std::vector<LevelMesh::Vertex>> buckets;
   for(size_t mi=0; mi<sb.meshes.size(); ++mi) {
     auto& m = sb.meshes[mi];
     if(m.model!=modelId || m.positions.empty())
@@ -159,6 +157,7 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
     const float env      = m.faces.empty() ? 0.f : environmentOf(m,car,res.pack());
     const bool  light    = !opt.lights.empty() && under(mi,opt.lights)>=0;
     const auto  stretch  = widen(mi);
+    const bool  antenna  = !named && under(mi,{"ANTENNA"})>=0;
     for(int8_t variant=(light ? 0 : -1); variant<=(light ? 1 : -1); ++variant)
     for(auto& f:m.faces) {
       const size_t n    = f.pos.size();
@@ -167,7 +166,7 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
         continue;
       // a head light switched the other way than modelled shows the other half of its texture
       const float shift = variant<0 || (variant==1)==opt.modelledLit ? 0.f : (opt.modelledLit ? 0.5f : -0.5f);
-      auto& out  = buckets[{size_t(part),base->texture,env,variant}];
+      auto& out  = buckets[{size_t(part),base->texture,env,variant,antenna}];
       auto  vert = [&](size_t corner) {
         LevelMesh::Vertex v = {};
         const uint32_t pi = f.pos[corner];
@@ -213,11 +212,12 @@ ModelMesh::ModelMesh(Device& device, Resources& res, const rc::SbScene& sb, std:
   // 3. one vertex buffer, part-relative positions
   std::vector<LevelMesh::Vertex> all;
   for(auto& [key,verts]:buckets) {
-    const auto [part,texture,env,lit] = key;
+    const auto [part,texture,env,lit,antenna] = key;
     const rc::Vec3 pivot = partList[part].pivot;
     Batch b;
-    b.part   = part;
-    b.lit    = lit;
+    b.part    = part;
+    b.lit     = lit;
+    b.antenna = antenna;
     b.first  = all.size();
     b.count  = verts.size();
     b.envMap = env;
@@ -297,6 +297,8 @@ void ModelMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
   for(auto& b:batches) {
     if(b.lit>=0 && (b.lit==1)!=lightsOn)
       continue;
+    if(b.antenna && !antennaShown)
+      continue;
     auto& p = pso.get(b.mode);
     if(current!=&p) {
       enc.setPipeline(p);
@@ -304,7 +306,7 @@ void ModelMesh::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj,
       }
     LevelMesh::Push& pp = push[b.part];
     pp.flags  = (b.mode==rc::AlphaMode::Cutout) ? uint32_t(LevelMesh::F_Cutout) : 0u;
-    pp.envMap = b.envMap;
+    pp.envMap = reflections ? b.envMap : 0.f;
     if(shade>=0) {
       // RCCars.exe 0x516f50: the road cars' head lights keep a white texture factor
       pp.flags    |= LevelMesh::F_CarLight;

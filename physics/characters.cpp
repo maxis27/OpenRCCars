@@ -1,25 +1,22 @@
 #include "characters.h"
 
-#include <btBulletDynamicsCommon.h>
-
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
 
-#include "btconvert.h"
 #include "formats/settings.h"
 #include "vehicle.h"
 
 using namespace rc;
-using namespace rc::bt;
 
 namespace {
 
 constexpr float Pi = 3.14159265f;
 
 // RCCars.exe constants of the people (0x5107a0, 0x510f40, 0x511470, 0x5111f0, 0x510b90, 0x510b30)
-constexpr float PeopleActive   = 50.f;     // m from the player's car: the person is there (RenderQual 2)
+// m from the player's car: the person is there, by RenderQual 0, 1, 2 (0x5100d0)
+constexpr float PeopleActive[3] = {25.f,37.5f,50.f};
 constexpr float KickReach      = 0.8f;     // m, horizontal: kick or grab a car this close ...
 constexpr float KickHeight     = 0.6f;     // ... within this height
 constexpr float GrabChance     = 0.2f;     // rand < 0.2: grab instead of kicking, with
@@ -103,12 +100,10 @@ std::string scriptValue(const std::string& text, std::string_view key) {
 
 }
 
+// what a car meets of a person, a guard or a dog (0x533430): its spheres while it is there to be hit
 struct Characters::Body {
-  std::unique_ptr<btSphereShape>        sphere;
-  std::unique_ptr<btCompoundShape>      shape;
-  std::unique_ptr<btDefaultMotionState> motion;
-  std::unique_ptr<btRigidBody>          rigid;
-  bool                                  inWorld = false;
+  std::vector<Ball> balls;   // from its feet
+  bool              inWorld = false;
   };
 
 struct Characters::State {
@@ -198,11 +193,7 @@ Characters::Characters(PhysicsWorld& world, ObjectLibrary& library, const SbScen
   restart();
   }
 
-Characters::~Characters() {
-  for(auto& s:states)
-    if(s->body && s->body->inWorld)
-      owner.bullet().removeRigidBody(s->body->rigid.get());
-  }
+Characters::~Characters() = default;
 
 void Characters::load(const Reader& pack) {
   auto ini = [&](const char* file) {
@@ -344,45 +335,31 @@ void Characters::setup(State& s, const SbInstance& in, const Reader& pack) {
   }
 
 void Characters::makeBody(State& s) {
+  // people 0x511e30: three spheres 0, 0.2 and 0.4 m above the feet; guards 0x51a350: two, 0 and 0.2 m; dogs: ours,
+  // one sphere above the feet (the original's 0x518820 puts five on the bones of the animation)
   auto b = std::make_unique<Body>();
-  const bool dog = s.actor.kind==Kind::Dog;
-  b->sphere = std::make_unique<btSphereShape>((dog ? DogRadius : BodyRadius)*S);
-  b->shape  = std::make_unique<btCompoundShape>();
-  for(int i=0; i<(dog ? 1 : 3); ++i) {
-    btTransform t;
-    t.setIdentity();
-    t.setOrigin(btVector3(0,(dog ? DogRadius : 0.2f*float(i))*S,0));
-    b->shape->addChildShape(t,b->sphere.get());
+  switch(s.actor.kind) {
+    case Kind::Dog:   b->balls = {{{0,DogRadius,0},DogRadius}}; break;
+    case Kind::Guard: b->balls = {{{0,0,0},BodyRadius},{{0,0.2f,0},BodyRadius}}; break;
+    default:          b->balls = {{{0,0,0},BodyRadius},{{0,0.2f,0},BodyRadius},{{0,0.4f,0},BodyRadius}}; break;
     }
-  btTransform start;
-  start.setIdentity();
-  b->motion = std::make_unique<btDefaultMotionState>(start);
-  btRigidBody::btRigidBodyConstructionInfo ci(0,b->motion.get(),b->shape.get());
-  ci.m_friction    = 0.5f;
-  ci.m_restitution = 0.2f;
-  b->rigid = std::make_unique<btRigidBody>(ci);
-  b->rigid->setCollisionFlags(b->rigid->getCollisionFlags()|btCollisionObject::CF_KINEMATIC_OBJECT);
-  b->rigid->setActivationState(DISABLE_DEACTIVATION);
-  b->rigid->setUserIndex(PhysicsWorld::CharacterTag);
   s.body = std::move(b);
   }
 
 void Characters::placeBody(State& s) {
   if(s.body==nullptr)
     return;
-  auto& b = *s.body;
-  const bool want = s.actor.visible && !s.holding && s.noHit<=0;
-  if(want!=b.inWorld) {
-    if(want)
-      owner.bullet().addRigidBody(b.rigid.get());
-    else
-      owner.bullet().removeRigidBody(b.rigid.get());
-    b.inWorld = want;
-    }
-  const btTransform t = toBt(Mat4::translate(s.pos)*Mat4::rotate(1,s.yaw*180.f/Pi));
-  b.motion->setWorldTransform(t);
-  if(!b.inWorld)
-    b.rigid->setWorldTransform(t);
+  s.body->inWorld = s.actor.visible && !s.holding && s.noHit<=0;
+  }
+
+bool Characters::meets(const State& s, Vec3* at) const {
+  if(s.body==nullptr || !s.body->inWorld || carBalls.empty() || (carAt-s.pos).length()>=BallsReach)
+    return false;
+  auto& b = const_cast<std::vector<Ball>&>(ballBuf);
+  b.clear();
+  for(auto& o:s.body->balls)
+    b.push_back({o.c+s.pos,o.r});
+  return ballsMeet(carBalls.data(),carBalls.size(),b.data(),b.size(),at);
   }
 
 void Characters::restart() {
@@ -475,22 +452,9 @@ void Characters::finish(State& s) {
   }
 
 bool Characters::hitBy(State& s, Vehicle* player, float kmh) {
-  if(player==nullptr || s.body==nullptr || !s.body->inWorld)
+  if(player==nullptr || carKmh<=kmh)
     return false;
-  if(carKmh<=kmh)
-    return false;
-  const btCollisionObject* car  = &player->chassis();
-  const btCollisionObject* body = s.body->rigid.get();
-  auto& disp = *owner.bullet().getDispatcher();
-  for(int i=0; i<disp.getNumManifolds(); ++i) {
-    const btPersistentManifold* m = disp.getManifoldByIndexInternal(i);
-    if(!((m->getBody0()==car && m->getBody1()==body) || (m->getBody0()==body && m->getBody1()==car)))
-      continue;
-    for(int c=0; c<m->getNumContacts(); ++c)
-      if(m->getContactPoint(c).getDistance()<=0.01f*S)
-        return true;
-    }
-  return false;
+  return meets(s);
   }
 
 bool Characters::touches(Car& c, const Vec3& at, float radius, float height) {
@@ -514,6 +478,18 @@ bool Characters::update(float dt, Vehicle* player, std::vector<Car>& cars) {
   sincePerson += dt;
   sinceDog    += dt;
   sinceGuard  += dt;
+  // the spheres of the player's car after the step (0x533430); someone it touches stops it (0x534340, 0x5344f0,
+  // 0x5349d0: Vehicle::bump)
+  carBalls.clear();
+  if(player!=nullptr) {
+    player->balls(carBalls);
+    carAt = player->pose().translation();
+    }
+  for(auto& p:states) {
+    Vec3 at;
+    if(player!=nullptr && meets(*p,&at))
+      player->bump(at);
+    }
   for(auto& p:states) {
     State& s = *p;
     s.actor.sound.clear();
@@ -549,7 +525,7 @@ void Characters::person(State& s, float dt, Vehicle* player, std::vector<Car>& c
   s.lastPos = s.pos;
 
   const Vec3 car = player ? player->pose().translation() : Vec3{0,1e6f,0};
-  s.active = player!=nullptr && (car-s.pos).length()<PeopleActive;
+  s.active = player!=nullptr && (car-s.pos).length()<PeopleActive[size_t(renderQuality)];
   s.actor.visible = s.active;
 
   bumped |= hitBy(s,player,BumpSpeed);

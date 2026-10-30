@@ -121,6 +121,19 @@ class CarEffects {
   public:
     CarEffects(const EffectSettings& settings, bool player);
 
+    // what the options' effects quality leaves (the game's VIDEO_* switches, game/quality.h): the dust
+    // (VIDEO_DustEff), the spray, the wake and the foam (VIDEO_WaterTrace), the exhaust (VIDEO_ExhaustGas), the tyre
+    // tracks (VIDEO_WheelTrace); `fullSpin`: the dust a spinning wheel throws, halved below high SFXQual
+    struct Features {
+      bool dust     = true;
+      bool water    = true;
+      bool exhaust  = true;
+      bool tracks   = true;
+      bool fullSpin = true;
+      };
+    // what is switched off goes at once
+    void setFeatures(const Features& f);
+
     // after the physics; `camera`: dust starts only within 12 m of it
     void update(const CarState& car, const Vec3& camera, float dt, Random& rnd);
     void collect(std::vector<Billboard>& out) const;
@@ -152,6 +165,7 @@ class CarEffects {
 
     const EffectSettings& set;
     bool                  player = false;
+    Features              features;
     std::vector<WheelFx>  wheels;
     TyreTracks            tracks;
     Wake                  wake;

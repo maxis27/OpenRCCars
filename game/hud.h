@@ -105,6 +105,7 @@ class Hud : public Canvas {
     enum class Message { None, Go, BestLap, Finish };
 
     void   chatConsole();
+    void   dropChat(size_t n);
     // the one message of the race shown (countdown, "Jazda!", "Łup!" ..) at `cx`, `cy`, `k` times its size
     void   messages(const rc::Race& race, const Info& info, float cx, float cy, float k);
 
@@ -158,6 +159,8 @@ class Hud : public Canvas {
       float       at = 0;   // clock when said
       };
     std::vector<ChatLine>            chat;     // the newest last
+    float                            chatShift   = 0;  // lines the console still scrolls up, as of chatShiftAt
+    float                            chatShiftAt = 0;
     Message                          message    = Message::None;
     float                            messageAt  = 0;
     float                            hitAt      = -100;

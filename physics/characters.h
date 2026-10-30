@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <functional>
 #include <map>
 #include <memory>
@@ -13,11 +14,8 @@
 #include "formats/objects.h"
 #include "formats/scene.h"
 #include "formats/skeleton.h"
+#include "balls.h"
 
-class btCollisionShape;
-class btCompoundShape;
-class btRigidBody;
-struct btDefaultMotionState;
 
 namespace rc {
 
@@ -99,6 +97,8 @@ class Characters {
     bool                        update(float dt, Vehicle* player) { std::vector<Car> none; return update(dt,player,none); }
     // back to the start of the race
     void                        restart();
+    // the options' RenderQual (0..2): how far from the player's car the people are there (0x5100d0)
+    void                        setRenderQuality(int32_t q) { renderQuality = std::clamp(q,0,2); }
 
     const std::vector<Actor*>&  actors() const { return view; }
     // a burst a guard fires in this update (message 0x261 to BURST_MNG, fx::Gunfire): from its gun at a car,
@@ -150,8 +150,10 @@ class Characters {
 
     // kick (Pendal) and grab-and-throw (Brosok) of people and guards: true while one of them goes on
     bool        attack (State& s, float dt, Vehicle* player);
-    // the car hit the character: true once when the car touches its body faster than `kmh`
+    // the car hit the character: true when the car touches its body faster than `kmh`
     bool        hitBy  (State& s, Vehicle* player, float kmh);
+    // the player's car (carBalls) touches its body; `at` the middle of the two spheres that meet
+    bool        meets  (const State& s, Vec3* at = nullptr) const;
     // another car touches the character (within `radius` of `at`, `height` above it): marks it Car::hit
     static bool touches(Car& c, const Vec3& at, float radius, float height);
     void        play   (State& s, int32_t seq, bool loop, float rate = 1.f);
@@ -182,6 +184,10 @@ class Characters {
     float                                         carKmh      = 0;    // the player's speed before this step
     float                                         lastKmh     = 0;
     int                                           vultures    = 0;
+    std::vector<Ball>                             carBalls;           // the player's car this update
+    Vec3                                          carAt;
+    std::vector<Ball>                             ballBuf;
+    int32_t                                       renderQuality = 2;
   };
 
 }

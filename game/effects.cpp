@@ -150,6 +150,7 @@ void Effects::clearSecond(bool keep) {
 
 void Effects::tickCar(rc::fx::CarEffects& fx, float dt, const rc::Vehicle& car, const rc::CollisionMesh& track,
                       const rc::Vec3& camera, bool gas, bool brake) {
+  fx.setFeatures(carFeatures);
   auto state = carState(car,car.pose(),car.velocity(),car.params().upgrade,car.params().boostLevel);
   state.gas   = gas;
   state.brake = brake;
@@ -188,6 +189,7 @@ void Effects::tick(float dt, const rc::Vehicle& car, const rc::Opponents* ai, co
     auto&       fx = opponents[i];
     if(fx.fx==nullptr)
       fx.fx = std::make_unique<rc::fx::CarEffects>(settings,false);
+    fx.fx->setFeatures(carFeatures);
     // the replays have no velocity of their own: from the way they moved
     const rc::Mat4 pose = o.pose();
     const rc::Vec3 at   = pose.translation();
@@ -205,6 +207,28 @@ void Effects::tick(float dt, const rc::Vehicle& car, const rc::Opponents* ai, co
     s.sense(track);
     fx.fx->update(s,camera,dt,rnd);
     }
+  }
+
+void Effects::setQuality(const Quality& q) {
+  carFeatures.dust     = q.dust;
+  carFeatures.water    = q.waterTrace;
+  carFeatures.exhaust  = q.exhaust;
+  carFeatures.tracks   = q.wheelTrace;
+  carFeatures.fullSpin = q.sfxLevel()>=2;
+  // the track's: switched off, what there is goes at once
+  if(splashOn && !q.stream)
+    splashes.clear();
+  if(solesOn && !q.peopSole)
+    footprints.clear();
+  if(hatchOn && !q.hatchSmoke)
+    hatch.clear();
+  if(shoreOn && q.renderLevel()<1)
+    shore.clear();
+  splashOn = q.stream;
+  burstOn  = q.burst;
+  solesOn  = q.peopSole;
+  hatchOn  = q.hatchSmoke;
+  shoreOn  = q.renderLevel()>=1;
   }
 
 void Effects::setTrack(const rc::SbScene& scene, const rc::WaterWaves* sea) {
@@ -260,11 +284,17 @@ void Effects::tickWorld(float dt, const rc::fx::View& view, float time, const rc
                         const std::vector<rc::fx::Footprints::Walker>& walkers) {
   if(!worldLoaded || dt<=0)
     return;
-  splashes.update(view,dt,rnd);
-  shore.update(view,time,dt,water,rnd);
+  // each of them only as the quality has it (game/quality.h); the gunfire still shoots without VIDEO_Burst, only
+  // its smoke, grit and holes are not shown; the waves on the shore need RenderQual medium (0x5255ef)
+  if(splashOn)
+    splashes.update(view,dt,rnd);
+  if(shoreOn)
+    shore.update(view,time,dt,water,rnd);
   gunfire.update(bursts,cars,track,dt,rnd);
-  footprints.update(walkers,dt);
-  hatch.update(view,dt,rnd);
+  if(solesOn)
+    footprints.update(walkers,dt);
+  if(hatchOn)
+    hatch.update(view,dt,rnd);
   }
 
 void Effects::drawTracks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Mat4& vp, const rc::Vec3& eye) {
@@ -279,9 +309,12 @@ void Effects::drawMarks(Encoder<CommandBuffer>& enc, uint8_t frame, const rc::Ma
   for(auto& o:opponents)
     if(o.fx)
       o.fx->collect(marks,eye);
-  shore.collect(marks,eye);
-  gunfire.collect(marks);
-  footprints.collect(marks);
+  if(shoreOn)
+    shore.collect(marks,eye);
+  if(burstOn)
+    gunfire.collect(marks);
+  if(solesOn)
+    footprints.collect(marks);
   // the tyre tracks and the footprints share a blend (0x80000021, 0x530018 and 0x50fc96)
   auto doubled = [](rc::fx::Mark::Kind k) { return k==rc::fx::Mark::Track || k==rc::fx::Mark::Sole; };
   marks.erase(std::remove_if(marks.begin(),marks.end(),[tracks,&doubled](const rc::fx::Mark& m){
@@ -351,9 +384,12 @@ void Effects::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, con
   for(auto& o:opponents)
     if(o.fx)
       o.fx->collect(sprites);
-  splashes.collect(sprites);
-  gunfire.collect(sprites);
-  hatch.collect(sprites);
+  if(splashOn)
+    splashes.collect(sprites);
+  if(burstOn)
+    gunfire.collect(sprites);
+  if(hatchOn)
+    hatch.collect(sprites);
   if(sprites.empty() || w<=0 || h<=0)
     return;
 

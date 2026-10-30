@@ -56,7 +56,7 @@ class ModelMesh {
       int32_t resonator = -1;
       int32_t tires     = -1;
       bool    lod       = false; // a Car<n>LOD<n> model
-      // the modelled ANTENNA node drawn; off where AntennaView draws the moving one
+      // the modelled ANTENNA node drawn at first (showAntenna); off where AntennaView draws the moving one
       bool    antenna   = true;
       };
 
@@ -87,6 +87,10 @@ class ModelMesh {
     // how dirty the car is, 0 clean .. 2 (Effects::dirt): its paint (car_askin<car>*, car_bskin<car>*) gets the
     // dirt_car<car>_1/_2 textures (with a/b for the two paints of cars 2 and 3) laid over it
     void                     setDirt(float level) { dirt = level; }
+    // the environment map on the meshes that have one (VIDEO_EnvMap, 0x507549), on by default
+    void                     setReflections(bool on) { reflections = on; }
+    // the modelled ANTENNA drawn (CarLook::antenna at first); off while AntennaView draws a springy one
+    void                     showAntenna(bool on) { antennaShown = on; }
     // RCCars.exe's light of a car (rc::fx::CarLight): `ambient` + `direct` x the cosine towards `toLight` (world),
     // held at 1; ambient 1 and direct 0 show the textures as they are (the far LODs). Not set: the light all
     // models have
@@ -113,6 +117,7 @@ class ModelMesh {
       const Tempest::Texture2d* dirt[2] = {};
       float                     envMap = 0; // LevelMesh::Push::envMap
       int8_t                    lit    = -1; // Options::lights: drawn only with the lights on (1) / off (0)
+      bool                      antenna = false; // a car's modelled ANTENNA (showAntenna)
       };
 
     std::string                           modelName;
@@ -123,5 +128,7 @@ class ModelMesh {
     const Tempest::Texture2d*             envTex = nullptr;
     rc::Vec3                              bbox[2];
     float                                 dirt = 0;
+    bool                                  reflections = true;
+    bool                                  antennaShown = true;
     Light                                 light;
   };

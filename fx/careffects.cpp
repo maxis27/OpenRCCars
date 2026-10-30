@@ -215,11 +215,32 @@ void CarEffects::update(const CarState& car, const Vec3& camera, float dt, Rando
     // the computer's cars only have the rear wheels' effects
     if(!player && fx.front)
       continue;
-    dust (fx,i,car,camera,dt,rnd);
-    spray(fx,car.wheels[i],car,dt,rnd);
+    // what is switched off is not there at all (RCCars.exe does not set it up: 0x52e000, 0x527e20)
+    if(features.dust)
+      dust(fx,i,car,camera,dt,rnd);
+    else
+      fx.dust.clear();
+    if(features.water)
+      spray(fx,car.wheels[i],car,dt,rnd);
+    else
+      fx.spray.clear();
     }
-  smoke(car,dt,rnd);
+  if(features.exhaust) {
+    smoke(car,dt,rnd);
+    }
+  else {
+    exhaust.clear();
+    explode = 0;
+    }
   marks(car,dt,rnd);
+  }
+
+void CarEffects::setFeatures(const Features& f) {
+  if(!f.tracks && features.tracks)
+    tracks.clear();
+  if(!f.water && features.water)
+    wake.clear();
+  features = f;
   }
 
 void CarEffects::dust(WheelFx& fx, size_t i, const CarState& car, const Vec3& camera, float dt, Random& rnd) {
@@ -261,7 +282,8 @@ void CarEffects::dust(WheelFx& fx, size_t i, const CarState& car, const Vec3& ca
   bool  back  = false;
   if((car.gas || car.brake) && w.slip>d.spinThresh) {
     fx.velocity = fwd*(-d.spinSpeed*w.rimSpeed);
-    k     = d.spinScale;
+    // half of it below high SFXQual (0x52e5bc)
+    k     = d.spinScale*(features.fullSpin ? 1.f : 0.5f);
     back  = w.rimSpeed<0;
     speed = std::abs(w.rimSpeed);
     }
@@ -496,9 +518,10 @@ void CarEffects::marks(const CarState& car, float dt, Random& rnd) {
     t.triangle = w.triangle;
     t.sound    = w.sound;
     }
-  tracks.update(tw,car.velocity,forward,car.upgrade,dt);
+  if(features.tracks)
+    tracks.update(tw,car.velocity,forward,car.upgrade,dt);
 
-  if(!player)
+  if(!player || !features.water)
     return;
   // the wake and the foam: what the water is like at each wheel and at the body (0x531df0)
   Wake::Car wc;
@@ -545,8 +568,9 @@ void CarEffects::marks(const CarState& car, float dt, Random& rnd) {
   }
 
 void CarEffects::collect(std::vector<Mark>& out, const Vec3& camera) const {
-  tracks.collect(out,camera);
-  if(player)
+  if(features.tracks)
+    tracks.collect(out,camera);
+  if(player && features.water)
     wake.collect(out);
   }
 

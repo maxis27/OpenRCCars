@@ -14,6 +14,7 @@ class CarModel {
   public:
     // how far from the camera the LOD models take over (Settings\LOD.ini, RCCars.exe 0x4f98e0)
     struct Distances {
+      float lod0 = 2.f;   // DistLOD1SwitchOn: the opponents nearer than this are LOD index -1 (0x501c10)
       float lod1 = 7.96f;
       float lod2 = 8.87f;
       static Distances load(rc::PackFile& pack);

@@ -21,8 +21,7 @@ Co wiemy o plikach gry i jak je czytamy. Zachowanie gry, które z nich korzysta,
 - Ściany mają odwrotne nawinięcie względem domyślnego w Tempeście; nieprzezroczysta geometria używa `CullMode::Front`.
 - Auto: osie X w lewo, Y w górę, Z do przodu; koła `WHEEL_FRONT_LEFT` itd. (Hummer ma 6 kół). Auta są w skali
   modeli RC (ok. 0,4–0,6 m długości).
-- Bullet (u nas tylko rekwizyty) liczy w skali ×10, bo nie lubi obiektów 0,4 m; na zewnątrz `physics/` wszystko
-  jest w metrach (`physics/btconvert.h`).
+- Fizyka (`physics/`) liczy w metrach, kilogramach i sekundach, jak oryginał.
 
 ## RCCars.pack
 

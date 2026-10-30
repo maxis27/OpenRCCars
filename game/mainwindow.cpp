@@ -1198,11 +1198,14 @@ void MainWindow::tickDemo(float dt) {
   vehicle->hold(demo.park);
   opponents->collide(*vehicle,dt);
   opponents->update(dt,racing,demo.park.translation(),0,false,race->clockTime(),race->laps());
-  if(objects)
-    objects->update(dt);
+  // the demo's viewer: the car the camera follows (0x487300)
+  if(const rc::Opponent* c = demoCar())
+    physics->setViewers({c->pose()});
+  else
+    physics->setViewers({});
   physics->step(dt);
   if(objects)
-    objects->afterStep(*physics);
+    objects->afterStep();
   vehicle->hold(demo.park);
   std::vector<rc::Characters::Car> others;
   for(size_t i=0; i<opponents->size(); ++i) {
@@ -1359,7 +1362,7 @@ void MainWindow::tick(float dt) {
       r.jump = false;
       r.vehicle->update(in2,dt);
       // the two cars push each other apart as cars do (0x533990)
-      rc::Vehicle::collide(*physics,*vehicle,*r.vehicle);
+      rc::Vehicle::collide(*vehicle,*r.vehicle);
       }
     if(ghosts) {
       // 0x4f6ea0 -> 0x502b90: the player's car recorded; the ghosts on their laps
@@ -1377,11 +1380,14 @@ void MainWindow::tick(float dt) {
     if(opponents)
       opponents->update(dt,!race->holdCar(),carPose.translation(),checkpoints->laps(),playerFinish>=0,race->clockTime(),
                         race->laps());
-    if(objects)
-      objects->update(dt);
+    // the viewers (0x487300): the players' cars, near which the props move and the objects meet
+    if(split())
+      physics->setViewers({vehicle->pose(),two.rider->vehicle->pose()});
+    else
+      physics->setViewers({vehicle->pose()});
     physics->step(dt);
     if(objects)
-      objects->afterStep(*physics);
+      objects->afterStep();
     if(flying)
       vehicle->hold(flightPose);  // the step's gravity and bumps undone
     // the people and animals and the road cars, after the step: a person holding the car puts it in the hand

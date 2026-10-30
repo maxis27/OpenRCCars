@@ -155,6 +155,7 @@ class Traffic {
     std::vector<Shot>                   fired;
     bool                                bumped = false;
     std::mt19937                        rng{20061014};
+    std::vector<Ball>                   ballBuf, carBuf;
     float                               clock   = 0;  // s since the race started
     float                               waited  = 0;  // s since the last car left
     float                               delay   = 0;  // s until the next one

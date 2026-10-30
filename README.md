@@ -301,6 +301,7 @@ rcinfo <folder_gry> shade RCCarsDB/beach_2.sb     # lightmapa wzdłuż trasy i j
 rcinfo <folder_gry> fog beach_1                   # mgła trasy: gęstość, kolor, ile koloru zostaje w danej odległości
 rcinfo <folder_gry> traffic beach_2 [s]           # ruch uliczny: odjazdy, wysokość kół nad drogą, światła, cienie, potrącenie gracza
 rcinfo <folder_gry> shots beach_4 [auto 1-3] [s]  # strażnicy i BTR strzelają do auta: serie, trafienia, odrzut, powrót
+rcinfo . net [port]                               # gra sieciowa na 127.0.0.1: dołączanie, lista graczy, wiadomości, odmowy, wyjście
 ```
 
 `rcshot` renderuje trasę offscreen do PNG, z autem i kamerą za nim. Zmienne środowiskowe ustawiają scenę:
@@ -373,6 +374,8 @@ fx/             efekty, bez GPU
   worldfx.*     efekty trasy: rozbryzgi przy water_splash_N, fale przy water_wave_N, strzały strażników, ślady stóp
 audio/          dźwięk: mikser PCM, kanały SNCH, silnik auta, dźwięki otoczenia, muzyka MP3 (lib/dr_mp3), film
                 intro MPEG-1 (lib/pl_mpeg)
+net/            gra sieciowa: sesje na ENet (UDP) zamiast DirectPlay 8 oryginału, gospodarz pośredniczy
+                między graczami, bez GPU
 game/           gra (Tempest)
   resources.*   dostęp do instalacji gry, cache tekstur
   camera.*      kamera (oko, kierunek, rzutowanie)
@@ -395,6 +398,7 @@ tools/          rcinfo, rcshot
 lib/Tempest     silnik (submoduł git)
 lib/dr_mp3      dekoder MP3
 lib/pl_mpeg     dekoder MPEG-1 i MP2 (intro, licencja MIT)
+lib/enet        ENet 1.3.18, niezawodne i szybkie wiadomości po UDP (gra sieciowa, licencja MIT)
 ```
 
 ## Dokumentacja
@@ -416,5 +420,5 @@ Zrobione są wszystkie elementy pojedynczego szybkiego wyścigu. Brakuje:
 ## Licencja
 
 Kod projektu jest udostępniony na licencji MIT (zobacz [LICENSE](LICENSE)). Silnik Tempest ma własną licencję
-(MIT) w `lib/Tempest`. RC Cars i jego dane należą do ich właścicieli; repozytorium nie zawiera i nie może zawierać
+(MIT) w `lib/Tempest`, ENet (MIT) w `lib/enet`. RC Cars i jego dane należą do ich właścicieli; repozytorium nie zawiera i nie może zawierać
 żadnych plików z gry.

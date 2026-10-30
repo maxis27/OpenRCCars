@@ -1162,6 +1162,31 @@ twórcy (0x4c3e40), 0x649 demo (komunikat 0x26d), 0x64a gra wielu graczy (0x4cd9
   kamerę, dźwięk, efekty i kokpit (`Hud::setView`), klawisze z `Player2Layout`/`Player2` (domyślnie Klaw.2: Tab, W A
   S D, Alt, Z, C); zderzenia aut graczy jak z przeciwnikami. Postęp na trasie liczy `RouteTracker`.
 
+## Gra sieciowa
+
+Oryginał gra przez DirectPlay 8 w trybie peer (`CoCreateInstance(CLSID_DirectPlay8Peer)`), z dostawcami TCP/IP
+i łącza szeregowego. Kto zakłada grę („Utwórz grę”), jest w trybie 7, kto dołącza („Dołącz do gry”), w trybie 8.
+RCCars.crs, sekcja `Network`: `portNum`, `maxPlayersNum` (6), `sessionName`. Nie ma serwera z listą gier: dołącza się
+po adresie gospodarza, a przez internet gospodarz potrzebuje publicznego IP albo przekierowanych portów.
+
+- Wiadomości: ok. 15 rodzajów (id 0x3ef..0x403) zarejestrowanych przez 0x491c80, wysyłane przez 0x491fb0/0x491f10
+  do `netPlayerSendTo`. Rodzaj 0: stan własnego auta, 35 bajtów (0x4f4a60); 1: zderzenie (0x4f5010); 3: stan
+  rekwizytów od gospodarza (0x52db29), stosowany przez klientów w trybie 8 (0x52db60); 6: czat, 76 bajtów.
+- Każdy gracz rządzi swoim autem i wysyła jego stan 4, 6, 10, 15 albo 25 razy na sekundę, zależnie od wybranego
+  łącza (0x571cac). Gospodarz rządzi rekwizytami.
+- Gracz z opóźnieniem większym niż pozwala gospodarz (maks. opóźnienie 10..1000 ms w `dlgNETCREATE_OPTS`) jest
+  odrzucany: 42453 „Lag time more than server access”. Utrata połączenia: 20233 „Connection lost”.
+- Ekrany: `dlgNETCREATE_OPTS`, `dlgNETCREATE_PLRINFO`, `dlgNETJOIN_OPTS`, `dlgNETJOIN_SERVINFO`,
+  `dlgWAITPLAYERS_RACESUM` / `_CARSETUP` / `_CARRESTR` / `_CHAT`, skrypt wyścigu `NetEntry`, tabela `dlgMULTI_FINISH`.
+- Wiatr rekwizytów (0x50d3f0) działa tylko w trybach 7 i 8 (0x4a0b00).
+
+U nas (`net/session.*`): własne sesje na ENet po UDP, bez zgodności z RCCars.exe. Gracze nie łączą się każdy z każdym,
+tylko z gospodarzem, który przekazuje ich wiadomości dalej: jeden port do otwarcia na jednym komputerze. Wiadomości
+niezawodne (poczekalnia, czat, zderzenia, meta) idą kanałem 0, szybkie (stan aut) kanałem 1, gdzie zgubiony pakiet
+zastępuje następny. Gospodarz przez 2 s mierzy opóźnienie dołączającego (czas w obie strony) i odrzuca go jak
+oryginał, gdy jest za duże. Domyślny port 2302 (pierwszy port sesji DirectPlay 8), gdy RCCars.crs go nie ma.
+Test bez gry: `rcinfo . net`.
+
 ## Tryb deweloperski
 
 `RCCars.exe -dev` (0x4883dd ustawia flagę 0x147d204, w logu „-dev mode on”): klawisz F9 (0x48c0e3) przełącza flagę

@@ -461,15 +461,18 @@ static int cmdColl(const fs::path& path, const char* objOut) {
   return mismatch==0 ? 0 : 3;
   }
 
-// the props of a track (stone.sb) as rigid bodies in `world`, left to settle on the ground like the game does
+// the props of a track (stone.sb) as rigid bodies in `world`, placed resting on the ground as the game does
+// (RCCars.exe 0x50cea0)
 struct TrackProp {
   const rc::SbInstance*     instance = nullptr;
   std::unique_ptr<rc::Prop> body;
-  rc::Vec3                  rest;     // where it came to rest
+  rc::Vec3                  rest;     // where it was placed
   };
 
-static std::vector<TrackProp> placeProps(const fs::path& game, const rc::SbScene& scene, rc::PhysicsWorld& world) {
+static std::vector<TrackProp> placeProps(const fs::path& game, rc::PackFile& pack, const rc::SbScene& scene,
+                                         rc::PhysicsWorld& world) {
   rc::ObjectLibrary      lib([&](const std::string& p){ return readFile(game/p); });
+  const rc::PropShapes   shapes = rc::PropShapes::load(pack);
   std::vector<TrackProp> ret;
   for(auto& p:lib.place(scene)) {
     if(p.model->kind!=rc::ObjectLibrary::Kind::Prop)
@@ -477,14 +480,11 @@ static std::vector<TrackProp> placeProps(const fs::path& game, const rc::SbScene
     const rc::SbScript* s = p.model->scene->script(p.model->id);
     TrackProp tp;
     tp.instance = p.instance;
-    tp.body     = std::make_unique<rc::Prop>(world,rc::propGeometry(*p.model->scene,p.model->id,p.model->origin),
+    tp.body     = std::make_unique<rc::Prop>(world,shapes,rc::propGeometry(*p.model->scene,p.model->id,p.model->origin),
                                              rc::PropParams::parse(s ? s->text : std::string()),p.instance->world);
+    tp.rest     = tp.body->pose().translation();
     ret.push_back(std::move(tp));
     }
-  for(int i=0; i<int(2.f/rc::PhysicsWorld::FixedDt); ++i)
-    world.step(rc::PhysicsWorld::FixedDt);
-  for(auto& p:ret)
-    p.rest = p.body->pose().translation();
   return ret;
   }
 
@@ -549,7 +549,7 @@ static int cmdDrive(const fs::path& game, const fs::path& track, rc::PackFile& p
   cps.reset(start);
 
   rc::PhysicsWorld world(coll);
-  auto             props = placeProps(game,scene,world);
+  auto             props = placeProps(game,pack,scene,world);
   rc::Vehicle      veh(world,geom,prm,start);
   rc::ResetVolumes resets(scene);
 
@@ -764,7 +764,7 @@ static int cmdGates(const fs::path& game, const fs::path& track, rc::PackFile& p
     }
   const auto& route = cps.route();
   rc::PhysicsWorld world(coll);
-  auto             props = placeProps(game,scene,world);
+  auto             props = placeProps(game,pack,scene,world);
   rc::Vehicle      veh(world,geom,prm,rc::Mat4());
   const float dt = 1.f/60.f;
   size_t ok = 0, count = 0;
@@ -987,7 +987,7 @@ static int cmdRace(const fs::path& game, const fs::path& track, int laps) {
   return ok ? 0 : 3;
   }
 
-static int cmdObjects(const fs::path& game, const fs::path& track) {
+static int cmdObjects(const fs::path& game, const fs::path& track, rc::PackFile& pack) {
   auto scene = rc::SbScene::load(readFile(game/track));
   rc::ObjectLibrary lib([&](const std::string& p){ return readFile(game/p); });
   rc::CollisionMesh coll(scene);
@@ -1016,15 +1016,25 @@ static int cmdObjects(const fs::path& game, const fs::path& track) {
     std::printf("\n");
     }
 
-  // the editor left most props a little above the ground: how far each drops before it comes to rest
+  // the editor left most props a little above the ground: where the game puts each one (0x50cea0), and where it
+  // is after 3 s of a player's car looking at all of them (those placed not upright tip over)
   rc::PhysicsWorld world(coll);
-  auto   props = placeProps(game,scene,world);
+  auto   props = placeProps(game,pack,scene,world);
+  std::vector<rc::Mat4> viewers;
+  for(auto& p:props)
+    viewers.push_back(rc::Mat4::translate(p.rest-rc::Vec3{0,0,1}));
+  world.setViewers(viewers);
+  for(int i=0; i<180; ++i)
+    world.step(1.f/60.f);
   size_t lost  = 0;
   for(auto& p:props) {
-    const rc::Vec3 d = p.rest-p.instance->world.translation();
-    const bool     off = !std::isfinite(p.rest.y) || p.rest.y<scene.collision.min.y;
-    std::printf("  settled %-20s dropped %5.2f m, slid %5.2f m, at %7.2f %6.2f %7.2f%s\n",p.instance->name.c_str(),-d.y,
-                std::sqrt(d.x*d.x+d.z*d.z),p.rest.x,p.rest.y,p.rest.z,off ? "  FELL THROUGH" : "");
+    const rc::Vec3 d   = p.rest-p.instance->world.translation();
+    const rc::Vec3 at  = p.body->pose().translation();
+    const rc::Vec3 mv  = at-p.rest;
+    const bool     off = !std::isfinite(at.y) || at.y<scene.collision.min.y;
+    std::printf("  placed %-20s dropped %5.2f m, slid %5.2f m, then moved %5.2f m, at %7.2f %6.2f %7.2f%s\n",
+                p.instance->name.c_str(),-d.y,std::sqrt(d.x*d.x+d.z*d.z),mv.length(),at.x,at.y,at.z,
+                off ? "  FELL THROUGH" : "");
     lost += off ? 1 : 0;
     }
   std::printf("%zu objects (%zu props, %zu fell through the track), %zu models not found\n",placed,props.size(),lost,missing);
@@ -1394,7 +1404,7 @@ static int cmdRam(const fs::path& game, const fs::path& track, rc::PackFile& pac
   coll.setSeas(rc::Seas::load(scene,pack,name));
   rc::Checkpoints    cps(scene,coll);
   rc::PhysicsWorld   world(coll);
-  auto               props = placeProps(game,scene,world);
+  auto               props = placeProps(game,pack,scene,world);
   auto params = [&pack](int32_t c){ return rc::CarParams::load(pack,c); };
   rc::Opponents ai(world,[&pack](const std::string& f){ return pack.read(f); },carScene,name,cps,
                    rc::Opponents::Level::Normal,params);
@@ -1789,8 +1799,6 @@ int main(int argc, char** argv) {
       return cmdColl(game/argv[3],argc>4 ? argv[4] : nullptr);
     if(cmd=="race" && argc>3)
       return cmdRace(game,argv[3],argc>4 ? std::atoi(argv[4]) : rc::Race::DefaultLaps);
-    if(cmd=="objects" && argc>3)
-      return cmdObjects(game,argv[3]);
     if(cmd=="obj" && argc>4)
       return cmdObj(game/argv[3],argv[4]);
     if(cmd=="nodes" && argc>4)
@@ -1802,6 +1810,8 @@ int main(int argc, char** argv) {
       return cmdScp(game/argv[3]);
 
     rc::PackFile pack(game/"RCCars.pack");
+    if(cmd=="objects" && argc>3)
+      return cmdObjects(game,argv[3],pack);
     if(cmd=="pack" && argc>3) {
       // lists the entries in one folder, e.g. "rcinfo <game> pack Sound"
       const std::string dir = rc::PackFile::normalize(std::string(argv[3])+"\\");

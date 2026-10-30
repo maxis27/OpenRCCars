@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -8,46 +9,30 @@
 #include "cargeometry.h"
 #include "carparams.h"
 #include "carrig.h"
-
-class btBroadphaseInterface;
-class btCollisionDispatcher;
-class btSphereShape;
-class btCompoundShape;
-class btDefaultCollisionConfiguration;
-class btDiscreteDynamicsWorld;
-class btRigidBody;
-class btPersistentManifold;
-class btCollisionObject;
-class btSequentialImpulseConstraintSolver;
-class btTriangleIndexVertexArray;
-class btBvhTriangleMeshShape;
-struct btDefaultMotionState;
+#include "balls.h"
 
 namespace rc {
 
 class Vehicle;
+class Prop;
 
-// Bullet world of one track. The track is a static triangle mesh made of the COLL triangles but the water: what
-// the props (Prop) standing on the track hit. The cars (Vehicle) move by RCCars.exe's own rules, against the same
-// triangles (touchTrack, crossesTrack); Bullet only tells them what other bodies they touch.
-//
-// Bullet is tuned for objects of about a metre and the cars are ~0.4 m long, so the simulation runs
-// Scale times larger than the data, with gravity scaled the same way: motion looks identical, only the
-// numbers inside Bullet are bigger. Nothing outside this file and vehicle.cpp sees scaled values.
+// The physics of one track, all by RCCars.exe's own rules: the cars (Vehicle) and the props (Prop) move against
+// the COLL triangles but the water (touchTrack, crossesTrack); each frame the objects near the players then meet
+// each other by their spheres (0x533430, see step()).
 class PhysicsWorld {
   public:
-    static constexpr float Scale   = 10.f;
     static constexpr float Gravity = 10.f;    // m/s^2, as in RCCars.exe
-    static constexpr float FixedDt = 1.f/120.f;
 
     explicit PhysicsWorld(const CollisionMesh& track);
     ~PhysicsWorld();
 
-    // advances the cars as RCCars.exe does (Vehicle::advance), then the props in fixed steps of FixedDt (at most
-    // 8 per call)
+    // the players' cars, model -> world (RCCars.exe's viewers, 0x487300): the props move only near them (0x50ec10)
+    // and the objects meet only within 10 m of one (0x533340). None set: every car counts.
+    void                     setViewers(std::vector<Mat4> poses) { viewers = std::move(poses); }
+    // a frame: the cars as RCCars.exe moves them (Vehicle::advance), the props (Prop, 0x50cb00), then the cars and
+    // the props that touch each other (0x533430): a car and a prop bounce apart along the line between their
+    // centres of mass (0x533ee0), two props too (0x534240). Cars, people and road cars meet in their own classes.
     void                     step(float dt);
-    // s of the last step() the props are not simulated for yet (less than FixedDt)
-    float                    pending() const { return localTime; }
 
     // a point of the solid track (not water) within reach of a sphere (RCCars.exe 0x4549f0)
     struct TrackTouch {
@@ -62,38 +47,28 @@ class PhysicsWorld {
     // the segment from `from` to `to` goes through a solid triangle (0x4557e0)
     bool                     crossesTrack(const Vec3& from, const Vec3& to) const;
 
-    // btCollisionObject::getUserIndex() of props (Prop)
-    static constexpr int     PropTag = 1;
-    // the same of the cars (Vehicle, Opponent)
-    static constexpr int     CarTag  = 2;
-    // the same of people, guards and dogs (Characters)
-    static constexpr int     CharacterTag = 3;
-    // the same of the road traffic (Traffic)
-    static constexpr int     TrafficTag = 4;
-
     const CollisionMesh&     track() const { return coll; }
-    btDiscreteDynamicsWorld& bullet()      { return *world; }
-    btRigidBody&             ground()      { return *groundBody; }
-    // the sound surface (SoundSurface) of a triangle of ground()'s mesh, by Bullet's triangle index
-    uint8_t                  groundSound(int triangle) const;
+    const std::vector<Prop*>& props() const { return propList; }
+    // a road car's balls (`origin` its model's) touch the props (RCCars.exe 0x5348d0): each one touched is pushed
+    // 1 m/s away from it, along the line through the two spheres' centres, and sounds
+    void                     pushProps(const std::vector<Ball>& balls, const Vec3& origin);
+    // the balls touch a prop
+    bool                     touchesProp(const std::vector<Ball>& balls, const Vec3& origin) const;
 
   private:
     friend class Vehicle;
-    const CollisionMesh&                                  coll;
-    std::unique_ptr<btDefaultCollisionConfiguration>      config;
-    std::unique_ptr<btCollisionDispatcher>                dispatcher;
-    std::unique_ptr<btBroadphaseInterface>                broadphase;
-    std::unique_ptr<btSequentialImpulseConstraintSolver>  solver;
-    std::unique_ptr<btDiscreteDynamicsWorld>              world;
+    friend class Prop;
+    // the objects within 10 m of a viewer meet (0x533430)
+    void                     meet();
+    bool                     nearViewer(const Vec3& at, float reach) const;
+    bool                     inFront(const Vec3& at) const;
 
-    std::vector<float>                                    vertices;
-    std::vector<int>                                      indices;
-    std::unique_ptr<btTriangleIndexVertexArray>           meshData;
-    std::unique_ptr<btBvhTriangleMeshShape>               meshShape;
-    std::unique_ptr<btRigidBody>                          groundBody;
-    std::vector<uint32_t>                                 solidTris;   // ground mesh triangle -> CollisionMesh one
-    float                                                 localTime = 0;
+    const CollisionMesh&                                  coll;
     std::vector<Vehicle*>                                 cars;        // Vehicle adds and removes itself
+    std::vector<Prop*>                                    propList;    // Prop too
+    std::vector<Mat4>                                     viewers;
+    std::vector<Ball>                                     ballBuf[2];
+    uint32_t                                              rngState = 20061013u;
     mutable std::vector<uint32_t>                         seen;        // touchTrack: triangle -> query it was last seen in
     mutable uint32_t                                      query = 0;
   };
@@ -102,7 +77,7 @@ class PhysicsWorld {
 // (CarParams::body), on wheels that are spheres hanging from springs (Vehicle::suspension). Each step the springs,
 // the engine on the rear wheels and the tires (Vehicle::tires) push the body, which moves and stops at the track
 // by RCCars.exe's own rules (Vehicle::move); other cars, props and people push it as the original does
-// (Vehicle::bounce, Vehicle::hits). Its Bullet body (chassis()) only follows it, for what touches it. The wheels
+// (Vehicle::bounce, PhysicsWorld::step, Vehicle::bump). Other objects find it by its spheres (balls()). The wheels
 // stand on solid ground only: water (Surface::Water) is not solid, so the car wades through shallow water and
 // sinks into deep water, slowed down by it, and counts as drowned once a point just above its origin has been
 // under water for CarParams::drownTime (see CarParams::drownHeight).
@@ -146,7 +121,7 @@ class Vehicle {
       };
     const Contact&             contact()  const { return touch; }
     // touched another car in the last update, after not touching one in the update before
-    bool                       carBump()  const { return bump; }
+    bool                       carBump()  const { return carBumped; }
     // the highest sound surface under the wheels touching the ground or standing in water (SoundSurface::Water)
     uint8_t                    groundSound() const { return groundSnd; }
     // a wheel touches the ground or stands in water
@@ -162,18 +137,38 @@ class Vehicle {
     Vec3                       localSpin() const;
     // an impulse (kg m/s) at the world point `at`
     void                       applyImpulse(const Vec3& impulse, const Vec3& at);
+    float                      invMass() const { return 1.f/prm.mass; }
+    // world inverse inertia times `v`
+    Vec3                       invInertia(const Vec3& v) const;
+    // RCCars.exe 0x4f0750 for one contact of two bodies (cars, props) at `at`, its normal `n` out of b towards a
+    // (0x534be0): over up to 10 passes, the first always, while they part at most at 0.02 m/s (their centres'
+    // velocities, those parting at less than 1 m/s counted as not parting), each pass pushes them apart by an
+    // impulse that would part them at twice the speed they meet at, at least 0.2 m/s (0x5543ec, 0x5544f0), equal
+    // and opposite (0x4f0840)
+    template<class A, class B>
+    static void                exchange(A& a, B& b, const Vec3& at, const Vec3& n);
     // RCCars.exe 0x533990 for two cars that touch: pushed apart along the line from `bCentre` to `aCentre` (their
     // centres of mass, one of them maybe lifted), through the middle of it, so that they part at least as fast as
     // they met (0x534be0, 0x4f0750)
     static void                bounce(Vehicle& a, Vehicle& b, const Vec3& aCentre, const Vec3& bCentre);
-    // two players' cars (the split screen): bounce() when their bodies touch after the last step; true if they do
-    static bool                collide(PhysicsWorld& world, Vehicle& a, Vehicle& b);
+    // two players' cars (the split screen): bounce() when their spheres touch after the last step; true if they do
+    static bool                collide(Vehicle& a, Vehicle& b);
+    // its spheres now, world (RCCars.exe 0x4ef9e0: the wheels', then the body's)
+    void                       balls(std::vector<Ball>& out) const;
+    // the spheres of a car of `geometry` and `params` standing at `pose` (model -> world), its wheels where the model
+    // has them: an opponent replaying its recording
+    static void                ballsAt(const CarGeometry& geometry, const CarParams& params, const Mat4& pose,
+                                       std::vector<Ball>& out);
+    // RCCars.exe 0x534340, 0x5344f0, 0x5349d0: a person, a guard or a dog touched at `point` stops the car along the
+    // line from it to the car's centre of mass, through its middle, until it leaves at 0.05 m/s (0x4f0750)
+    void                       bump(const Vec3& point);
+    // another car touched it (Opponents::collide, collide()): for carBump()
+    void                       touchedCar() { carNow = true; }
+    // a prop touched it since the last call (an opponent's autopilot counts it as a collision, 0x533ee0 -> 0x4430)
+    bool                       takeObjectTouch() { const bool t = objectNow; objectNow = false; return t; }
     // stuck for StuckSteps steps in a row: the original puts the car back at the last checkpoint (0x508b30)
     static constexpr int       StuckSteps = 5;
     bool                       stuck() const { return stuckFor>=StuckSteps; }
-    // the Bullet body, tagged PhysicsWorld::CarTag: kinematic, it follows the car and only finds what touches it
-    btRigidBody&               chassis() { return *body; }
-    const btRigidBody&         chassis() const { return *body; }
     // adds `dv` (m/s, world) to the velocity: a kick (people.sb characters)
     void                       addVelocity(const Vec3& dv);
     // a bullet of a guard or the BTR hit the car (RCCars.exe 0x508560 -> 0x4f3470): pushed ShotPushOut m/s away from
@@ -285,10 +280,8 @@ class Vehicle {
     void                                  slide(const std::vector<Touch>& at, float t);  // 0x4f0560
     void                                  resolve(const std::vector<Touch>& at);         // 0x4f0750
     void                                  unstick();
-    void                                  syncChassis();
     Vec3                                  pointVelocity(const Vec3& p) const;
-    // world inverse inertia times `v`, and the inertia times `v`
-    Vec3                                  invInertia(const Vec3& v) const;
+    // the inertia times `v`
     Vec3                                  inertia(const Vec3& v) const;
     Vec3                                  axis(int i) const { return {rot.m[0][i],rot.m[1][i],rot.m[2][i]}; }
 
@@ -316,8 +309,8 @@ class Vehicle {
     void                                  surfaces(float dt);
     // the contacts of the last physics steps -> lastHit
     void                                  hits(float dt);
-    // one manifold of the body with a prop -> touch
-    void                                  contacts(const btPersistentManifold& m, const btCollisionObject* other);
+    // RCCars.exe 0x533ee0: it touches prop `p`
+    void                                  meet(Prop& p, uint32_t& rng);
     // a contact with the track (or with a prop: wood) that the car meets with velocity `v` there -> `into`
     static void                           note(Contact& into, const Vec3& v, const Vec3& normal, uint8_t surface);
     // the steering angle of wheel `w`, degrees, + = left
@@ -376,16 +369,35 @@ class Vehicle {
 
     Hit                                   lastHit   = Hit::None;
     Contact                               touch;
-    bool                                  bump      = false;
+    bool                                  carBumped = false;
     bool                                  carBefore = false;  // touched a car in the update before
     uint8_t                               groundSnd = 0;
     bool                                  groundedNow = false;
     float                                 sinceProp = 1e3f;   // s since the last hit on a prop
-
-    std::vector<std::unique_ptr<btSphereShape>> sphereShapes;
-    std::unique_ptr<btCompoundShape>      shape;
-    std::unique_ptr<btDefaultMotionState> motion;
-    std::unique_ptr<btRigidBody>          body;
+    bool                                  propHit   = false;  // a prop hit since the last update
+    bool                                  carNow    = false;  // a car touched it since the last update
+    bool                                  objectNow = false;  // a prop touched it (takeObjectTouch)
   };
+
+template<class A, class B>
+void Vehicle::exchange(A& a, B& b, const Vec3& at, const Vec3& n) {
+  constexpr float StillSpeed = 0.02f;   // m/s (0x55458c)
+  const Vec3 ra = at-a.centre(), rb = at-b.centre();
+  for(int pass=0; pass<10; ++pass) {
+    float vn = Vec3::dot(a.velocity()-b.velocity(),n);   // 0x4f04e0
+    if(vn>0 && vn<1.f)
+      vn = 0;
+    if(pass>0 && vn>StillSpeed)
+      break;
+    const float dv = std::max(-2.f*vn,0.2f);
+    const float k  = a.invMass()+Vec3::dot(Vec3::cross(a.invInertia(Vec3::cross(ra,n)),ra),n)
+                   + b.invMass()+Vec3::dot(Vec3::cross(b.invInertia(Vec3::cross(rb,n)),rb),n);
+    if(k<1e-6f)
+      return;
+    const Vec3 j = n*(dv/k);
+    a.applyImpulse(j,at);
+    b.applyImpulse(j*-1.f,at);
+    }
+  }
 
 }

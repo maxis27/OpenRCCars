@@ -1,18 +1,14 @@
 #include "traffic.h"
 
-#include <btBulletDynamicsCommon.h>
-
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 
-#include "btconvert.h"
 #include "formats/settings.h"
 #include "vehicle.h"
 
 using namespace rc;
-using namespace rc::bt;
 
 namespace {
 
@@ -150,14 +146,9 @@ struct Traffic::State {
   bool         searching  = false;
 
   // collision
-  std::unique_ptr<btBoxShape>         boxShape;
-  std::unique_ptr<btSphereShape>      wheelShape[8];
-  std::unique_ptr<btCompoundShape>    shape;
-  std::unique_ptr<btDefaultMotionState> motion;
-  std::unique_ptr<btRigidBody>        rigid;
-  bool         inWorld = false;
-  Box          box;                   // model space: body box
-  std::vector<std::pair<Vec3,float>>  spheres; // model space: wheels
+  bool         inWorld = false;     // on the road, not parked
+  Box          box;                   // model space: body box (ours, what the opponents tell a touch by)
+  std::vector<std::pair<Vec3,float>>  spheres; // model space: wheels, what the other objects meet (0x516480)
   };
 
 Traffic::Traffic(PhysicsWorld& world, ObjectLibrary& library, const SbScene& track, std::string_view trackName,
@@ -223,11 +214,7 @@ Traffic::Traffic(PhysicsWorld& world, ObjectLibrary& library, const SbScene& tra
   restart();
   }
 
-Traffic::~Traffic() {
-  for(auto& s:states)
-    if(s->inWorld)
-      owner.bullet().removeRigidBody(s->rigid.get());
-  }
+Traffic::~Traffic() = default;
 
 void Traffic::setup(State& s, const SbInstance& in) {
   const auto& model = *s.car.model;
@@ -351,33 +338,9 @@ void Traffic::setup(State& s, const SbInstance& in) {
   if(!box.empty())
     wear("treiler_box",box=="1" ? "treiler_box_02" : "treiler_box_01");
 
-  // collision: the body box and the wheels' spheres, a kinematic body moved along the path
+  // collision: the wheels' spheres (0x517940: the wheel's node, half its height, times 0x554adc or 0x554b38), all
+  // the other objects meet of it (0x516480); the body box only tells the opponents' touches
   s.box = boxOf(node(info.box));
-  s.shape = std::make_unique<btCompoundShape>();
-  btTransform t;
-  if(!s.box.empty()) {
-    const Vec3 half = s.box.size()*0.5f;
-    s.boxShape = std::make_unique<btBoxShape>(btVector3(half.x,half.y,half.z)*S);
-    t.setIdentity();
-    t.setOrigin(toBt(s.box.centre())*S);
-    s.shape->addChildShape(t,s.boxShape.get());
-    }
-  for(size_t i=0; i<s.spheres.size() && i<8; ++i) {
-    s.wheelShape[i] = std::make_unique<btSphereShape>(s.spheres[i].second*S);
-    t.setIdentity();
-    t.setOrigin(toBt(s.spheres[i].first)*S);
-    s.shape->addChildShape(t,s.wheelShape[i].get());
-    }
-  btTransform start;
-  start.setIdentity();
-  s.motion = std::make_unique<btDefaultMotionState>(start);
-  btRigidBody::btRigidBodyConstructionInfo ci(0,s.motion.get(),s.shape.get());
-  ci.m_friction    = 0.5f;
-  ci.m_restitution = 0.2f;
-  s.rigid = std::make_unique<btRigidBody>(ci);
-  s.rigid->setCollisionFlags(s.rigid->getCollisionFlags()|btCollisionObject::CF_KINEMATIC_OBJECT);
-  s.rigid->setActivationState(DISABLE_DEACTIVATION);
-  s.rigid->setUserIndex(PhysicsWorld::TrafficTag);
   }
 
 void Traffic::restart() {
@@ -669,18 +632,14 @@ void Traffic::turret(State& s, float dt, Vehicle* player, const std::vector<Char
   }
 
 void Traffic::placeBody(State& s) {
-  const bool want = !s.parked;
-  if(want!=s.inWorld) {
-    if(want)
-      owner.bullet().addRigidBody(s.rigid.get());
-    else
-      owner.bullet().removeRigidBody(s.rigid.get());
-    s.inWorld = want;
-    }
-  const btTransform t = toBt(s.car.world);
-  s.motion->setWorldTransform(t);
+  s.inWorld = !s.parked;
   if(!s.inWorld)
-    s.rigid->setWorldTransform(t);
+    return;
+  // its spheres push the props they touch (0x5348d0)
+  ballBuf.clear();
+  for(auto& [c,r]:s.spheres)
+    ballBuf.push_back({s.car.world.point(c),r});
+  owner.pushProps(ballBuf,s.car.world.translation());
   }
 
 bool Traffic::touches(const State& s, const Vec3& p, float margin) const {
@@ -698,16 +657,15 @@ bool Traffic::touches(const State& s, const Vec3& p, float margin) const {
   }
 
 bool Traffic::playerTouches(const State& s, const Vehicle& player) const {
-  const btCollisionObject* car  = &player.chassis();
-  const btCollisionObject* body = s.rigid.get();
-  auto& disp = *owner.bullet().getDispatcher();
-  for(int i=0; i<disp.getNumManifolds(); ++i) {
-    const btPersistentManifold* m = disp.getManifoldByIndexInternal(i);
-    if(!((m->getBody0()==car && m->getBody1()==body) || (m->getBody0()==body && m->getBody1()==car)))
-      continue;
-    for(int c=0; c<m->getNumContacts(); ++c)
-      if(m->getContactPoint(c).getDistance()<=0.01f*S)
-        return true;
-    }
-  return false;
+  // 0x533430: closer than 2.5 m, and a pair of their spheres touching
+  const Vec3 at = s.car.world.translation();
+  if((player.pose().translation()-at).length()>=BallsReach)
+    return false;
+  auto& mine = const_cast<std::vector<Ball>&>(ballBuf);
+  mine.clear();
+  for(auto& [c,r]:s.spheres)
+    mine.push_back({s.car.world.point(c),r});
+  auto& car = const_cast<std::vector<Ball>&>(carBuf);
+  player.balls(car);
+  return ballsMeet(car.data(),car.size(),mine.data(),mine.size());
   }

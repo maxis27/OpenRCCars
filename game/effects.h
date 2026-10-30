@@ -12,6 +12,7 @@
 
 #include "fx/careffects.h"
 #include "fx/worldfx.h"
+#include "quality.h"
 
 class Resources;
 
@@ -40,6 +41,8 @@ class Effects {
     void tickSecond(float dt, const rc::Vehicle& car, const rc::CollisionMesh& track, const rc::Vec3& camera, bool gas,
                     bool brake);
     void clearSecond(bool keep);
+    // what the options' quality leaves (game/quality.h): of the cars' effects and of the track's
+    void setQuality(const Quality& q);
     // the track's own effects (fx/worldfx.h): splashes at its water_splash_N markers, waves breaking at its
     // water_wave_N markers on `sea` (the main sea's waves, null: none), the guards' gunfire, the smoke out of its
     // coolers (*KOOLER* nodes)
@@ -106,6 +109,9 @@ class Effects {
     rc::fx::Gunfire                     gunfire;
     rc::fx::Footprints                  footprints;
     rc::fx::HatchSmoke                  hatch;
+    rc::fx::CarEffects::Features        carFeatures;
+    bool                                splashOn = true, burstOn = true, solesOn = true, hatchOn = true;
+    bool                                shoreOn  = true;
 
     void tickCar(rc::fx::CarEffects& fx, float dt, const rc::Vehicle& car, const rc::CollisionMesh& track,
                  const rc::Vec3& camera, bool gas, bool brake);

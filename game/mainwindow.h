@@ -23,6 +23,7 @@
 #include "intro.h"
 #include "menu.h"
 #include "players.h"
+#include "quality.h"
 #include "physics/aiemu.h"
 #include "physics/characters.h"
 #include "physics/traffic.h"
@@ -104,6 +105,7 @@ class MainWindow : public Tempest::Window {
     void shadeCars(float dt);                   // carShade, aiShades from the lightmaps under the cars
     void shadeFeatures(float dt);               // the props', people's, guards' and road cars' FeatureShade
     void tickAntennas(float dt);                // the cars' springy antennas
+    bool springyAntenna(const rc::Vec3& pos, bool opponent) const;
     void setupOpponents();                      // the opponents of the track for aiLevel
     // the ghost race's ghosts (raceMode Ghost, MultiGhost), none in the other races; those of the race before
     // written first (Multi)
@@ -351,8 +353,11 @@ class MainWindow : public Tempest::Window {
     int32_t                 fpsLimit  = 0;
     uint64_t                frameDue  = 0;
     bool                    showMap   = true, showArrow = true;
+    // the graphics' and the effects' quality (RenderQual, SFXQual) and what they switch on
+    Quality                 quality;
     // RCCars.crs read again: the options the game follows
     void                    applyOptions();
+    LevelMesh::Features     levelFeatures() const;
     bool                    held(Controls::Action a) const { return controls.held(a,keys.data()); }
     uint64_t                lastTick = 0;
     float                   time     = 0; // seconds since start, animates the water

@@ -194,11 +194,13 @@ const rc::WaterWaves* LevelMesh::mainSea() const {
   return &seaSurface->waves[size_t(seaSurface->main)];
   }
 
-std::vector<bool> LevelMesh::hiddenMeshes(const rc::SbScene& scene) {
+std::vector<bool> LevelMesh::hiddenMeshes(const rc::SbScene& scene, int32_t renderQuality) {
   // "_LOD<n>" copies of the same thing are siblings under one parent. Objects keep their full detail mesh
   // without a suffix next to simplified _LOD1/_LOD2 copies; the sea is made only of LODs, where _LOD1 is the
   // coarsest and the highest number the finest, and groups far from the track have only _LOD1/_LOD2. The
-  // original picks one per distance (WaterLOD); we draw the finest one of each group.
+  // original picks one per distance (WaterLOD); we draw the finest one of each group it keeps. Which it keeps
+  // depends on RenderQual (0x51f160, _wlodScanHier_LOD): all of them on high, all but the finest on medium
+  // ("Last LOD is skipped") and only _LOD1 on low, which does not switch between them at all (0x523b00).
   auto lodOf = [](const std::string& name) {
     const size_t at = name.find("_LOD");
     return (at!=std::string::npos && at+4<name.size() && name[at+4]>='1' && name[at+4]<='9') ? name[at+4]-'0' : 0;
@@ -213,11 +215,18 @@ std::vector<bool> LevelMesh::hiddenMeshes(const rc::SbScene& scene) {
     else
       plain[m.parent] = true;
     }
+  auto kept = [renderQuality](int top) {
+    if(renderQuality<=0)
+      return 1;
+    if(renderQuality==1 && top>1)
+      return top-1;
+    return top;
+    };
   std::vector<bool> hidden(scene.meshes.size(),false);
   for(size_t i=0; i<scene.meshes.size(); ++i) {
     auto&     m = scene.meshes[i];
     const int l = lodOf(m.name);
-    hidden[i] = l>0 && (plain[m.parent] || l<finest[m.parent]);
+    hidden[i] = l>0 && (plain[m.parent] || l!=kept(finest[m.parent]));
     }
   return hidden;
   }
@@ -254,12 +263,12 @@ LevelMesh::Detail LevelMesh::Detail::load(rc::PackFile& pack) {
   }
 
 LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, const rc::CollisionMesh* ground,
-                     std::string_view track, const std::vector<int32_t>* groups)
+                     std::string_view track, const std::vector<int32_t>* groups, int32_t renderQuality)
   :pso(device) {
   bbox[0] = { 1e9f, 1e9f, 1e9f};
   bbox[1] = {-1e9f,-1e9f,-1e9f};
 
-  const auto hidden = hiddenMeshes(scene);
+  const auto hidden = hiddenMeshes(scene,renderQuality);
   auto isSea = [&](const rc::SbMesh& m, const rc::SbFace& f) {
     auto base = f.layer(rc::LayerTag::Base);
     return base!=nullptr && f.layer(rc::LayerTag::Alpha)==nullptr &&
@@ -568,6 +577,7 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
     waterUbo.push_back(device.ubo(WaterBlock::from(w,foam)));
 
   env        = &ScenePipelines::environment(res);
+  white      = &res.white();
   seaSurface = std::make_shared<SeaSurface>();
   seaSurface->waves    = std::move(seas);
   seaSurface->outlines = std::move(outlines);
@@ -721,6 +731,9 @@ void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass,
   for(auto& b:batches) {
     if(b.sky && !drawSky)
       continue;
+    // the shore's foam off (VIDEO_WaterCoast, 0x51c974: not made at all)
+    if((b.flags & F_Mask) && !features.coast)
+      continue;
     if((b.mode==rc::AlphaMode::Translucent)!=(pass==Pass::Translucent))
       continue;
     // only the sea with waves moves; pools and streams are flat
@@ -734,9 +747,13 @@ void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass,
       (viewProj*poses[size_t(b.group)]).toColumnMajor(push.viewProj);
     else
       std::copy(std::begin(frame.viewProj),std::end(frame.viewProj),push.viewProj);
-    push.envMap = b.envMap;
+    push.envMap = features.envMap ? b.envMap : 0.f;
     enc.setBinding(0,*b.tex[0]);
-    enc.setBinding(1,*b.tex[1]);
+    // without lightmaps (VIDEO_LightMaps off; on low RenderQual 0x4df940 also takes the lightmap___rds layers
+    // off the meshes, GLTX groups bit 12) the textures are drawn as they are: a white lightmap at scale 1
+    const bool lit = (b.flags & F_Lightmap) && !features.lightMaps;
+    push.sunDir[3] = lit ? 1.f : frame.sunDir[3];
+    enc.setBinding(1,lit ? *white : *b.tex[1]);
     enc.setBinding(2,*b.tex[2]);
     enc.setBinding(3,*b.tex[3]);
     auto drawRange = [&](size_t first, size_t count, bool detail) {
@@ -746,7 +763,7 @@ void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass,
       enc.setBinding(5,detail ? *detailTex[b.detail-1] : *env);
       enc.draw(vbo,first,count);
       };
-    if(b.detail<=0 || b.ranges.empty()) {
+    if(b.detail<=0 || b.ranges.empty() || !features.detail) {
       drawRange(b.first,b.count,false);
       continue;
       }

@@ -56,9 +56,10 @@ void Objects::shade(float dt, const rc::Spline& curve, rc::fx::LightmapProbe& pr
     }
   }
 
-void Objects::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj, const LevelMesh::Push& frame) const {
+void Objects::draw(Encoder<CommandBuffer>& enc, const rc::Mat4& viewProj, const LevelMesh::Push& frame,
+                   bool shaded) const {
   for(auto& it:items) {
     it.mesh->draw(enc,viewProj,frame,it.prop->pose()*rc::Mat4::scale({it.scale,it.scale,it.scale}),nullptr,false,
-                  it.light.value());
+                  shaded ? it.light.value() : -1.f);
     }
   }

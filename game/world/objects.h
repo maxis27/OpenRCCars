@@ -35,8 +35,9 @@ class Objects {
     std::vector<Sound> sounds() const;
     // how bright each prop is (rc::fx::FeatureShade::Prop) by the lightmap under it
     void   shade(float dt, const rc::Spline& curve, rc::fx::LightmapProbe& probe);
+    // `shaded`: by that brightness (VIDEO_CharLight), otherwise lit like the track's other models
     void   draw(Tempest::Encoder<Tempest::CommandBuffer>& enc, const rc::Mat4& viewProj,
-                const LevelMesh::Push& frame) const;
+                const LevelMesh::Push& frame, bool shaded = true) const;
     size_t size() const { return items.size(); }
 
   private:

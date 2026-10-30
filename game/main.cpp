@@ -64,12 +64,17 @@ int main(int argc, const char** argv) {
       }
     if(dev)
       Tempest::Log::i("-dev mode on");
-    bool inWindow = false;
+    bool    inWindow = false;
+    int32_t texQual  = 0;
     if(std::ifstream f{gameDir/"RCCars.crs",std::ios::binary}) {
       const std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)),std::istreambuf_iterator<char>());
-      inWindow = rc::ConfigFile::parse(data).integer("Video","VIDEO_RunInWindow",0)!=0;
+      const auto crs = rc::ConfigFile::parse(data);
+      inWindow = crs.integer("Video","VIDEO_RunInWindow",0)!=0;
+      // the textures' quality, as RCCars.exe from the start (its device's setup, 0x48f595)
+      texQual  = crs.integer("Video","VIDEO_TexQual",0);
       }
     Resources  resources(device,gameDir);
+    resources.setTextureQuality(texQual);
     MainWindow wnd(device,resources,track,dev,inWindow);
     return app.exec();
     }

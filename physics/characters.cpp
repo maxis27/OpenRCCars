@@ -15,7 +15,8 @@ namespace {
 constexpr float Pi = 3.14159265f;
 
 // RCCars.exe constants of the people (0x5107a0, 0x510f40, 0x511470, 0x5111f0, 0x510b90, 0x510b30)
-constexpr float PeopleActive   = 50.f;     // m from the player's car: the person is there (RenderQual 2)
+// m from the player's car: the person is there, by RenderQual 0, 1, 2 (0x5100d0)
+constexpr float PeopleActive[3] = {25.f,37.5f,50.f};
 constexpr float KickReach      = 0.8f;     // m, horizontal: kick or grab a car this close ...
 constexpr float KickHeight     = 0.6f;     // ... within this height
 constexpr float GrabChance     = 0.2f;     // rand < 0.2: grab instead of kicking, with
@@ -523,7 +524,7 @@ void Characters::person(State& s, float dt, Vehicle* player, std::vector<Car>& c
   s.lastPos = s.pos;
 
   const Vec3 car = player ? player->pose().translation() : Vec3{0,1e6f,0};
-  s.active = player!=nullptr && (car-s.pos).length()<PeopleActive;
+  s.active = player!=nullptr && (car-s.pos).length()<PeopleActive[size_t(renderQuality)];
   s.actor.visible = s.active;
 
   bumped |= hitBy(s,player,BumpSpeed);

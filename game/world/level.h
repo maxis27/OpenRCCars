@@ -16,11 +16,13 @@ class Resources;
 // One race track: RCCarsDB/<name>.sb, e.g. beach_1 (Surf), country_3 (Fishers) ...
 class Level {
   public:
-    Level(Tempest::Device& device, Resources& res, const std::string& name);
+    // `renderQuality`: the options' RenderQual (0..2), how fine the sea is
+    Level(Tempest::Device& device, Resources& res, const std::string& name, int32_t renderQuality = 2);
 
     const std::string&  name()  const { return levelName; }
     const rc::SbScene&  scene() const { return sb; }
     const LevelMesh&    mesh()  const { return *gpu; }
+    LevelMesh&          mesh()        { return *gpu; }
     // the moving scenery (beach_4's submarine and radar); LevelMesh::draw places it with animated().poses(time)
     const rc::fx::AnimatedObjects& animated() const { return anim; }
     // track collision from the COLL node (render faces the game collides with), and its debug overlay

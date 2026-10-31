@@ -67,6 +67,7 @@ class Menu : public Canvas {
       Training     = 4,  // "Trening" of the championship: 3 laps, the easy opponents, no fee and no prize
       Championship = 5,  // 5 laps, the expert opponents, the fee paid, the prize won (0x4e03b0)
       Demo         = 6,  // the game's demo: the recorded cars on beach_1, country_3 and country_4 in turn
+      Network      = 7,  // "Utwórz grę" (7) and "Dołącz do gry" (8): the other players' cars (ours: no opponents)
       TwoLaps      = 9,  // "Dwóch graczy", "Okrążenia": the split screen, 1 .. 3 laps
       TwoLag       = 10, // "Dwóch graczy", "Opóźnienia": the split screen, over when one is far enough ahead
       };

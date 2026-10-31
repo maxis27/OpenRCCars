@@ -1187,6 +1187,13 @@ zastępuje następny. Gospodarz przez 2 s mierzy opóźnienie dołączającego (
 oryginał, gdy jest za duże. Domyślny port 2302 (pierwszy port sesji DirectPlay 8), gdy RCCars.crs go nie ma.
 Test bez gry: `rcinfo . net`.
 
+Auta innych graczy (`net/carstate.*`, `game/netplay.cpp`): każdy wysyła stan swojego auta 25 razy na sekundę (najszybsze
+łącze oryginału), jako klatkę nagrania (`CarProfile::Frame`, to co zapisuje 0x4f5180) w 55 bajtach. Pozostali pokazują
+je jak ducha, ok. 0,09 s za nadawcą, po krzywej z prędkości między stanami (Hermite), a gdy stan się spóźni lub zginie,
+przesuwają je dalej po łuku z prędkości kątowej, najwyżej 0,25 s. Gracz k stoi na miejscu k-tego przeciwnika na siatce
+startowej (gospodarz na miejscu gracza). Gospodarz wstrzymuje odliczanie, aż wszyscy wczytają trasę. Na razie bez
+zderzeń aut i bez przeciwników. Test bez gry: `rcinfo . netcar [stany na s]`.
+
 ## Tryb deweloperski
 
 `RCCars.exe -dev` (0x4883dd ustawia flagę 0x147d204, w logu „-dev mode on”): klawisz F9 (0x48c0e3) przełącza flagę

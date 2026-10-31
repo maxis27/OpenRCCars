@@ -64,6 +64,8 @@ class CarProfile {
     Vec3                      velocity(float time) const;
     // the frame at or before `time`, the first one before the recording; the recording must not be empty
     const Frame&              frameAt (float time) const;
+    // model -> world of a frame (its rotation normalised)
+    static Mat4               poseOf(const Frame& f);
 
   private:
     // the frame at or before `time` and how far towards the next one, 0..1

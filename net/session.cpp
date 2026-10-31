@@ -127,7 +127,7 @@ std::unique_ptr<Session> Session::join(const std::string& address, uint16_t port
   s->server = enet_host_connect(static_cast<ENetHost*>(s->enetHost),&at,Channels,Version);
   if(s->server==nullptr)
     throw NetError("no way to connect");
-  enet_peer_timeout(asPeer(s->server),32,3000,6000);
+  enet_peer_timeout(asPeer(s->server),32,5000,15000);
   return s;
   }
 
@@ -217,8 +217,8 @@ void Session::admit(Peer& p, std::vector<Event>& ev) {
 
 void Session::onConnect(void* peer, std::vector<Event>& ev) {
   ENetPeer* e = asPeer(peer);
-  // a few seconds without an answer: gone (the original's 20233 "Connection lost")
-  enet_peer_timeout(e,32,3000,6000);
+  // 5 .. 15 s without an answer: gone (the original's 20233 "Connection lost"); a track loading holds up the polls
+  enet_peer_timeout(e,32,5000,15000);
   if(!hosting) {
     raw(server,MsgHello,NoId,HostId,Writer().u16(Version).str(selfName).take(),true);
     return;

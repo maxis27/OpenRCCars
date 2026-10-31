@@ -398,7 +398,7 @@ tools/          rcinfo, rcshot
 lib/Tempest     silnik (submoduł git)
 lib/dr_mp3      dekoder MP3
 lib/pl_mpeg     dekoder MPEG-1 i MP2 (intro, licencja MIT)
-lib/enet        ENet 1.3.18, niezawodne i szybkie wiadomości po UDP (gra sieciowa, licencja MIT)
+lib/enet        ENet 1.3.18 (submoduł git), niezawodne i szybkie wiadomości po UDP (gra sieciowa, licencja MIT)
 ```
 
 ## Dokumentacja

@@ -86,6 +86,9 @@ add_library(rcfx STATIC
 target_link_libraries(rcfx PUBLIC rcformats)
 
 # --- network game: our own sessions on ENet over UDP (RCCars.exe used DirectPlay 8; no GPU) ---
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lib/enet/CMakeLists.txt")
+  message(FATAL_ERROR "ENet not found - run: git submodule update --init lib/enet")
+endif()
 add_subdirectory(lib/enet EXCLUDE_FROM_ALL)
 if(WIN32)
   target_link_libraries(enet ws2_32 winmm)

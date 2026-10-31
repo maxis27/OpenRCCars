@@ -14,6 +14,7 @@
 //   rcinfo <game_dir> sound <RCCarsDB/x.sb> <out.wav> [car 1-3]  the test drive with the engine sound, rendered to WAV
 //   rcinfo <game_dir> traffic <track> [seconds]  the road traffic: departures, how the cars stand on the road, a push
 //   rcinfo <game_dir> shots <track> [car 1-3] [seconds]  guards and the BTR shooting at a parked car: bursts, hits, put back
+//   rcinfo <game_dir> net [port]                 network sessions on 127.0.0.1: joining, messages, leaving (no data read)
 //   rcinfo <game_dir> check                      decode every texture in the pack and every RCCarsDB/*.sb
 
 #include "formats/fog.h"
@@ -41,8 +42,10 @@
 #include "fx/careffects.h"
 #include "fx/worldfx.h"
 #include "fx/groundspots.h"
+#include "net/session.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -54,6 +57,8 @@
 #include <map>
 #include <memory>
 #include <random>
+#include <thread>
+#include <functional>
 
 namespace fs = std::filesystem;
 
@@ -1787,14 +1792,139 @@ static int cmdScp(const fs::path& file) {
   return 0;
   }
 
+// the network sessions on this computer (127.0.0.1): joining, the players' lists, messages to everyone and to one,
+// the ones turned away (full, closed, nobody there), leaving, kicking and the host ending the game
+static int cmdNet(uint16_t port) {
+  using rc::net::Session;
+  using Kind = Session::Event::Kind;
+  struct Seat {
+    std::unique_ptr<Session>    s;
+    std::vector<Session::Event> got;
+    };
+  std::map<std::string,Seat> seats;
+  auto pump = [&](float seconds, const std::function<bool()>& done) {
+    const auto until = std::chrono::steady_clock::now()+std::chrono::milliseconds(int(seconds*1000));
+    while(std::chrono::steady_clock::now()<until) {
+      for(auto& [n,st]:seats)
+        if(st.s)
+          for(auto& e:st.s->poll())
+            st.got.push_back(std::move(e));
+      if(done && done())
+        return true;
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      }
+    return done ? done() : true;
+    };
+  auto has = [&](const std::string& who, Kind k, uint8_t player = 0xff, uint8_t type = 0) -> const Session::Event* {
+    for(auto& e:seats[who].got)
+      if(e.kind==k && (player==0xff || e.player==player) && (type==0 || e.type==type))
+        return &e;
+    return nullptr;
+    };
+  auto closedWhy = [&](const std::string& who) {
+    auto e = has(who,Kind::Closed);
+    return e ? e->reason : Session::Reason::None;
+    };
+  int failed = 0;
+  auto check = [&](bool ok, const char* what) {
+    std::printf("  %-58s %s\n",what,ok ? "ok" : "FAILED");
+    if(!ok)
+      ++failed;
+    };
+
+  Session::HostOptions o;
+  o.port        = port;
+  o.maxPlayers  = 3;
+  o.sessionName = "Plaża";
+  o.playerName  = "Gospodarz";
+  seats["host"].s = Session::host(o);
+  seats["a"].s    = Session::join("127.0.0.1",port,"Ala");
+  seats["b"].s    = Session::join("127.0.0.1",port,"Bartłomiej Żółtowski");
+  const bool in = pump(5,[&]{ return seats["a"].s->ready() && seats["b"].s->ready() && seats["b"].s->players().size()==3
+                                     && seats["a"].s->players().size()==3; });
+  check(in,"two players joined");
+  if(!in)
+    return 3;
+  const uint8_t a = seats["a"].s->self(), b = seats["b"].s->self();
+  std::printf("  session \"%s\", max %d:",seats["b"].s->sessionName().c_str(),seats["b"].s->maxPlayers());
+  for(auto& p:seats["b"].s->players())
+    std::printf(" [%u %s %u ms]",p.id,p.name.c_str(),p.ping);
+  std::printf("\n");
+  check(a!=b && a!=0 && b!=0,"ids given by the host");
+  check(seats["b"].s->player(b)->name=="Bartłomiej Żółt","names cut at 15 letters");
+  check(has("host",Kind::Joined,a) && has("host",Kind::Joined,b),"the host told of both");
+  check(has("b",Kind::Joined,0) && has("b",Kind::Joined,a) && has("b",Kind::Joined,b),"the second told of everyone");
+
+  seats["a"].s->send(0x20,{1,2,3},true);
+  seats["a"].s->send(0x21,{9},false,b);
+  seats["host"].s->send(0x22,{7,7},true);
+  pump(2,[&]{ return has("b",Kind::Message,a,0x20) && has("host",Kind::Message,a,0x20) && has("b",Kind::Message,a,0x21)
+                     && has("a",Kind::Message,0,0x22) && has("b",Kind::Message,0,0x22); });
+  auto m = has("b",Kind::Message,a,0x20);
+  check(m && m->data==std::vector<uint8_t>{1,2,3},"to everyone: passed on by the host");
+  check(has("b",Kind::Message,a,0x21) && !has("host",Kind::Message,a,0x21),"fast, to one player only");
+  check(has("a",Kind::Message,0,0x22) && has("b",Kind::Message,0,0x22),"from the host to everyone");
+  check(!has("a",Kind::Message,a),"nothing comes back to the sender");
+
+  seats["c"].s = Session::join("127.0.0.1",port,"Celina");
+  pump(5,[&]{ return seats["c"].s->closed(); });
+  check(closedWhy("c")==Session::Reason::Full,"a fourth one: full");
+
+  seats["b"].s->close();
+  pump(5,[&]{ return has("host",Kind::Left,b) && has("a",Kind::Left,b); });
+  check(closedWhy("b")==Session::Reason::Left,"leaving");
+  check(has("host",Kind::Left,b) && has("a",Kind::Left,b) && seats["a"].s->players().size()==2,"the others told");
+
+  seats["host"].s->setOpen(false);
+  seats["d"].s = Session::join("127.0.0.1",port,"Darek");
+  pump(5,[&]{ return seats["d"].s->closed(); });
+  check(closedWhy("d")==Session::Reason::Started,"joining during the race");
+  seats["host"].s->setOpen(true);
+
+  seats["e"].s = Session::join("127.0.0.1",port,"Ewa");
+  pump(5,[&]{ return seats["e"].s->ready() && seats["e"].s->players().size()==3; });
+  const uint8_t e = seats["e"].s->self();
+  check(seats["e"].s->ready() && e==b,"a freed place taken again");
+  seats["host"].s->kick(e);
+  pump(5,[&]{ return seats["e"].s->closed() && has("host",Kind::Left,e); });
+  check(closedWhy("e")==Session::Reason::Kicked && has("host",Kind::Left,e),"kicked");
+
+  seats["host"].s->close();
+  pump(5,[&]{ return seats["a"].s->closed() && seats["host"].s->closed(); });
+  check(closedWhy("a")==Session::Reason::Left,"the host ended the game");
+
+  // a host that measures the round trip first
+  o.maxLag = 300;
+  o.port   = uint16_t(port+1);
+  seats["lag"].s = Session::host(o);
+  seats["f"].s   = Session::join("127.0.0.1",o.port,"Franek");
+  const auto t0 = std::chrono::steady_clock::now();
+  pump(6,[&]{ return seats["f"].s->ready(); });
+  const float waited = std::chrono::duration<float>(std::chrono::steady_clock::now()-t0).count();
+  std::printf("  let in after %.1f s, ping %u ms\n",waited,seats["lag"].s->players().back().ping);
+  check(seats["f"].s->ready() && waited>=1.9f,"with maxLag: let in after measuring");
+
+  seats["g"].s = Session::join("127.0.0.1",uint16_t(port+2),"Gosia");
+  const auto t1 = std::chrono::steady_clock::now();
+  pump(10,[&]{ return seats["g"].s->closed(); });
+  std::printf("  nobody there: closed after %.1f s\n",std::chrono::duration<float>(std::chrono::steady_clock::now()-t1).count());
+  check(closedWhy("g")==Session::Reason::NoAnswer,"nobody at that port");
+
+  seats.clear();
+  std::printf("%s\n",failed==0 ? "ok" : "FAILED");
+  return failed==0 ? 0 : 3;
+  }
+
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|tbl|scp|crs|sb|obj|nodes|coll|objects|check|drive|race|gates|ai|fx|fog|ram|chars|drown|traffic|shots ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|tbl|scp|crs|sb|obj|nodes|coll|objects|check|drive|race|gates|ai|fx|fog|ram|chars|drown|traffic|shots|net ...\n");
     return 1;
     }
   try {
     const fs::path game = argv[1];
     const std::string cmd = argv[2];
+    if(cmd=="net")
+      return cmdNet(argc>3 ? uint16_t(std::atoi(argv[3])) : rc::net::Session::DefaultPort);
     if(cmd=="coll" && argc>3)
       return cmdColl(game/argv[3],argc>4 ? argv[4] : nullptr);
     if(cmd=="race" && argc>3)

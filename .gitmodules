@@ -1,3 +1,6 @@
 [submodule "lib/Tempest"]
 	path = lib/Tempest
 	url = https://github.com/Try/Tempest.git
+[submodule "lib/enet"]
+	path = lib/enet
+	url = https://github.com/lsalzman/enet.git

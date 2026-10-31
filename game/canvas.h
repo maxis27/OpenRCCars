@@ -96,6 +96,9 @@ class Canvas {
                 const Color& c, float angle = 0, float squash = 1, const Color* bottom = nullptr);
     // a sprite standing in the 3D view at the given depth (0..1), hidden where the scene is nearer
     void   quadAt(const Tempest::Texture2d& tex, float x, float y, float w, float h, float depth, const Color& c);
+    // the same with its four corners (screen x, y, depth) and their texture coordinates given, in order
+    void   quadAt(const Tempest::Texture2d& tex, const std::array<std::array<float,3>,4>& p,
+                  const std::array<std::array<float,2>,4>& uv, const Color& c);
     void   sprite(const Image& img, const Rect& src, float cx, float cy, float size, const Color& c);
     // `bottom`: the colour at the bottom of the letters, fading from `c` at their top
     float  text(const Font& f, std::string_view s, float x, float y, float size, const Color& c, int align = -1,

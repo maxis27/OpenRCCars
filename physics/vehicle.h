@@ -190,6 +190,8 @@ class Vehicle {
     void                       addHitBoost() { addBoost(HitBoost); ++hitCount; }
     int32_t                    hits() const { return hitCount; }
     bool                       boosting() const { return boostOn; }
+    // the jump key was pressed in the last update (RCCars.exe's key 0x577c: the exhaust's dark puff, 0x5303c0)
+    bool                       jumpPressed() const { return jumpKey; }
     // what most of the wheels touching the ground stand on (Water when the car is in water), as of the last update
     Surface                    surface() const { return under; }
     // how deep the body is in water: 0 dry .. 1 fully under water
@@ -296,6 +298,9 @@ class Vehicle {
     void                                  forces(float h);
     // the stillness timers (0x4f59a0); true when the car is held still (0x4f6610)
     bool                                  asleep(float h);
+    // a slow car lying about with a steering key held only turns about its forward axis (0x509080); true when
+    // it did, instead of the step
+    bool                                  rollOver(float h);
     // a sphere (`which`) is within `margin` of the track (0x4efe00)
     bool                                  near(Which which, float margin) const;
     // the spring lengths after the ground under the wheels, after a move of `h` s, `hit` after one that met the
@@ -351,7 +356,9 @@ class Vehicle {
     bool                                  springsOn  = true; // off for the part after a hit (car data 0x48)
     bool                                  roofed     = false; // no room above a wheel in the last suspension pass
     bool                                  settling   = false; // placed: gravity and springs only (car data +0xa4)
-    bool                                  keysHeld   = false; // throttle, brake, steering or turbo held
+    bool                                  keysHeld   = false; // throttle, brake, steering or jump held
+    float                                 rollKey    = 0;     // the steering held: -1 right .. 1 left
+    bool                                  jumpKey    = false;
     float                                 slowFor    = 0;     // s slower than SleepSpeed      (car data 0x5c74)
     float                                 calmFor    = 0;     // s turning slower than SleepSpin (0x5c78)
     float                                 sinceTouch = 2e6f;  // s since a wheel or a hit touched the track (0x5c7c)

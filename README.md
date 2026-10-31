@@ -296,6 +296,7 @@ rcinfo <folder_gry> gates RCCarsDB/beach_1.sb [auto 1-3]  # każdy główny punk
 rcinfo <folder_gry> ai RCCarsDB/beach_1.sb [poziom 1-3] [okrążenia]  # przeciwnicy: nagrania, ich pętle i wyścig bez gracza
 rcinfo <folder_gry> ram RCCarsDB/beach_1.sb [przeciwnik] [s] [side]  # gracz wjeżdża w przeciwnika: wypadnięcie z nagrania, powrót, „Łup!”
 rcinfo <folder_gry> drown RCCarsDB/beach_1.sb [auto 1-3]  # strefy powrotu, pudło kolizji, czas tonięcia na kilku głębokościach (też przeciwnika)
+rcinfo <folder_gry> roll RCCarsDB/beach_1.sb|flat [auto 1-3]  # auto na kołach, dachu i bokach przetaczane klawiszami skrętu (RC_ROLL_RIGHT=1: najpierw prawy)
 rcinfo <folder_gry> fx                            # ustawienia efektów, ile cząsteczek, śladów i kilwatera daje auto na każdej nawierzchni
 rcinfo <folder_gry> shade RCCarsDB/beach_2.sb     # lightmapa wzdłuż trasy i jasność aut, jaką daje
 rcinfo <folder_gry> fog beach_1                   # mgła trasy: gęstość, kolor, ile koloru zostaje w danej odległości

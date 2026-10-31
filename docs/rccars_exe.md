@@ -62,9 +62,17 @@ z `physics/balls.h` (0x533430). Zewnętrznego silnika fizyki nie ma.
 - **Skok** (spacja, co najmniej 0,5 s od poprzedniego): +3 m/s wzdłuż osi „w górę” auta (Buggy 3,3) i obrót wokół
   pionu ×1,5; auto przechylone o ponad 80° zamiast skoczyć staje na koła. Auto przewrócone na dach wraca na koła
   po 2 s.
+- **Przetaczanie klawiszami** (0x509080, na początku każdego kroku 0x4f5e50): auto wolniejsze niż 0,8 m/s, z osią
+  przód-tył do 30° od poziomu (albo pionową), z osią „w górę” co najmniej 70° od poziomego kierunku w prawo od osi
+  przód-tył (0x5092c0: na dachu, na lewym boku albo na kołach, nigdy na prawym boku) i z wciśniętym skrętem (lewy
+  sprawdzany pierwszy, 0x5091b0) zamiast kroku dostaje tylko moment wokół osi przód-tył: `momentFloorBackABS`
+  z `Settings/XXX.ini` (0,01..1: 0,30) × (1 + wartość klawisza, dla klawiatury 1), ze znakiem minus dla lewego. Jeden
+  krok Eulera bez grawitacji i bez zmiany pędu (0x509460) przesuwa je o prędkość i obraca; gdy kula wchodzi w trasę,
+  gra próbuje 9 mm wyżej, a gdy dalej wchodzi, zostawia auto jak było i robi zwykły krok. Wynika z tego, że także stojące
+  na kołach auto ze skrętem się przechyla (nie sprawdzone w grze).
 - **Bryła** (0x4f0910, 0x4f5e50): bryła sztywna o masie 1 kg, bezwładność prostopadłościanu całego modelu (Buggy
-  ×2 wokół osi przód-tył), środek masy `CenterMassOY` (0..0,2 m) nad początkiem modelu; prędkość najwyżej 20 m/s,
-  moment pędu najwyżej 1. Nadwozie to 9 kul z `cdt<N>.ini`: `CdtRadUp<i>` (0,01..0,3 m) w `CdtDeltaX|Y|Z<i>`
+  ×2 wokół osi przód-tył), środek masy `CenterMassOY` (0..0,2 m) nad początkiem modelu; prędkość najwyżej
+  `maxImpLinear` (15,86 m/s), moment pędu najwyżej `maxImpAng` (0,545) z `Settings/MAX_IMPULSE.ini`. Nadwozie to 9 kul z `cdt<N>.ini`: `CdtRadUp<i>` (0,01..0,3 m) w `CdtDeltaX|Y|Z<i>`
   (−0,3..0,3 m, Buggy `CdtDeltaZ_CENTRAL<i>`), każda trzy razy: na środku i przesunięta o `shiftRoofBaseLefter`
   w lewo i w prawo. Koło to kula `CdtRadWheel` (0,01..0,1 m, tylne × `coeffRadBackWheels` 1..2).
 - **Sprężyny** (`springs<N>.ini`, 0x4f91b0, 0x4f0f80): `length` 0,01..0,5 m, `lenMin` × 0,1..0,9, `lenMax`
@@ -112,12 +120,13 @@ z `physics/balls.h` (0x533430). Zewnętrznego silnika fizyki nie ma.
 - **Start** (0x4f27a0): auto postawione na trasie najpierw osiada przez 2 s (100 kroków po 0,02 s) tylko pod
   grawitacją i sprężynami, które wtedy opadają z szybkością 10·r; gra zeruje przy tym poziomą część siły i obrót
   wokół pionu (0x4f0910), więc auto osiada w miejscu i nie zsuwa się ani nie obraca.
-- **Spoczynek** (0x4f59a0, 0x4f6610): gdy przez 2 s nie jest wciśnięty gaz, hamulec, skręt ani turbo, auto jedzie
+- **Spoczynek** (0x4f59a0, 0x4f6610): gdy przez 2 s nie jest wciśnięty gaz, wsteczny, skręt ani skok, auto jedzie
   wolniej niż 1,3 km/h i obraca się wolniej niż 1 rad/s, a od 1 s cały czas dotyka trasy (koło do 6 mm od niej albo
-  zderzenie), gra zeruje mu pęd i moment pędu i pomija krok, póki jakaś kula jest do 3 cm od trasy. Które bity
-  klawiszy gra sprawdza, odczytaliśmy tylko po turbo (0x577c); reszta to nasze założenie.
-- **Ruch i trasa** (0x4f5e50): krok dzieli się na najwyżej 3 części. Każda najpierw przycina pęd do 20 i moment pędu
-  do 1 (0x4f5770), potem przesuwa auto krokiem Eulera (0x4f5590) o tyle, ile kroku zostało, a gdy po drodze kula
+  zderzenie), gra zeruje mu pęd i moment pędu i pomija krok, póki jakaś kula jest do 3 cm od trasy. Klawisze auta
+  to bity pod 0x574c + 8 × numer akcji (1 Boost 0x5754, 2 Left 0x575c, 3 Right, 4 Forw 0x576c, 5 Back, 6 Jump
+  0x577c, 7 Brake 0x5784, 8 Reset), każdy z wartością 0..1 obok (klawiatura 1).
+- **Ruch i trasa** (0x4f5e50): krok dzieli się na najwyżej 3 części. Każda najpierw przycina pęd do
+  `maxImpLinear` × masa i moment pędu do `maxImpAng` (0x4f5770; bez pliku 20 i 1), potem przesuwa auto krokiem Eulera (0x4f5590) o tyle, ile kroku zostało, a gdy po drodze kula
   przeszłaby przez ścianę, tylko o tyle, by żaden punkt kuli nie przeszedł więcej niż 0,9 promienia, połowiąc, aż
   żaden nie przejdzie więcej niż 0,99 (0x4f5b60). Jeśli potem kula nadwozia jest w ścianie (albo kula koła, którego
   sprężyna nie mieści podłoża, 0x4fb340), auto wraca i w 5 próbach szuka chwili zderzenia: najpierw 0,2 drogi od
@@ -269,6 +278,11 @@ z `Settings/cockpit.ini`.
   `opt_cock_[aclm]_*` pokazują części kokpitu: miejsce i tabela, mapa, czat i turbo).
 - **Mapa**: pod numerem okrążenia mapa trasy (`trackmap_<n>`, zob. [formaty.md](formaty.md#nazwy-tras)) wokół auta
   w ramce `messagebox`, z punktami głównymi (`map_cp`, następny świeci) i autami (`map_arrow`: gracz i przeciwnicy).
+  Mapę i jej położenie wczytuje 0x4a9840 (`trackmap_%i`, numer mapy z 0x4a4c60): tabela 0x56c378 daje trzy punkty
+  świata (x, z), a 0x56c468 miejsca tych punktów na mapie (w 1/512). 0x4b8500 rozkłada punkt świata na dwa boki tego
+  trójkąta (0x410430) i składa z nich punkt mapy; tak trafiają na mapę auta. Kropki punktów kontrolnych (0x4b7a84,
+  0x4b7c30) idą inaczej: 0x4a9ca0 bierze je z osobnej tabeli 0x56c558 (do 8 na mapę, cp_1 pierwszy), to miejsca
+  pomarańczowych kropek namalowanych na mapach. Z położenia `cp_N` przez trójkąt wychodziłyby do ok. 10 texeli obok.
 - **Strzałka kierunku** (0x4af3c9, 0x4b0fa0, 0x4b1360, 0x4e8f00), w nawiasach z `overtaking.csi`: model `Arrow`
   z `cockpit.sb` to dwa szewrony (`extru9` z bokami `extru9_2_body` i 0,324 m za nim `extru9_3` z `extru9_1_body`),
   wszystko z teksturą `coc_str_2`, rysowane bez światła i bez przezroczystości (boki biorą srebrny pasek z dolnej,
@@ -282,12 +296,13 @@ z `Settings/cockpit.ini`.
   [dalszej drogi](#wyścig-i-punkty-kontrolne) najwyżej o 90° na sekundę (10 razy szybciej, kolor też, zaraz po
   zaliczeniu punktu, dopóki nie wskaże nowego kierunku z dokładnością do 1°). Miga (0,25 s widać, 0,25 s nie) przy
   jeździe w złą stronę i gdy auto było już bliżej niż 5 m od następnego punktu, ale go nie zaliczyło.
-- **Strzałka nad punktem**: nad następnym głównym punktem wisi animowana strzałka z gry (`cp_ar_2_f1..3` zielona,
-  a nad `cp_1`, gdzie kończy się okrążenie, czerwona `cp_ar_3_*`). `anim_cp.ini` (`Size` 146, `Shift` 128,
-  `MinDist` 237, `MaxDist` 900, `BlinkDelta` 10): `Shift` to texele obrazka wysokiego na 256, więc jest podniesiony
-  o połowę wysokości i cień narysowany u jego dołu leży na ziemi pod markerem; resztę czytamy jako centymetry
-  i setne sekundy: strzałka ma 1,46 m, znika bliżej niż 2,37 m od kamery, dalej niż 9 m trzyma rozmiar na ekranie
-  (rośnie w górę od ziemi), klatka co 0,1 s (zgadnięte; kod gry, który to czyta, nie jest rozpracowany).
+- **Strzałka nad punktem** (0x52abc0): nad następnym głównym punktem wisi animowana strzałka z gry (`cp_ar_2_f1..3`
+  zielona, a nad `cp_1`, gdzie kończy się okrążenie, czerwona `cp_ar_3_*`, wczytane w 0x52a9b0). `anim_cp.ini`
+  (0x52b370, każdy suwak / 100): `Size` 146 to połowa boku kwadratu (2,92 m), `Shift` 128 to wysokość jego środka
+  nad ziemią punktu (1,28 m; poświata u dołu obrazka leży wtedy na ziemi), `MinDist` 237 i `MaxDist` 900 to poziome
+  odległości od kamery, między którymi strzałka się pojawia (bliżej niewidoczna, od 9 m cała), `BlinkDelta` 10 to
+  0,1 s na każdą z trzech klatek (1, 2, 3, 1 …). Kwadrat obraca się tylko wokół pionu do kamery. Do tego miga
+  (0x52b1d0): alfa od 50 do 250 i z powrotem po 0,4 s w każdą stronę, najwyżej 220.
 - **Komunikaty**: odliczanie, „okrążenie”, „zły kierunek”, „najlepsze okrążenie”, „Łup!”, „Słaby sygnał” obrazkami
   z `Language/<język>`. Tabela wyników to osobny ekran mety (`dlgFINISH`, niżej).
 - **Konsola czatu** (pole `chatRace` z `dlgMAIN.ini`: 5 linii po 5 s, czcionka `Smash20` z polskimi literami;
@@ -307,8 +322,11 @@ z `Settings/cockpit.ini`.
   kolejne okrążenia kierowca jedzie z odmian tego nagrania (`over1`, `over1_2`, `over1_3` …) po kolei. Okrążenia
   przeciwników liczymy po przejechaniu `cp_1` (do 2,88 m) pod koniec nagrania, a nie po kolejnych punktach, bo
   odmiany `_3` bywają skrótami. Odtwarzając nagranie, są bryłą kinematyczną (pchają rekwizyty). Które z odmian
-  nagrania i w jakiej kolejności bierze oryginał, nie wiemy; malowanie `Skin` 1–3 czytamy jako drugą do czwartej
-  tekstury `car_askin<auto>N` (pierwszą ma model i gracz), to też zgadnięte.
+  nagrania i w jakiej kolejności bierze oryginał, nie wiemy. Malowanie `Skin` to numer od zera, jak u gracza: 0x49fc80
+  dodaje 1 do auta i malowania (`car_askin%i%i`), więc `Skin` 1–3 to druga do czwartej tekstura (że wartość z pliku
+  trafia tam bez zmian, nie prześledziliśmy, ale funkcja przyjmuje 0..3). Między dwiema klatkami, które dzieli
+  w poziomie więcej niż 1,5 × `maxImpLinear` (23,8 m/s), odtwarzanie (0x502ea0) nie miesza klatek, tylko trzyma
+  wcześniejszą.
 - **Tempo** (0x503430): czas nagrania rośnie o `dt` × współczynnik: `CoeffCommonOpponents` trasy (0,85–0,97) ×
   poziom trudności (`Scripts/aiCommonCoeffs.ini`: 0,92 / 1 / 1,07) × „gumka”, czyli wartość krzywej
   `Splines/FuncWaitAccel<n>` w odległości przeciwnika przed graczem wzdłuż trasy (0x4fd4b0, 0x4fd5d0; szybki wyścig
@@ -322,8 +340,9 @@ z `Settings/cockpit.ini`.
   najbliższym (szukanym do 6 m naprzód), prędkość 4–10 m/s zależnie od odległości do celu, mniejsza przy ostrym
   skręcie, koła do 35° (przez pierwszą sekundę co najmniej 30°, z prędkością 90°/s); zablokowane (wolniej niż 2 km/h
   albo dociśnięte do przeszkody) cofa przez 1,5 s. Po 2 s wraca do odtwarzania, gdy jest 10 cm od punktu nagrania
-  i jedzie w jego kierunku (do 10°), a po 5 s wraca od razu, jeśli gracz go nie widzi (u nas: dalej niż 50 m albo za
-  graczem, zgadnięte). Powrót płynnie przechodzi w nagranie przez sekundę.
+  i jedzie w jego kierunku (do 10°), a po 5 s wraca od razu, jeśli nikt nie widzi ani auta, ani punktu nagrania,
+  na który wraca (0x4fdbdf, 0x4fd440): widzi kamera każdego widoku, do 50 m od niej i do 100° od kierunku, w który
+  patrzy (0x406ab0, 0x406a00). Powrót płynnie przechodzi w nagranie przez sekundę.
 - Kokpit pokazuje miejsce obrazkiem z gry (`place1..6.csi`: „1szy” … „6ty”), a ekran mety tabelę, w którą wpadają
   czasy kolejnych kierowców.
 - **Imiona i twarze** (0x4a9ce0): kierowca `AIPlayer<n>` z `ailayouts.ini` ma imię z `Language/Game` 40499+n
@@ -353,6 +372,8 @@ Każdy rodzaj to osobna klasa gry (`PEOP` 0x50fda0, `GUAM` 0x51a3d0, `GULL` 0x51
 `attackVolume`, `inhabitVolume`, `landhole1`/`seahole1`, `hole1..N`, `flightDir`) oraz `clother` (podmiana tekstur,
 np. `man_1`→`man1_1`). Animacje szkieletowe liczymy na CPU.
 
+- **Ludzie** (PEOP) żyją `coeffPeople` (`Settings/MAX_IMPULSE.ini`, 0,5..1,5: 1,116) razy szybciej niż zegar gry
+  (0x51044c mnoży czas klatki w 0x510400), czyli tak też chodzą i ruszają się.
 - **Ludzie** chodzą po nagranych ścieżkach (`Profiles/<nazwa>.dat`), są tylko do 50 m od gracza. Auto bliżej niż
   0,8 m od stóp (albo szybsze niż 15 km/h do 4 m przed nimi, w kącie 25°) dostaje kopniaka (`Pendal`, 4 m/s od nich i
   7 m/s w górę) albo raz na pięć, gdy jest 2,2 m miejsca, zostaje podniesione i rzucone (`Brosok`).
@@ -487,8 +508,8 @@ i trzy pikapy (w kilku malowaniach), na urban_1 hummer, a na beach_4 pływający
   kłębów, trzy razy dłużej żyjących, prawie przezroczystych (`ExplodeAlpha`); kolor ciemnieje wtedy 512/s do
   `ExplodeColor` i wraca 256/s. Kłąb dostaje `Speed` wzdłuż rury plus prędkość auta, zwalnia (`SpeedAtt`) i rośnie
   bez końca o `DynamicScale` − 1 na sekundę (0x530330). Buksujące tylne koło (poślizg ponad `WheelSpin`, z gazem albo
-  hamulcem) dymi `eg_int(2 × poślizg)` kłębów na sekundę. Flagę, która odpala kłąb (0x577c), uznajemy za włączenie
-  turbo (wywnioskowane).
+  hamulcem) dymi `eg_int(2 × poślizg)` kłębów na sekundę. Kłąb odpala wciśnięcie skoku (bit 0x577c to Jump,
+  nie turbo).
 - **Brud** (0x52e320, 0x531c20, 0x507dc0, 0x531450): każde koło, które kurzy, dokłada do licznika auta
   `ilość kurzu × 0,1` na sekundę (do 3000), każde koło w wodzie zmywa 350 na sekundę. Licznik wybiera między czystym
   autem a teksturami `dirt_car<auto>_1` i `_2` (auta 2 i 3 mają osobne `a`/`b` dla dwóch tekstur karoserii

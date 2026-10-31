@@ -736,7 +736,8 @@ void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass,
       continue;
     if((b.mode==rc::AlphaMode::Translucent)!=(pass==Pass::Translucent))
       continue;
-    const bool tess = (b.flags & F_Water) && !pso.water.isEmpty();
+    // only the sea with waves moves; pools and streams are flat
+    const bool tess = (b.flags & F_Waves) && !pso.water.isEmpty();
     auto&      p    = tess ? pso.water : (b.flags & F_Modulate) ? pso.modulate : pso.get(b.mode);
     if(current!=&p) {
       enc.setPipeline(p);

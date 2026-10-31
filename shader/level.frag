@@ -131,21 +131,14 @@ void main() {
   if((push.flags & F_CUTOUT)!=0u && color.a<0.5)
     discard;
 
-  vec3 light;
+  // RCCars.exe turns Direct3D's lighting on only for the cars (0x507b7d) and never the specular (0x45e0a0): the
+  // rest is lit by its lightmap or not at all; the water shines only by its environment map
+  vec3 light = vec3(1.0);
   if((push.flags & F_LIGHTMAP)!=0u) {
     light = texture(texLight, inUvLight).rgb * push.sunDir.w;
-    } else {
+    } else if((push.flags & F_CARLIGHT)!=0u) {
     float d = max(dot(normal, normalize(push.sunDir.xyz)), 0.0);
-    if((push.flags & F_CARLIGHT)!=0u)
-      light = vec3(min(push.carPos.w + push.sunDir.w*d, 1.0));
-    else
-      light = vec3(0.55) + vec3(0.55)*d;
-    }
-  if((push.flags & F_WATER)!=0u) {
-    // sun glitter on the waves
-    vec3  v = normalize(push.cameraPos.xyz - inWorld);
-    vec3  h = normalize(v + normalize(push.sunDir.xyz));
-    light  += vec3(0.6)*pow(max(dot(normal, h), 0.0), 60.0);
+    light = vec3(min(push.carPos.w + push.sunDir.w*d, 1.0));
     }
   color.rgb *= light;
   if(push.envMap>0.0 && (push.flags & F_DETAIL)==0u)

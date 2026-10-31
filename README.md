@@ -180,6 +180,13 @@ Gra startuje w menu głównym jak oryginał. Opcje:
 | `-dev` | tryb deweloperski jak `RCCars.exe -dev`, z naszymi klawiszami debugowania ([niżej](#tryb-deweloperski)) |
 | `-dx12` | backend DirectX 12 (eksperymentalnie) |
 | `-validation` | warstwy walidacji Vulkana |
+| `-host [gracze]` | gra sieciowa na trasie z `-l` (bez niej `beach_1`), start gdy dołączy tylu graczy (domyślnie 2) |
+| `-join <adres>` | dołącza do gry sieciowej gospodarza pod tym adresem |
+| `-port <port>` | port UDP gry sieciowej (domyślnie 2302) |
+| `-name <imię>` | imię w grze sieciowej (domyślnie wybrany gracz) |
+
+Gra sieciowa na razie startuje tylko z tych opcji; ekrany oryginału („Utwórz grę”, „Dołącz do gry”) dojdą później.
+Dwie kopie na jednym komputerze: `OpenRCCars -l beach_1 -host` i `OpenRCCars -join 127.0.0.1 -name Drugi`.
 
 Okno albo pełny ekran wybiera ustawienie oryginału „Uruchom w oknie” z `RCCars.crs` w folderze gry
 (`[Video] VIDEO_RunInWindow`, w grze „Opcje wideo” → „Uruchom w oknie”, od następnego startu): w oknie gra ma 800x600 jak menu oryginału, bez tego ustawienia (domyślnie) pełny

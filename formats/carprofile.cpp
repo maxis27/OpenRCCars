@@ -225,23 +225,28 @@ Mat4 CarProfile::pose(float time) const {
   const Frame& a = list[i];
   const Frame& b = list[std::min(i+1,list.size()-1)];
   // normalised linear interpolation of the rotation, along the shorter way
-  float q[4], d = 0;
+  Frame f;
+  float d = 0;
   for(int k=0; k<4; ++k)
     d += a.rot[k]*b.rot[k];
   const float s = d<0 ? -1.f : 1.f;
+  for(int k=0; k<4; ++k)
+    f.rot[k] = a.rot[k]+(b.rot[k]*s-a.rot[k])*t;
+  f.position = a.position+(b.position-a.position)*t;
+  return poseOf(f);
+  }
+
+Mat4 CarProfile::poseOf(const Frame& f) {
   float len = 0;
-  for(int k=0; k<4; ++k) {
-    q[k] = a.rot[k]+(b.rot[k]*s-a.rot[k])*t;
-    len += q[k]*q[k];
-    }
+  for(int k=0; k<4; ++k)
+    len += f.rot[k]*f.rot[k];
   len = len>0 ? 1.f/std::sqrt(len) : 1.f;
-  const float w = q[0]*len, x = q[1]*len, y = q[2]*len, z = q[3]*len;
+  const float w = f.rot[0]*len, x = f.rot[1]*len, y = f.rot[2]*len, z = f.rot[3]*len;
   Mat4 m;
   m.m[0][0] = 1-2*(y*y+z*z); m.m[0][1] = 2*(x*y-w*z);   m.m[0][2] = 2*(x*z+w*y);
   m.m[1][0] = 2*(x*y+w*z);   m.m[1][1] = 1-2*(x*x+z*z); m.m[1][2] = 2*(y*z-w*x);
   m.m[2][0] = 2*(x*z-w*y);   m.m[2][1] = 2*(y*z+w*x);   m.m[2][2] = 1-2*(x*x+y*y);
-  const Vec3 p = a.position+(b.position-a.position)*t;
-  m.m[0][3] = p.x; m.m[1][3] = p.y; m.m[2][3] = p.z;
+  m.m[0][3] = f.position.x; m.m[1][3] = f.position.y; m.m[2][3] = f.position.z;
   return m;
   }
 

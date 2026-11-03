@@ -34,6 +34,7 @@ add_library(rcformats STATIC
   formats/skeleton.h   formats/skeleton.cpp
   formats/actorpath.h  formats/actorpath.cpp
   formats/texttable.h  formats/texttable.cpp
+  formats/cp1250.h     formats/cp1250.cpp
   formats/playerprofile.h formats/playerprofile.cpp
   formats/gamescript.h formats/gamescript.cpp
   )
@@ -99,6 +100,7 @@ endif()
 add_library(rcnet STATIC
   net/bytes.h
   net/session.h net/session.cpp
+  net/finder.h  net/finder.cpp
   net/carstate.h net/carstate.cpp
   )
 target_include_directories(rcnet PRIVATE lib/enet/include)
@@ -129,6 +131,7 @@ add_library(rcengine STATIC
   game/resources.h         game/resources.cpp
   game/canvas.h            game/canvas.cpp
   game/menu.h              game/menu.cpp game/menuchamp.cpp game/menuinfo.cpp game/menuoptions.cpp game/menutwo.cpp
+                           game/menunet.cpp
   game/controls.h          game/controls.cpp
   game/players.h           game/players.cpp
   game/championship.h      game/championship.cpp

@@ -48,6 +48,7 @@
 #include "world/level.h"
 #include "world/objects.h"
 #include "net/carstate.h"
+#include "net/finder.h"
 #include "net/session.h"
 
 class MainWindow : public Tempest::Window {
@@ -283,6 +284,7 @@ class MainWindow : public Tempest::Window {
     struct NetCar {
       std::string                      name;
       rc::Ghosts::Look                 look;
+      bool                             known = false;   // its look came
       std::unique_ptr<rc::Ghosts::Ghost> shown;   // nullptr until its look came
       rc::net::RemoteCar               states;
       std::unique_ptr<rc::AiCarSound>  sound;
@@ -295,6 +297,17 @@ class MainWindow : public Tempest::Window {
       float                             sendIn   = 0;   // s to the next state sent
       bool                              held     = false; // the countdown waits for the host's "go"
       std::map<uint8_t,bool>            ready;     // host: who has loaded the track since the last start
+      // from the menus ("Utwórz grę", "Dołącz do gry"): the waiting room between the races; else the command line's
+      bool                              lobby    = false;
+      bool                              joining  = false; // a client knocking, not let in yet
+      bool                              racing   = false; // the session's race is on: the car is sent
+      size_t                            track    = 0;     // the waiting room's, the host's to choose
+      int                               laps     = 3;
+      std::map<uint8_t,bool>            set;       // who has pressed "Gotów" (the host's word, MsgLobby)
+      std::vector<Menu::NetView::Line>  chat;
+      float                             rate     = rc::net::CarState::DefaultRate;   // states a second sent
+      std::unique_ptr<rc::net::Finder>  finder;    // "Dołącz do gry": the games found
+      std::string                       localAddress;
       };
     NetPlay                 net;
     bool                    online() const { return net.session!=nullptr; }
@@ -309,6 +322,17 @@ class MainWindow : public Tempest::Window {
     // the track loaded and the car on the grid: tell the host (or, the host, see if all are)
     void                    netLoaded();
     void                    netLook(uint8_t to);
+    // what the menus' network screens ask for, and what they show
+    void                    netRequest(const Menu::NetRequest& r);
+    void                    netView();
+    // the host: the waiting room to everyone (and the games' search)
+    void                    netLobby();
+    // a line of the chat, Windows-1250; `color` -1: the game's own news
+    void                    netSay(std::string text, int32_t color);
+    // the player's name in the network game (Windows-1250): the nick of "Informacje o graczu"
+    std::string             netNick() const;
+    // the session is over or could not be: why (a text id), the race left, back to "Wielu graczy"
+    void                    netOver(uint32_t why);
     // player `id`'s grid slot: the player's of the track's opponents' grid, then theirs (0x4a5320 has 6 cars)
     rc::Mat4                netGrid(uint8_t id) const;
     bool                    split() const { return two.rider!=nullptr; }

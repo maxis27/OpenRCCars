@@ -454,6 +454,8 @@ void Menu::changeOption(Option& o, int step) {
   else if(o.id==0x17d5)
     changeLayout();
   refreshOptions();
+  if(netPage())
+    netChanged(o);
   }
 
 void Menu::optionsTick(float dt) {
@@ -533,7 +535,7 @@ void Menu::optionsClick(float mx, float my) {
       playControl(3);
       return;
       }
-    if(o.kind==Option::Text && b.contains(mx,my)) {
+    if(o.kind==Option::Text && !o.readOnly && b.contains(mx,my)) {
       optEdit = int(i);
       playControl(3);
       return;
@@ -560,6 +562,8 @@ bool Menu::optionsKey(Event::KeyType key, uint32_t ch) {
     }
   if(optEdit>=0 && size_t(optEdit)<options.size()) {
     auto& o = options[size_t(optEdit)];
+    if(key==Event::K_Return && netPage() && netSubmit(o))
+      return true;
     if(key==Event::K_Return || key==Event::K_ESCAPE) {
       optEdit = -1;
       return true;
@@ -570,7 +574,7 @@ bool Menu::optionsKey(Event::KeyType key, uint32_t ch) {
       return true;
       }
     const int c = typedChar(ch);
-    if(c>=0 && o.text.size()<o.maxLen)
+    if(c>=0 && o.text.size()<o.maxLen && (!o.digits || (c>='0' && c<='9')))
       o.text.push_back(char(c));
     return true;
     }
@@ -660,7 +664,8 @@ void Menu::drawText(const Option& o, bool focused) {
   const Box&  b = o.e.box;
   const float lx = b.x0+(b.x1-b.x0)*o.e.split;
   const Color grey = {Grey,Grey,Grey,1};
-  label(font26,str(o.e.label),{b.x0,b.y0,lx,b.y1-3},0,2,grey,fit(font26,str(o.e.label),lx-b.x0-4));
+  const std::string_view name = o.labelText.empty() ? str(o.e.label) : std::string_view(o.labelText);
+  label(font26,name,{b.x0,b.y0,lx,b.y1-3},0,2,grey,fit(font26,name,lx-b.x0-4));
   underline(b.x0,lx,b.y1-2,grey);
   if(focused && arrows) {
     const float cy = (b.y0+b.y1)*0.5f;
@@ -672,6 +677,8 @@ void Menu::drawText(const Option& o, bool focused) {
   const float room = b.x1-lx-14;
   while(!shown.empty() && textWidth(font20,shown,font20.cell)/scale>room)
     shown = editing ? shown.substr(1) : shown.substr(0,shown.size()-1);
+  if(shown.empty() && !editing && o.empty!=0)
+    label(font20,str(o.empty),{lx+10,b.y0,b.x1,b.y1},0,1,{0.5f,0.5f,0.5f,1});
   label(font20,shown,{lx+10,b.y0,b.x1,b.y1},0,1,editing ? Color{1,1,1,1} : grey);
   if(editing && std::fmod(time,0.5f)<0.25f) {
     const float x = lx+10+textWidth(font20,shown,font20.cell)/scale;

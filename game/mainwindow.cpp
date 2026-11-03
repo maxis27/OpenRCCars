@@ -940,7 +940,11 @@ void MainWindow::menuCommand(Menu::Command c) {
       paused = false;
       // the ghost race has no finish: it is left from its menu, for its screen (0x4e07c0); the laps kept (0x4f17d0)
       saveGhosts();
-      menu->open(c==Menu::Command::Done || ghosts!=nullptr ? menu->afterRace() : Menu::Page::Main);
+      // the network game's waiting room again, while the session lasts (the command line's: the main menu)
+      if(raceMode==Menu::Mode::Network)
+        menu->open(online() && net.lobby ? Menu::Page::NetWait : Menu::Page::Main);
+      else
+        menu->open(c==Menu::Command::Done || ghosts!=nullptr ? menu->afterRace() : Menu::Page::Main);
       return;
     }
   }
@@ -2305,7 +2309,19 @@ void MainWindow::render() {
       }
     if(raceRequested) {
       raceRequested = false;
-      startRace();
+      // loading takes long: the others must not drop us meanwhile, nor we them
+      if(online())
+        net.session->busy(true);
+      try {
+        startRace();
+        }
+      catch(...) {
+        if(online())
+          net.session->busy(false);
+        throw;
+        }
+      if(online())
+        net.session->busy(false);
       }
     if(!demoRequested.empty())
       startDemo(std::exchange(demoRequested,std::string()));
@@ -2325,6 +2341,10 @@ void MainWindow::render() {
     const bool front = menu->active() && menu->page()!=Menu::Page::InRace && menu->page()!=Menu::Page::Finish;
     menu->tick(std::min(dt,0.1f));
     menuCommand(menu->take());
+    for(auto& r:menu->takeNet())
+      netRequest(r);
+    if(menu->active())
+      netView();
     if(menu->takeOptionsChanged())
       applyOptions();
     if(front) {

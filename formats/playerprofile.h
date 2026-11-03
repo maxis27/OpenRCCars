@@ -21,7 +21,8 @@ namespace rc {
 //            money it won, 0x4c56c0), 0x3271 [u32 i] the best race of i laps (0..19), 0x5044 time raced, s,
 //            0x3045 races, 0x3046 best place (0 = first), 0x5047 distance, m
 //     0x3050 last track, 0x3051 last car, 0x3052 last laps, 0x3053 last skill  (quick and ghost race)
-//     0x4060 a name (the player's own when created), 0x3061 ?
+//     0x4060 the nick of the network game (the player's name when created, RCCars.exe +0x27e8), 0x3061 the colour
+//            of its chat (0..9, +0x27e4; both on "Informacje o graczu", 0x4cf7c0)
 // A record (0x0270 ...): 0x5072 time, 0x3073 car, 0x3074 boost, 0x3075 resonator, 0x3076 tires,
 // 0x2477 [u32 4] day, month, year, 0 and 0x2478 [u32 4] hour, minute, second, ms of when it was made.
 struct PlayerProfile {
@@ -69,8 +70,8 @@ struct PlayerProfile {
   int32_t                lastCar    = 0;
   int32_t                lastLaps   = 3;
   int32_t                lastSkill  = 0;
-  std::string            createdAs;
-  int32_t                unknown61  = 0;
+  std::string            nick;           // at most 10 letters (0x4cf850)
+  int32_t                chatColor  = 0;  // Menu's chat colours (0x571710)
 
   // throws FormatError
   static PlayerProfile   parse(const std::vector<uint8_t>& data);

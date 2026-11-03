@@ -44,6 +44,7 @@
 #include "fx/worldfx.h"
 #include "fx/groundspots.h"
 #include "net/carstate.h"
+#include "net/finder.h"
 #include "net/session.h"
 
 #include <algorithm>
@@ -1787,8 +1788,8 @@ static int cmdScp(const fs::path& file) {
       if(t.bestRace[n].made())
         std::printf("    %zu laps: %s\n",n,rec(t.bestRace[n]).c_str());
     }
-  std::printf("  last: track %d car %d laps %d skill %d, \"%s\" %d\n",p.lastTrack,p.lastCar,p.lastLaps,p.lastSkill,
-              p.createdAs.c_str(),p.unknown61);
+  std::printf("  last: track %d car %d laps %d skill %d; nick \"%s\", chat colour %d\n",p.lastTrack,p.lastCar,p.lastLaps,p.lastSkill,
+              p.nick.c_str(),p.chatColor);
   const auto back = p.serialize();
   std::printf("written back: %s\n",back==data ? "identical" : "DIFFERENT");
   return 0;
@@ -1857,6 +1858,35 @@ static int cmdNet(uint16_t port) {
   check(has("host",Kind::Joined,a) && has("host",Kind::Joined,b),"the host told of both");
   check(has("b",Kind::Joined,0) && has("b",Kind::Joined,a) && has("b",Kind::Joined,b),"the second told of everyone");
 
+  // the games' search, at the address and to everyone on the network (the latter may not reach this computer)
+  {
+    seats["host"].s->setInfo({4,2});
+    rc::net::Finder at, all;
+    at.search("127.0.0.1",port);
+    all.search("",port);
+    const auto until = std::chrono::steady_clock::now()+std::chrono::seconds(3);
+    while(std::chrono::steady_clock::now()<until && at.games().empty()) {
+      pump(0.02f,nullptr);
+      at.poll(0.02f);
+      all.poll(0.02f);
+      }
+    const auto* g = at.games().empty() ? nullptr : &at.games()[0];
+    if(g!=nullptr)
+      std::printf("  found \"%s\" at %s:%u, %d/%d, %u ms; to everyone: %zu found\n",g->name.c_str(),g->address.c_str(),
+                  g->port,g->players,g->maxPlayers,g->ping,all.games().size());
+    check(g!=nullptr && g->name=="Plaża" && g->players==3 && g->maxPlayers==3 && g->open && g->sameVersion
+          && g->info==std::vector<uint8_t>{4,2},"found by the search");
+    // ENet still works on that port
+    seats["a"].s->send(0x23,{5},true);
+    pump(2,[&]{ return has("host",Kind::Message,a,0x23); });
+    check(has("host",Kind::Message,a,0x23),"the session goes on beside the search");
+    // the ones silent for 5 s go
+    at.search("127.0.0.1",uint16_t(port+3));
+    for(int i=0; i<10; ++i)
+      at.poll(0.6f);
+    check(at.games().empty(),"nobody at that port: nothing found");
+  }
+
   seats["a"].s->send(0x20,{1,2,3},true);
   seats["a"].s->send(0x21,{9},false,b);
   seats["host"].s->send(0x22,{7,7},true);
@@ -1867,6 +1897,18 @@ static int cmdNet(uint16_t port) {
   check(has("b",Kind::Message,a,0x21) && !has("host",Kind::Message,a,0x21),"fast, to one player only");
   check(has("a",Kind::Message,0,0x22) && has("b",Kind::Message,0,0x22),"from the host to everyone");
   check(!has("a",Kind::Message,a),"nothing comes back to the sender");
+
+  // everyone loading a track for longer than ENet's timeout (15 s), nobody polling
+  for(auto& n:{"host","a","b"})
+    seats[n].s->busy(true);
+  seats["a"].s->send(0x24,{4},true);
+  std::this_thread::sleep_for(std::chrono::seconds(17));
+  for(auto& n:{"host","a","b"})
+    seats[n].s->busy(false);
+  pump(1,[&]{ return has("host",Kind::Message,a,0x24) && has("b",Kind::Message,a,0x24); });
+  check(!has("host",Kind::Left) && !has("a",Kind::Closed) && !has("b",Kind::Closed)
+          && seats["host"].s->players().size()==3,"17 s busy loading: nobody dropped");
+  check(has("host",Kind::Message,a,0x24) && has("b",Kind::Message,a,0x24),"what came meanwhile kept");
 
   seats["c"].s = Session::join("127.0.0.1",port,"Celina");
   pump(5,[&]{ return seats["c"].s->closed(); });

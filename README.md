@@ -185,7 +185,7 @@ Gra startuje w menu głównym jak oryginał. Opcje:
 | `-port <port>` | port UDP gry sieciowej (domyślnie 2302) |
 | `-name <imię>` | imię w grze sieciowej (domyślnie wybrany gracz) |
 
-Gra sieciowa na razie startuje tylko z tych opcji; ekrany oryginału („Utwórz grę”, „Dołącz do gry”) dojdą później.
+Grę sieciową zakłada się i dołącza też z menu: „Wielu graczy” → „Utwórz grę” / „Dołącz do gry”, potem poczekalnia z czatem.
 Dwie kopie na jednym komputerze: `OpenRCCars -l beach_1 -host` i `OpenRCCars -join 127.0.0.1 -name Drugi`.
 
 Okno albo pełny ekran wybiera ustawienie oryginału „Uruchom w oknie” z `RCCars.crs` w folderze gry

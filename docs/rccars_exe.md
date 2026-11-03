@@ -1194,6 +1194,37 @@ przesuwają je dalej po łuku z prędkości kątowej, najwyżej 0,25 s. Gracz k 
 startowej (gospodarz na miejscu gracza). Gospodarz wstrzymuje odliczanie, aż wszyscy wczytają trasę. Na razie bez
 zderzeń aut i bez przeciwników. Test bez gry: `rcinfo . netcar [stany na s]`.
 
+### Ekrany gry sieciowej (krok 3a)
+
+Z RCCars.exe, z tymi samymi id kontrolek, tekstami i miejscami (`game/menunet.cpp`):
+
+- „Utwórz grę” 0x4ce3e0: nagłówek 10132, „Utwórz” 0xfa1, „Wróć” 0xfa2, karty 0xfa3 „Opcje sieciowe” (0x4ce6b0)
+  i 0xfa4 „Informacje o graczu” (0x4cf4e0), tabela obsługi 0x56b29c. Opcje (tabela 0x56f130): nazwa serwera 0x10cc
+  (`Network/sessionName`, pusta to 410 „Serwer RC”), port 0x10ce (`Network/portNum`, pusty 42207 „domyślny”),
+  protokół 0x10cd, maks. opóźnienie 0x10cf (10/50/100/500/1000 ms, `Multiplayer/maxLag`), maks. graczy 0x10d1..0x10d5
+  (jedna lista na łącze, najwięcej {2,3,6,6,6} z 0x56f210, `Network/maxPlayersNum`), adres IP 0x10d0 z 0x10d8,
+  łącze 0x10d6 (42226..42230, `Multiplayer/bpsLevel`) z opisem 0x10d7 (42216+łącze). Utworzenie 0x4ce5bd: poczekalnia
+  albo 42418.
+- Informacje o graczu: nick 0x1130 (najwyżej 10 znaków, profil +0x27e8 = kawałek .scp 0x4060), kolor czatu 0x1131
+  (10 kolorów 43102.., profil +0x27e4 = kawałek 0x3061, RGB z 0x571710).
+- „Dołącz do gry” 0x4cf960: nagłówek 10133, „Połącz” 0x1005, „Wróć” 0x1006, karty 0x1007 (0x4cfd80), 0x1008, 0x1009
+  „Informacje o serwerze” (0x4d1330), tabela obsługi 0x56b374. Serwer `Network/serverName` (pusty 42208
+  „wsz. dostępne”), tabela gier z kolumnami 42503..42507, sortowanie 0x1200 (42511..42515), „Odśwież” 0x11ff.
+  Łączenie 0x4cfc00: „Łączenie...” 42451 z „Przerwij”, nieudane 42450.
+- Poczekalnia 0x4d9ab0: nagłówek 10141, przycisk wyścigu 0x13ed („Wyścig” 10007 u gospodarza, „Gotów” 10066 u innych),
+  „Odłącz” 0x13ee z pytaniem 42930, karty 0x13ef..0x13f4 (tabela 0x56ac70). Podsumowanie (tabela 0x570130): okrążenia
+  0x1450 (3/5/7), trasa 0x1451, gracze 0x1452 (Gracz, Samochód, Dopalacz, Silnik, Opony, Stan), czat 0x1454 i 0x1455
+  (nick+">", 60 znaków), „Wyrzuć” 0x1456 tylko u gospodarza (42907 przy sobie). Rozłączenie: 20233 utracone,
+  20234 nieznane, 20235 zakończone przez serwer, 20236 wyrzucony; wiadomości 20200..20202, 20214/20215 (trasa, okrążenia).
+
+U nas oryginał nie szuka gier sam (DirectPlay robi to za niego), więc mamy własne szukanie w sieci lokalnej
+(`net/finder.*`): pytanie „RCC?” na rozgłoszenie albo wpisany adres, na port gry, co 1 s; gospodarz odpowiada z tego
+samego gniazda ENet (`ENetHost::intercept`) nazwą, liczbą graczy, trasą i okrążeniami. Gra milcząca 5 s znika z listy.
+Nazwy idą siecią w UTF-8, menu ma Windows-1250 (`formats/cp1250.*`). Założenia: „Gotów” przełącza się drugim
+kliknięciem; karty „Mapa i informacje”, „Ustawienia samochodu”, „Rozmówki”, „Ogranicz. samochodu” i „Opcje” są na razie
+wyszarzone (krok 3b). Gdy gracz wczytuje trasę, wątek podtrzymuje połączenie (`Session::busy`), jak własne wątki
+DirectPlay w oryginale, inaczej długie wczytywanie zrywało grę.
+
 ## Tryb deweloperski
 
 `RCCars.exe -dev` (0x4883dd ustawia flagę 0x147d204, w logu „-dev mode on”): klawisz F9 (0x48c0e3) przełącza flagę

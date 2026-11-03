@@ -49,9 +49,10 @@ void main() {
   vec3 normal = normalize(inNormal);
 
   if((push.flags & F_MODULATE)!=0u) {
-    // tread strips on the ground: the ground under them is lit and fogged already, so they are not; the fog takes
-    // them to the grey that changes nothing. Whether RCCars.exe puts the lightmap of the few that have one
-    // (country_4) on them is not known; it would darken the ground twice, so it is left out
+    // tread strips on the ground, multiplied onto it; the fog takes them to the grey that changes nothing. The few
+    // with a lightmap (country_4) get it too, as in RCCars.exe (0x464440): that is what makes them dark marks
+    if((push.flags & F_LIGHTMAP)!=0u)
+      color.rgb *= texture(texLight, inUvLight).rgb * push.sunDir.w;
     float keep = exp(-push.cameraPos.w/gl_FragCoord.w);
     outColor   = vec4(mix(vec3(0.5), color.rgb, keep), 1.0);
     return;

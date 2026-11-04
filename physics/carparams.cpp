@@ -30,6 +30,15 @@ Spline spline(PackFile& pack, const std::string& name) {
 
 }
 
+ImpulseLimits ImpulseLimits::load(PackFile& pack) {
+  ImpulseLimits l;
+  const auto f = sliders(pack,"Settings\\MAX_IMPULSE.ini");
+  l.angular = f.real("maxImpAng",l.angular);
+  l.linear  = f.real("maxImpLinear",l.linear);
+  l.people  = f.real("coeffPeople",l.people);
+  return l;
+  }
+
 CarParams CarParams::load(PackFile& pack, int32_t car, int32_t upgrade) {
   return load(pack,car,upgrade,upgrade,upgrade);
   }
@@ -138,6 +147,8 @@ CarParams CarParams::load(PackFile& pack, int32_t car, int32_t boost, int32_t re
   p.rearWheelRadius = p.wheelRadius*mapped(cdt,"coeffRadBackWheels",1.f,2.f,1.f);
   p.comHeight       = mapped(cdt,"CenterMassOY",0.f,0.2f,0.032f);
   const float side  = cdt.real("shiftRoofBaseLefter",0.07f);
+  p.limits     = ImpulseLimits::load(pack);
+  p.rollTorque = sliders(pack,"Settings\\XXX.ini").real("momentFloorBackABS",p.rollTorque);
   p.body.clear();
   for(int s=0; s<3; ++s)
     for(int i=1; i<=3; ++i) {

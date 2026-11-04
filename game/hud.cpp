@@ -76,25 +76,40 @@ constexpr float MapX       = 620,  MapY      = 79,  MapSize = 165;
 // the map is shown around the car: 140 of its 512 texels (about 50 m) inside a 9 unit frame, as in the original
 constexpr float MapView    = 140,  MapInset  = 10,  MapCorner = 30;
 
-// which trackmap_<n> belongs to which track and how the world lies on it: fitted to the main checkpoints, which the
-// maps mark with orange dots, and to the route drawn on them (a few texels off at most; the maps are turned freely)
+// which trackmap_<n> belongs to which track and how the world lies on it (RCCars.exe 0x4a9840, tables 0x56c378 and
+// 0x56c468): three points of the world (x,z) and where they are on the map, in 1/512 of it; 0x4b8500 takes a point
+// as a sum of the two sides of that triangle and lays it the same way on the map. The checkpoints' dots are not
+// laid that way: 0x4a9ca0 reads them from a table of their own (0x56c558, up to 8 for each map), the places of the
+// orange dots painted on the maps, which lie up to about 10 texels from where the checkpoints themselves would fall
 struct TrackMap {
   const char* track;
   int         map;
-  float       k[2];       // u+iv = (k0+i*k1)*(x+iz) + offset, texels of 512x512
-  float       offset[2];
+  float       world[6];   // x0 z0 x1 z1 x2 z2
+  float       texel[6];   // u0 v0 u1 v1 u2 v2, texels of 512x512
+  int         dots;       // cp_1, cp_2 .. on the map
+  float       dot[8][2];
   };
 const TrackMap TrackMaps[] = {
-  {"beach_1",    1, {  1.5077f,  2.0881f}, {  216.138f,  307.066f}},
-  {"beach_2",    6, {  1.8248f, -1.4697f}, {  250.019f,  226.633f}},
-  {"beach_3",    3, { -1.9047f, -1.4350f}, {  283.909f,  179.057f}},
-  {"beach_4",   10, { -1.8743f,  1.3614f}, {  234.348f,  224.769f}},
-  {"country_1",  8, {  3.1648f, -0.0455f}, {  241.448f,  259.678f}},
-  {"country_2",  5, {  1.0742f,  2.7172f}, {  224.194f,  248.974f}},
-  {"country_3",  2, {  1.4848f, -1.8953f}, {  285.126f,  213.656f}},
-  {"country_4",  9, {  0.7445f, -2.6495f}, {  265.358f,  234.597f}},
-  {"urban_1",    7, {  1.5950f, -1.8126f}, {  250.418f,  196.683f}},
-  {"urban_2",    4, {  0.5583f, -2.3726f}, {  261.783f,  283.176f}},
+  {"beach_1",    1, {-18.32300f, -10.89700f, -28.02800f, 23.01600f, -0.00200f, -9.41700f},
+                  {210, 252, 125, 285, 234, 294}, 4, {{316,213}, {174,341}, {166,279}, {260,102}}},
+  {"beach_2",    6, {-16.75900f, 39.28300f, -79.66800f, -14.82800f, 18.39200f, 11.45200f},
+                  {277, 327,  88, 317, 300, 222}, 4, {{374,106}, {110,265}, {203,352}, {365,186}}},
+  {"beach_3",    3, {56.99400f, -67.27200f, -48.36300f, 11.09800f, -37.47200f, -37.09000f},
+                  { 74, 222, 392, 228, 304, 304}, 5, {{285,339}, {309,339}, {360,170}, {254,185}, {78,241}}},
+  {"beach_4",   10, {41.93200f, -56.75800f, -80.34700f, 12.02700f, 4.38400f, 54.51100f},
+                  {229, 398, 372,  85, 157, 141}, 5, {{135,311}, {133,174}, {371,79}, {298,267}, {209,399}}},
+  {"country_1",  8, {-48.96300f, 15.00200f, 37.44400f, 13.42300f, 43.37500f, -59.48100f},
+                  { 91, 309, 360, 300, 371,  76}, 7, {{311,106}, {258,190}, {310,260}, {292,286}, {190,268}, {169,316}, {350,249}}},
+  {"country_2",  5, {-27.22900f, 11.02700f, 33.12800f, 38.58600f, 14.50600f, -49.81900f},
+                  {164, 188, 153, 380, 377, 235}, 6, {{180,263}, {215,124}, {171,236}, {231,326}, {376,233}, {318,84}}},
+  {"country_3",  2, {-4.72900f, -29.40200f, -57.25500f, -27.65200f, 7.85800f, 23.74800f},
+                  {225, 180, 147, 282, 343, 236}, 4, {{275,111}, {137,399}, {218,290}, {345,252}}},
+  {"country_4",  9, {-23.31200f, 41.31500f, 36.89800f, 30.00500f, -25.36900f, -41.33800f},
+                  {358, 323, 370, 157, 139, 272}, 5, {{370,308}, {217,277}, {78,333}, {261,229}, {379,119}}},
+  {"urban_1",    7, {-72.88900f, -34.10000f, -63.04700f, 42.41100f, 12.70500f, 32.66700f},
+                  { 74, 274, 228, 378, 333, 223}, 5, {{106,298}, {196,339}, {273,191}, {391,142}, {246,297}}},
+  {"urban_2",    4, {19.05100f, -72.29400f, -36.97800f, -36.61000f, 64.69400f, 23.49400f},
+                  {109, 196, 154, 350, 352, 140}, 5, {{276,242}, {345,130}, {227,229}, {102,184}, {144,370}}},
   };
 
 const char* const Texts[2][2] = {
@@ -102,14 +117,12 @@ const char* const Texts[2][2] = {
   {"dopalacz", "km/h"},
   {"boost",    "km/h"},
   };
-// Settings/anim_cp.ini: Size 146, Shift 128, MinDist 237, MaxDist 900, BlinkDelta 10. Shift reads as texels of
-// the 256 high picture: it is raised by half its height, so the shadow drawn at its bottom lies on the ground under
-// the marker. The rest is read as centimetres and hundredths of a second per frame (a guess, the game's code that
-// uses them is not decoded): the arrow is 1.46 m big, hidden when the camera is closer than 2.37 m, and farther
-// than 9 m it keeps the size it has on the screen at 9 m (growing upwards from the ground), so that it shows the
-// way from afar.
+// Settings/anim_cp.ini, each slider / 100 (RCCars.exe 0x52b370; drawn by 0x52abc0): Size 146 is half the side of
+// the square picture (2.92 m), Shift 128 how high its middle stands over the checkpoint's ground (its glow at the
+// bottom then lies on the ground), MinDist 237 and MaxDist 900 where it fades in (none closer than 2.37 m to the
+// camera across, all of it from 9 m on), BlinkDelta 10 the seconds each of its three frames is shown
 constexpr float CpArrowSize    = 1.46f;
-constexpr float CpArrowShift   = 128.f/256.f;
+constexpr float CpArrowShift   = 1.28f;
 constexpr float CpArrowMinDist = 2.37f;
 constexpr float CpArrowMaxDist = 9.f;
 constexpr float CpArrowFrame   = 0.1f;
@@ -286,12 +299,22 @@ void Hud::chatConsole() {
 
 void Hud::setTrack(const std::string& name) {
   map = nullptr;
+  mapDots.clear();
   for(auto& t:TrackMaps)
     if(name==t.track) {
       if(auto tx = resources.texture("trackmap_"+std::to_string(t.map)))
         map = &tx->tex;
-      mapK      = {t.k[0],t.k[1]};
-      mapOffset = {t.offset[0],t.offset[1]};
+      // u = a0*x+a1*z+a2, v = b0*x+b1*z+b2 through the three points
+      const float ex = t.world[2]-t.world[0], ez = t.world[3]-t.world[1];
+      const float fx = t.world[4]-t.world[0], fz = t.world[5]-t.world[1];
+      const float det = ex*fz-ez*fx;
+      for(int c=0; c<2; ++c) {
+        const float du = t.texel[2+c]-t.texel[c], dv = t.texel[4+c]-t.texel[c];
+        const float a0 = (du*fz-dv*ez)/det, a1 = (dv*ex-du*fx)/det;
+        mapAffine[c] = {a0,a1,t.texel[c]-a0*t.world[0]-a1*t.world[1]};
+        }
+      for(int i=0; i<t.dots; ++i)
+        mapDots.push_back({t.dot[i][0],t.dot[i][1]});
       }
   }
 
@@ -407,48 +430,54 @@ void Hud::gates(const rc::Race& race, const rc::Mat4& vp) {
     }
   }
 
-void Hud::checkpointArrow(const rc::Race& race, const rc::Mat4& vp) {
+void Hud::checkpointArrow(const rc::Race& race, const rc::Mat4& vp, const rc::Vec3& eye) {
   const auto& route = race.checkpoints().route();
   if(route.size()<2 || race.phase()==rc::Race::Phase::Finished)
     return;
-  // red over cp_1, where the lap ends; green over the other main checkpoints. The frames go 1 2 3 2 1 ..
+  // red (cp_ar_3) over cp_1, where the lap ends; green (cp_ar_2) over the other main checkpoints; frames 1 2 3
   const size_t   next   = race.checkpoints().next();
   const int      colour = next+1==route.size() ? 1 : 0;
-  const int      step   = int(clock/CpArrowFrame)%4;
-  const auto*    tex    = cpArrow[colour][step==3 ? 1 : step];
+  const auto*    tex    = cpArrow[colour][int(clock/CpArrowFrame)%3];
   if(tex==nullptr)
     return;
   const auto&    p  = route[next];
-  const rc::Vec3 foot = {p.position.x,p.ground,p.position.z};
-  float depth = 0;
-  auto project = [&](const rc::Vec3& v, float& sx, float& sy) {
-    const float w = vp.m[3][0]*v.x+vp.m[3][1]*v.y+vp.m[3][2]*v.z+vp.m[3][3];
-    const rc::Vec3 c = vp.point(v);
-    sx    = (c.x/w*0.5f+0.5f)*float(scrW);
-    sy    = (c.y/w*0.5f+0.5f)*float(scrH);
-    depth = c.z/w;
-    return w;
-    };
-  float x0, y0, x1, y1;
-  const float dist = project(foot,x1,y1);
+  const rc::Vec3 at = {p.position.x,p.ground+CpArrowShift,p.position.z};
+  // turned about the upright towards the camera
+  const rc::Vec3 to = {at.x-eye.x,0,at.z-eye.z};
+  const float dist  = to.length();
   if(dist<CpArrowMinDist)
     return;
-  // the size: kept from growing smaller on the screen beyond MaxDist
-  const float    size = CpArrowSize*std::max(1.f,dist/CpArrowMaxDist);
-  const rc::Vec3 at   = foot+rc::Vec3{0,size*CpArrowShift,0};
-  // a flat picture facing the camera at the arrow's distance, brought half a metre nearer so that the ground right
-  // under it does not cut off its shadow: terrain and objects in front of it hide it. The 4th row of the matrix is
-  // the camera's forward direction.
-  const rc::Vec3 fwd = {vp.m[3][0],vp.m[3][1],vp.m[3][2]};
-  float sx, sy;
-  project(at-fwd*0.5f,sx,sy);
-  const float z = depth;
-  // its height on the screen from the foot to the top, the width the same
-  project(foot+rc::Vec3{0,size,0},x0,y0);
-  const float h     = std::abs(y1-y0);
-  const float x     = x1;
-  const float alpha = std::min(1.f,dist-CpArrowMinDist);   // fades in over the first metre
-  quadAt(*tex,x-h*0.5f,std::min(y0,y1),h,h,z,Color{1,1,1,alpha});
+  const rc::Vec3 side = rc::Vec3{-to.z,0,to.x}*(1.f/dist);   // to the right on the screen
+  const rc::Vec3 up   = {0,1,0};
+  // 0x52b1d0: the alpha goes from 50 to 250 and back in 0.4 s each way, no more than 220, and fades in from
+  // MinDist to MaxDist
+  const float ph    = std::fmod(clock,0.8f);
+  const float blink = std::min(ph<0.4f ? 50.f+500.f*ph : 250.f-500.f*(ph-0.4f),220.f)/255.f;
+  const float alpha = blink*std::min((dist-CpArrowMinDist)/(CpArrowMaxDist-CpArrowMinDist),1.f);
+
+  // a grid of small quads, each corner projected, so that the picture is not bent where the square is seen
+  // at a slant
+  constexpr int N = 4;
+  constexpr float Near = 0.1f;
+  std::array<float,3> pt[N+1][N+1];
+  bool ok[N+1][N+1];
+  for(int i=0; i<=N; ++i)
+    for(int j=0; j<=N; ++j) {
+      const float u = float(i)/N, v = float(j)/N;
+      const rc::Vec3 w = at+side*(CpArrowSize*(2.f*u-1.f))+up*(CpArrowSize*(1.f-2.f*v));
+      const float    cw = vp.m[3][0]*w.x+vp.m[3][1]*w.y+vp.m[3][2]*w.z+vp.m[3][3];
+      const rc::Vec3 c  = vp.point(w);
+      ok[i][j] = cw>Near;
+      pt[i][j] = {(c.x/cw*0.5f+0.5f)*float(scrW),(c.y/cw*0.5f+0.5f)*float(scrH),c.z/cw};
+      }
+  for(int i=0; i<N; ++i)
+    for(int j=0; j<N; ++j) {
+      if(!ok[i][j] || !ok[i+1][j] || !ok[i+1][j+1] || !ok[i][j+1])
+        continue;
+      const float u0 = float(i)/N, u1 = float(i+1)/N, v0 = float(j)/N, v1 = float(j+1)/N;
+      quadAt(*tex,{pt[i][j],pt[i+1][j],pt[i+1][j+1],pt[i][j+1]},{{{u0,v0},{u1,v0},{u1,v1},{u0,v1}}},
+             Color{1,1,1,alpha});
+      }
   }
 
 void Hud::gauge(bool right, float value, float reach, const std::string& number, std::string_view label) {
@@ -526,7 +555,8 @@ void Hud::trackMap(const rc::Race& race, const Info& info) {
     return;
   const auto& route = race.checkpoints().route();
   auto toMap = [&](const rc::Vec3& p) {
-    return std::array<float,2>{mapK[0]*p.x-mapK[1]*p.z+mapOffset[0], mapK[1]*p.x+mapK[0]*p.z+mapOffset[1]};
+    return std::array<float,2>{mapAffine[0][0]*p.x+mapAffine[0][1]*p.z+mapAffine[0][2],
+                               mapAffine[1][0]*p.x+mapAffine[1][1]*p.z+mapAffine[1][2]};
     };
   // the frame: messagebox.csi's box (x 0..128 of 256, open on the right) and the same mirrored
   const float x = px(MapX,true), y = py(MapY+mapShift), size = MapSize*scale;
@@ -576,22 +606,27 @@ void Hud::trackMap(const rc::Race& race, const Info& info) {
       }
     draws.back().count += uint32_t(outline.size()*3);
   }
-  auto toScreen = [&](const rc::Vec3& p, bool& visible) {
-    const auto  m = toMap(p);
+  auto toScreenTexel = [&](const std::array<float,2>& m, bool& visible) {
     const float sx = x+in+(m[0]-crop.x0)/view*inner, sy = y+in+(m[1]-crop.y0)/view*inner;
     visible = inside(sx,sy);
     return std::array<float,2>{sx,sy};
+    };
+  auto toScreen = [&](const rc::Vec3& p, bool& visible) {
+    return toScreenTexel(toMap(p),visible);
     };
 
   // the main checkpoints, the next one glowing
   const float dot = 11.f*scale;
   if(mapCp!=nullptr) {
     const size_t next = race.checkpoints().next();
+    size_t mainNo = 0;
     for(size_t i=0; i+1<route.size(); ++i) {
       if(!route[i].main)
         continue;
+      // cp_N at the map's own dot (0x4a9ca0), the place of the checkpoint itself if the map has none for it
+      const size_t no = mainNo++;
       bool       vis    = false;
-      const auto s      = toScreen(route[i].position,vis);
+      const auto s      = no<mapDots.size() ? toScreenTexel(mapDots[no],vis) : toScreen(route[i].position,vis);
       const bool isNext = (i==0 ? route.size()-1 : i)==next && race.phase()!=rc::Race::Phase::Finished;
       if(!vis)
         continue;
@@ -643,7 +678,7 @@ void Hud::drawView(const rc::Race& race, const Info& info) {
 
   if(info.gates)
     gates(race,info.viewProj);
-  checkpointArrow(race,info.viewProj);
+  checkpointArrow(race,info.viewProj,info.eye);
   if(view==0)
     splitBar();
 
@@ -861,7 +896,7 @@ void Hud::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const r
   if(info.gates && !info.demo)
     gates(race,info.viewProj);
   if(!info.demo)
-    checkpointArrow(race,info.viewProj);
+    checkpointArrow(race,info.viewProj,info.eye);
 
   // top right: "okrążenie" and the lap number
   if(lapLabel.loaded) {

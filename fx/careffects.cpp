@@ -190,7 +190,7 @@ void CarEffects::clear(bool keep) {
     }
   exhaust.clear();
   explode  = 0;
-  boostWas = false;
+  jumpWas = false;
   grey     = 255;
   wake.clear();
   if(keep) {
@@ -426,13 +426,13 @@ void CarEffects::smoke(const CarState& car, float dt, Random& rnd) {
   if(!player || !car.exhaust)
     return;
 
-  // 0x5303c0: how much smoke. The turbo coming on above 10 km/h makes a big dark puff for ExplodeTime; a spinning
+  // 0x5303c0: how much smoke. The jump key going down above 10 km/h makes a big dark puff for ExplodeTime; a spinning
   // rear wheel smokes (our car has no wheel spin), the turbo above 5 km/h more, the gas less
   float x = car.velocity.length()*3.6f;
   puff = boostSmoke = false;
   bool spin = false;
   if(explode<=0) {
-    if(!boostWas && car.boost && x>10.f)
+    if(!jumpWas && car.jump && x>10.f)
       explode = e.explodeTime;
     else {
       float slip = 0;
@@ -446,7 +446,7 @@ void CarEffects::smoke(const CarState& car, float dt, Random& rnd) {
       else if(car.boost && x>5.f)
         boostSmoke = true;
       }
-    boostWas = car.boost;
+    jumpWas = car.jump;
     }
   else {
     x = 50;

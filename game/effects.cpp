@@ -155,6 +155,7 @@ void Effects::tickCar(rc::fx::CarEffects& fx, float dt, const rc::Vehicle& car, 
   state.gas   = gas;
   state.brake = brake;
   state.boost = car.boosting();
+  state.jump  = car.jumpPressed();
   for(size_t i=0; i<state.wheels.size(); ++i)
     state.wheels[i].slip = car.wheelSlip(i,&state.wheels[i].rimSpeed);
   state.sense(track);

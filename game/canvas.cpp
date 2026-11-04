@@ -175,6 +175,15 @@ void Canvas::quadAt(const Texture2d& tex, float x, float y, float w, float h, fl
   draws.back().count += 6;
   }
 
+void Canvas::quadAt(const Texture2d& tex, const std::array<std::array<float,3>,4>& p,
+                    const std::array<std::array<float,2>,4>& uv, const Color& c) {
+  if(draws.empty() || draws.back().tex!=&tex || !draws.back().depth)
+    draws.push_back({&tex,verts.size(),0,true});
+  for(int i:{0,1,2,0,2,3})
+    verts.push_back(Vertex{{p[i][0],p[i][1]},{uv[i][0],uv[i][1]},{c[0],c[1],c[2],c[3]},p[i][2]});
+  draws.back().count += 6;
+  }
+
 void Canvas::sprite(const Image& img, const Rect& src, float cx, float cy, float size, const Color& c) {
   if(!img.loaded)
     return;

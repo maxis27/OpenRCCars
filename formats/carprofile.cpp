@@ -217,11 +217,24 @@ size_t CarProfile::find(float time, float& t) const {
   return i;
   }
 
+size_t CarProfile::blend(float time, float& t) const {
+  const size_t i = find(time,t);
+  if(i+1<list.size()) {
+    const Frame& a  = list[i];
+    const Frame& b  = list[i+1];
+    const float  dx = b.position.x-a.position.x, dz = b.position.z-a.position.z;
+    const float  dt = b.time-a.time;
+    if(dt<=1e-6f || std::sqrt(dx*dx+dz*dz)/dt>jumpSpeed)
+      t = 0;
+    }
+  return i;
+  }
+
 Mat4 CarProfile::pose(float time) const {
   if(list.empty())
     return Mat4();
   float        t = 0;
-  const size_t i = find(time,t);
+  const size_t i = blend(time,t);
   const Frame& a = list[i];
   const Frame& b = list[std::min(i+1,list.size()-1)];
   // normalised linear interpolation of the rotation, along the shorter way
@@ -254,7 +267,7 @@ Vec3 CarProfile::velocity(float time) const {
   if(list.empty() || time>list.back().time)
     return {};
   float        t = 0;
-  const size_t i = find(time,t);
+  const size_t i = blend(time,t);
   const Frame& a = list[i];
   const Frame& b = list[std::min(i+1,list.size()-1)];
   return a.velocity+(b.velocity-a.velocity)*t;

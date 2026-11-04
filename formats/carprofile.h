@@ -58,6 +58,10 @@ class CarProfile {
     // where the lap that loops begins: "Time path FULL" - "CYCLE", 0 if the header has no such texts
     float                     cycleStart() const { return loopStart; }
 
+    // two frames further apart than this many metres a second (across, sideways) are a jump: between them the
+    // earlier one is held (RCCars.exe 0x502ea0: 1.5 times MAX_IMPULSE.ini maxImpLinear, ImpulseLimits)
+    float                     jumpSpeed = 30.f;
+
     // model -> world at `time` (seconds since the recording began), interpolated between the frames;
     // the first and last frame outside of the recording
     Mat4                      pose    (float time) const;
@@ -68,6 +72,8 @@ class CarProfile {
   private:
     // the frame at or before `time` and how far towards the next one, 0..1
     size_t                    find(float time, float& t) const;
+    // find(), the earlier frame held across a jump
+    size_t                    blend(float time, float& t) const;
 
     std::vector<Frame>        list;
     float                     loopStart = 0;

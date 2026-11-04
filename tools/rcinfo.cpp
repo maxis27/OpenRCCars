@@ -1475,14 +1475,15 @@ static int cmdRam(const fs::path& game, const fs::path& track, rc::PackFile& pac
                     std::abs(o.speed())*3.6f,p.vector({0,1,0}).y);
         (o.knocked() ? knocks : backs)++;
         was[i] = o.knocked();
-        // RC_RAM_FLIP=1: the first car knocked off is put on its roof, to see the autopilot stand it up
+        // RC_RAM_FLIP=<degrees>: the first car knocked off is turned that far about its forward axis (180 on its
+        // roof, 90 or -90 on a side), to see the autopilot stand it up
         if(flip && o.knocked() && flipped<0 && o.vehicle()!=nullptr) {
-          rc::Mat4 r = p*rc::Mat4::rotate(2,180.f);
+          rc::Mat4 r = p*rc::Mat4::rotate(2,float(std::atof(std::getenv("RC_RAM_FLIP"))));
           r.m[1][3] += 0.4f;
           o.vehicle()->place(r,{},{});
           flipped   = int(i);
           flippedAt = t;
-          std::printf("%6.2f %-10s put on its roof\n",t,o.name.c_str());
+          std::printf("%6.2f %-10s turned over\n",t,o.name.c_str());
           }
         }
       }

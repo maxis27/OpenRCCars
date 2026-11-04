@@ -432,13 +432,14 @@ void Vehicle::update(const Input& in, float dt) {
   throttle  = in.throttle;
   handbrake = in.handbrake;
 
-  // jump (RCCars.exe): a kick along the car's up axis; tipped over by more than JumpFlipAngle it puts the car
-  // back on its wheels instead
+  // jump (RCCars.exe 0x4f3b80): a kick along the car's up axis; tipped over by more than JumpFlipAngle it puts the
+  // car back on its wheels instead (0x508600), only while a sphere of its body is within 6 mm of the track
   jumpTimer += dt;
   if(in.jump && jumpTimer>=CarParams::JumpCooldown) {
     const Vec3 up = axis(1);
     if(up.y<std::cos(CarParams::JumpFlipAngle*3.14159265f/180.f)) {
-      recover();
+      if(near(BodySpheres,0.006f))
+        recover();
       jumpTimer = 0;
       }
     else if(onGround()) {

@@ -1429,6 +1429,9 @@ static int cmdRam(const fs::path& game, const fs::path& track, rc::PackFile& pac
   size_t knocks = 0, backs = 0, hits = 0, greats = 0;
   float  tankBefore = veh.boostTank();
   bool placed = false;
+  const bool flip = std::getenv("RC_RAM_FLIP")!=nullptr;
+  int   flipped   = -1;
+  float flippedAt = 0;
   for(float t=0; t<seconds; t+=dt) {
     // "side": once the field has spread out, from 3 m beside the target's way ahead, square at it
     if(side && !placed && t>=8.f && !ai[size_t(target)].knocked()) {
@@ -1472,7 +1475,23 @@ static int cmdRam(const fs::path& game, const fs::path& track, rc::PackFile& pac
                     std::abs(o.speed())*3.6f,p.vector({0,1,0}).y);
         (o.knocked() ? knocks : backs)++;
         was[i] = o.knocked();
+        // RC_RAM_FLIP=<degrees>: the first car knocked off is turned that far about its forward axis (180 on its
+        // roof, 90 or -90 on a side), to see the autopilot stand it up
+        if(flip && o.knocked() && flipped<0 && o.vehicle()!=nullptr) {
+          rc::Mat4 r = p*rc::Mat4::rotate(2,float(std::atof(std::getenv("RC_RAM_FLIP"))));
+          r.m[1][3] += 0.4f;
+          o.vehicle()->place(r,{},{});
+          flipped   = int(i);
+          flippedAt = t;
+          std::printf("%6.2f %-10s turned over\n",t,o.name.c_str());
+          }
         }
+      }
+    if(flipped>=0 && t-flippedAt<6.f && int((t-flippedAt)/0.25f)!=int((t-dt-flippedAt)/0.25f)) {
+      auto& o = ai[size_t(flipped)];
+      const rc::Vehicle* v = o.vehicle();
+      std::printf("%6.2f %-10s up %.2f%s\n",t,o.name.c_str(),o.pose().vector({0,1,0}).y,
+                  v==nullptr ? " (back on its recording)" : v->bodyNearTrack(0.006f) ? ", body on the track" : "");
       }
     }
   for(size_t i=0; i<ai.size(); ++i)

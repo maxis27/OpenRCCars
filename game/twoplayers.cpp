@@ -75,7 +75,6 @@ void MainWindow::resetRider(bool restartRace, bool again) {
   r.vehicle    = std::make_unique<rc::Vehicle>(*physics,geom,prm,r.start);
   r.pose       = r.start;
   r.lastPos    = r.start.translation();
-  r.upsideDown = 0;
   r.jump       = false;
   if(restartRace) {
     r.race->restart(r.start,again);
@@ -102,7 +101,6 @@ void MainWindow::respawnRider() {
   if(two.tracker[1])
     two.tracker[1]->relocate();
   r.lastPos    = r.pose.translation();
-  r.upsideDown = 0;
   r.chase.reset(riderChase());
   }
 
@@ -209,12 +207,7 @@ void MainWindow::tickTwo(float dt) {
                       driving && controls2.held(Controls::Forw,keys.data()),
                       driving && controls2.held(Controls::Back,keys.data()));
 
-  // back on the wheels, back to the last checkpoint: as the player's car
-  r.upsideDown = r.pose.vector({0,1,0}).y<0.3f ? r.upsideDown+dt : 0;
-  if(r.upsideDown>2.f) {
-    r.vehicle->recover();
-    r.upsideDown = 0;
-    }
+  // back to the last checkpoint: as the player's car
   const auto& grid = level->scene().collision;
   const bool  out  = !grid.empty() && (at.x<grid.min.x || at.x>grid.max.x || at.z<grid.min.z || at.z>grid.max.z ||
                                        at.y<grid.min.y-0.1f);

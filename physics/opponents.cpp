@@ -307,6 +307,7 @@ void Opponent::knock() {
   driven->place(current,v,Vec3{});
   driveTime  = 0;
   sinceTouch = 0;
+  tipped     = 0;
   stuckTime  = 0;
   backTime   = 0;
   backing    = false;
@@ -434,6 +435,15 @@ void Opponent::drive(float dt, const std::function<bool(const Vec3&)>& seen) {
   sinceTouch += dt;
   if(driven->takeObjectTouch() || driven->contact().surface!=0)
     sinceTouch = 0;   // the body against the track or a prop (0x533ee0)
+
+  // back on its wheels (0x4fe310, the autopilot's cars only): 2 s in all tipped over by more than 45 degrees with a
+  // sphere of the body within 6 mm of the track; the time is not cleared while it stands on its wheels in between
+  if(driven->pose().vector({0,1,0}).normalized().y<std::cos(45.f*3.14159265f/180.f) && driven->bodyNearTrack(0.006f))
+    tipped += dt;
+  if(tipped>2.f) {
+    driven->recover();
+    tipped = 0;
+    }
 
   const Mat4  m   = driven->pose();
   const Vec3  at  = m.translation();

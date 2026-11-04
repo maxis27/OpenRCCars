@@ -60,8 +60,12 @@ z `physics/balls.h` (0x533430). Zewnętrznego silnika fizyki nie ma.
   (i przechodzi na drugą stronę) o 6 na sekundę; `steering<N>.bspl` zamienia ją na kąt kół (20° na jednostkę),
   który rośnie do `AngleSteer` (0..100, 29,3°). Pełny skręt nie maleje z prędkością, tylko wolniej się go nabiera.
 - **Skok** (spacja, co najmniej 0,5 s od poprzedniego): +3 m/s wzdłuż osi „w górę” auta (Buggy 3,3) i obrót wokół
-  pionu ×1,5; auto przechylone o ponad 80° zamiast skoczyć staje na koła. Auto przewrócone na dach wraca na koła
-  po 2 s.
+  pionu ×1,5; auto przechylone o ponad 80° zamiast skoczyć staje na koła (0x4f3b80 → 0x508600), ale tylko gdy któraś
+  kula bryły (nie koła) jest do 6 mm od trasy; w powietrzu nic się nie dzieje.
+- **Samo wstawanie** (0x4fe310, wołane przez 0x4fe2f0 tylko dla aut prowadzonych przez autopilota, czyli
+  strąconych przeciwników): auto przechylone o ponad 45° z kulą bryły do 6 mm od trasy liczy czas (car+0x43bc);
+  po 2 s staje na koła (0x508600) i licznik się zeruje. Licznik nie zeruje się, gdy auto w międzyczasie stanie na
+  kołach. Auto gracza samo nie wstaje: zostaje skok albo „Zresetuj”.
 - **Przetaczanie klawiszami** (0x509080, na początku każdego kroku 0x4f5e50): auto wolniejsze niż 0,8 m/s, z osią
   przód-tył do 30° od poziomu (albo pionową), z osią „w górę” co najmniej 70° od poziomego kierunku w prawo od osi
   przód-tył (0x5092c0: na dachu, na lewym boku albo na kołach, nigdy na prawym boku) i z wciśniętym skrętem (lewy

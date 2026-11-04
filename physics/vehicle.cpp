@@ -584,11 +584,25 @@ void Vehicle::step(float h) {
 // steering key held, the left one first (0x5091b0), gets only a torque about its forward axis instead of the step:
 // momentFloorBackABS times (1 + how far the key is in), negative for the left key. Gravity and the momentum stay
 // out of it: one Euler step moves it by its velocity and turns it (0x509460). Where that puts a sphere in the
-// track it is tried 9 mm higher; still in, the car is left as it was and takes the step.
+// track it is tried 9 mm higher (the spheres at their full size, 0x4efdc0); still in, the car is left as it was and
+// takes the step.
+// The condition lets an upright car through too, but in the original a stopped car on its wheels does not lean with
+// the steering keys (Mateusz checked it, 2026-11-04), so a car with 3 or more wheels on the track is left out (ours).
 bool Vehicle::rollOver(float h) {
   constexpr float Deg = 180.f/3.14159265f;
   if(rollKey==0 || vel.length()>0.8f)
     return false;
+  {
+    auto& sp = sphereBuf[0];
+    spheres(sp,WheelSpheres);
+    PhysicsWorld::TrackTouch t;
+    int onTrack = 0;
+    for(auto& s:sp)
+      if(owner.touchTrack(s.c,s.r+0.01f,&t,1)>0)
+        ++onTrack;
+    if(onTrack>=3)
+      return false;
+  }
   auto angle = [](const Vec3& a, const Vec3& b) {
     return std::acos(std::clamp(Vec3::dot(a,b),-1.f,1.f))*Deg;
     };
@@ -611,7 +625,7 @@ bool Vehicle::rollOver(float h) {
     Body b = to;
     b.x.y += float(i)*0.009f;
     set(b);
-    if(!penetrates(AllSpheres))
+    if(!penetrates(AllSpheres,true))
       return true;
     }
   set(was);
@@ -793,7 +807,7 @@ void Vehicle::spheres(std::vector<Sphere>& out, Which which) const {
       out.push_back({m.point(b.at),b.radius,false});
   }
 
-bool Vehicle::penetrates(Which which) const {
+bool Vehicle::penetrates(Which which, bool fullWheels) const {
   auto& sp = const_cast<std::vector<Sphere>&>(sphereBuf[0]);
   spheres(sp,AllSpheres);
   PhysicsWorld::TrackTouch t;
@@ -801,7 +815,7 @@ bool Vehicle::penetrates(Which which) const {
     auto& s = sp[i];
     if(!(which&(s.wheel ? WheelSpheres : BodySpheres)) || (i<inside.size() && inside[i]))
       continue;
-    if(owner.touchTrack(s.c,s.wheel ? s.r-WheelSink : s.r,&t,1)>0)
+    if(owner.touchTrack(s.c,s.wheel && !fullWheels ? s.r-WheelSink : s.r,&t,1)>0)
       return true;
     }
   return false;

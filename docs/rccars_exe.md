@@ -68,8 +68,10 @@ z `physics/balls.h` (0x533430). Zewnętrznego silnika fizyki nie ma.
   sprawdzany pierwszy, 0x5091b0) zamiast kroku dostaje tylko moment wokół osi przód-tył: `momentFloorBackABS`
   z `Settings/XXX.ini` (0,01..1: 0,30) × (1 + wartość klawisza, dla klawiatury 1), ze znakiem minus dla lewego. Jeden
   krok Eulera bez grawitacji i bez zmiany pędu (0x509460) przesuwa je o prędkość i obraca; gdy kula wchodzi w trasę,
-  gra próbuje 9 mm wyżej, a gdy dalej wchodzi, zostawia auto jak było i robi zwykły krok. Wynika z tego, że także stojące
-  na kołach auto ze skrętem się przechyla (nie sprawdzone w grze).
+  gra próbuje 9 mm wyżej, a gdy dalej wchodzi, zostawia auto jak było i robi zwykły krok. Kule biorą pełny promień
+  (0x4efdc0 z zapasem 0), także kół. Z samego warunku wynika, że stojące na kołach auto ze skrętem też by się
+  przechylało, ale w oryginale się nie przechyla (sprawdził Mateusz 4.11.2026). U nas auto z co najmniej 3 kołami
+  przy trasie (do 1 cm) jest więc pomijane.
 - **Bryła** (0x4f0910, 0x4f5e50): bryła sztywna o masie 1 kg, bezwładność prostopadłościanu całego modelu (Buggy
   ×2 wokół osi przód-tył), środek masy `CenterMassOY` (0..0,2 m) nad początkiem modelu; prędkość najwyżej
   `maxImpLinear` (15,86 m/s), moment pędu najwyżej `maxImpAng` (0,545) z `Settings/MAX_IMPULSE.ini`. Nadwozie to 9 kul z `cdt<N>.ini`: `CdtRadUp<i>` (0,01..0,3 m) w `CdtDeltaX|Y|Z<i>`

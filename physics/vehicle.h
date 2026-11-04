@@ -271,7 +271,7 @@ class Vehicle {
     Body                                  advanced(const Body& from, float h);
     void                                  spheres(std::vector<Sphere>& out, Which which) const;
     // a sphere is inside the track (0x4efdc0), but those that were at the start of the move part
-    bool                                  penetrates(Which which) const;
+    bool                                  penetrates(Which which, bool fullWheels = false) const;
     void                                  findInside();
     // the points of the track within `margin` of the spheres (0x4f01f0), at most 50
     void                                  touches(float margin, std::vector<Touch>& out) const;

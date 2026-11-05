@@ -1,10 +1,13 @@
 #include "session.h"
 
 #include "bytes.h"
+#include "finder.h"
 
 #include <enet/enet.h>
 
 #include <algorithm>
+#include <cstring>
+#include <map>
 #include <mutex>
 
 namespace rc::net {
@@ -32,18 +35,9 @@ constexpr auto ListPeriod = std::chrono::milliseconds(1000);
 std::mutex enetLock;
 int        enetUsers = 0;
 
-void enetUse() {
-  std::lock_guard<std::mutex> g(enetLock);
-  if(enetUsers==0 && enet_initialize()!=0)
-    throw NetError("ENet could not start");
-  ++enetUsers;
-  }
-
-void enetDrop() {
-  std::lock_guard<std::mutex> g(enetLock);
-  if(--enetUsers==0)
-    enet_deinitialize();
-  }
+// whose ENetHost is whose: ENet's intercept knows only the host
+std::mutex                    hostsLock;
+std::map<ENetHost*,Session*>  hosts;
 
 ENetPeer* asPeer(void* p) { return static_cast<ENetPeer*>(p); }
 
@@ -70,6 +64,19 @@ std::string shortName(const std::string& s) {
 
 }
 
+void Session::useEnet() {
+  std::lock_guard<std::mutex> g(enetLock);
+  if(enetUsers==0 && enet_initialize()!=0)
+    throw NetError("ENet could not start");
+  ++enetUsers;
+  }
+
+void Session::dropEnet() {
+  std::lock_guard<std::mutex> g(enetLock);
+  if(--enetUsers==0)
+    enet_deinitialize();
+  }
+
 struct Session::Peer {
   ENetPeer*         peer  = nullptr;
   uint8_t           id    = NoId;   // NoId until let in
@@ -79,15 +86,52 @@ struct Session::Peer {
   };
 
 Session::Session() {
-  enetUse();
+  useEnet();
   }
 
 Session::~Session() {
+  busy(false);
   if(!over)
     close();
-  if(enetHost!=nullptr)
+  if(enetHost!=nullptr) {
+    {
+      std::lock_guard<std::mutex> g(hostsLock);
+      hosts.erase(static_cast<ENetHost*>(enetHost));
+    }
     enet_host_destroy(static_cast<ENetHost*>(enetHost));
-  enetDrop();
+    }
+  dropEnet();
+  }
+
+int Session::intercept(void* host, void*) {
+  ENetHost* h = static_cast<ENetHost*>(host);
+  Session*  s = nullptr;
+  {
+    std::lock_guard<std::mutex> g(hostsLock);
+    auto it = hosts.find(h);
+    if(it!=hosts.end())
+      s = it->second;
+  }
+  return s!=nullptr && s->answer(&h->receivedAddress,h->receivedData,h->receivedDataLength) ? 1 : 0;
+  }
+
+bool Session::answer(const void* from, const uint8_t* data, size_t size) {
+  if(size<sizeof(Finder::Question) || std::memcmp(data,Finder::Question,sizeof(Finder::Question))!=0)
+    return false;
+  Reader r(data+sizeof(Finder::Question),size-sizeof(Finder::Question));
+  r.u16();
+  const uint32_t when = r.u32();
+  if(!r.ok() || !hosting || over)
+    return true;
+  Writer w;
+  for(char c:Finder::Answer)
+    w.u8(uint8_t(c));
+  w.u16(Version).u32(when).str(name).u8(uint8_t(list.size())).u8(uint8_t(limit)).u8(accepting ? 1 : 0).bytes(info);
+  ENetBuffer b;
+  b.data       = const_cast<uint8_t*>(w.data().data());
+  b.dataLength = w.data().size();
+  enet_socket_send(static_cast<ENetHost*>(enetHost)->socket,static_cast<const ENetAddress*>(from),&b,1);
+  return true;
   }
 
 void Session::open(const char* address, uint16_t port, size_t peerCount) {
@@ -111,6 +155,13 @@ std::unique_ptr<Session> Session::host(const HostOptions& o) {
   s->selfId   = HostId;
   // everyone may knock, also when it is full: the late ones are told so (Reason::Full) instead of never answered
   s->open("0.0.0.0",o.port,MaxPlayers+4);
+  // and answers the games' search on the same port
+  ENetHost* h = static_cast<ENetHost*>(s->enetHost);
+  h->intercept = [](ENetHost* host, ENetEvent* e) { return Session::intercept(host,e); };
+  {
+    std::lock_guard<std::mutex> g(hostsLock);
+    hosts[h] = s.get();
+  }
   s->list.push_back({HostId,s->selfName,0});
   s->lastList = Clock::now();
   return s;
@@ -127,7 +178,7 @@ std::unique_ptr<Session> Session::join(const std::string& address, uint16_t port
   s->server = enet_host_connect(static_cast<ENetHost*>(s->enetHost),&at,Channels,Version);
   if(s->server==nullptr)
     throw NetError("no way to connect");
-  enet_peer_timeout(asPeer(s->server),32,3000,6000);
+  enet_peer_timeout(asPeer(s->server),32,5000,15000);
   return s;
   }
 
@@ -166,6 +217,7 @@ void Session::raw(void* peer, uint8_t type, uint8_t from, uint8_t to, const std:
   }
 
 void Session::send(uint8_t type, const std::vector<uint8_t>& data, bool reliable, uint8_t to) {
+  std::lock_guard<std::mutex> g(lock);
   if(over || !ready() || type<FirstUserType || to==selfId)
     return;
   if(!hosting) {
@@ -196,6 +248,7 @@ void Session::refuse(Peer& p, Reason r) {
   }
 
 void Session::kick(uint8_t id) {
+  std::lock_guard<std::mutex> g(lock);
   if(!hosting)
     return;
   if(Peer* p = peerOf(id))
@@ -217,8 +270,8 @@ void Session::admit(Peer& p, std::vector<Event>& ev) {
 
 void Session::onConnect(void* peer, std::vector<Event>& ev) {
   ENetPeer* e = asPeer(peer);
-  // a few seconds without an answer: gone (the original's 20233 "Connection lost")
-  enet_peer_timeout(e,32,3000,6000);
+  // 5 .. 15 s without an answer: gone (the original's 20233 "Connection lost"); a track loading holds up the polls
+  enet_peer_timeout(e,32,5000,15000);
   if(!hosting) {
     raw(server,MsgHello,NoId,HostId,Writer().u16(Version).str(selfName).take(),true);
     return;
@@ -352,14 +405,43 @@ void Session::end(Reason r, std::vector<Event>& ev) {
   }
 
 std::vector<Session::Event> Session::poll() {
-  std::vector<Event> ev;
+  std::lock_guard<std::mutex> g(lock);
+  std::vector<Event> ev = std::move(held);
+  held.clear();
+  pump(ev);
+  return ev;
+  }
+
+void Session::busy(bool on) {
+  if(on==(keeper.joinable()))
+    return;
+  if(on) {
+    stopKeeper = false;
+    keeper = std::thread([this]() {
+      std::unique_lock<std::mutex> g(lock);
+      while(!stopKeeper) {
+        pump(held);
+        wake.wait_for(g,KeepAlivePeriod);
+        }
+      });
+    return;
+    }
+  {
+    std::lock_guard<std::mutex> g(lock);
+    stopKeeper = true;
+  }
+  wake.notify_all();
+  keeper.join();
+  }
+
+void Session::pump(std::vector<Event>& ev) {
   if(closing) {
     closing = false;
     end(Reason::Left,ev);
-    return ev;
+    return;
     }
   if(over || enetHost==nullptr)
-    return ev;
+    return;
 
   ENetHost* h = static_cast<ENetHost*>(enetHost);
   ENetEvent e;
@@ -380,7 +462,7 @@ std::vector<Session::Event> Session::poll() {
       }
     }
   if(over || !hosting)
-    return ev;
+    return;
 
   // the joining players whose round trip has been measured long enough
   const auto now = Clock::now();
@@ -396,10 +478,10 @@ std::vector<Session::Event> Session::poll() {
     }
   if(now-lastList>=ListPeriod)
     sendPlayers();
-  return ev;
   }
 
 void Session::close() {
+  std::lock_guard<std::mutex> g(lock);
   if(over || closing)
     return;
   ENetHost* h = static_cast<ENetHost*>(enetHost);

@@ -65,6 +65,8 @@ class Ghosts {
         // the wheels as recorded: the springs' lengths and the steering, spinning with the speed
         CarRig::Pose          rigPose() const;
         const CarGeometry&    geometry() const { return geom; }
+        // shown as `f` says, `dt` s after the last one: another player's car of the network game (net::RemoteCar)
+        void                  put(const CarProfile::Frame& f, float dt);
 
       private:
         friend class Ghosts;
@@ -104,6 +106,8 @@ class Ghosts {
     // `dt` s of the player's car; `keys` what was pressed (CarProfile::Frame::keys); `racing` false before the
     // start: nothing is recorded
     void                 record(float dt, const Vehicle& car, uint32_t keys, bool racing);
+    // the car's state as a recording keeps it (0x4f5180), at `time` s
+    static CarProfile::Frame frameOf(const Vehicle& car, float time, uint32_t keys);
     // the ghosts that drive on by `dt` s
     void                 update(float dt);
     // Multi: the laps into their files (0x4f17d0); false if one of them could not be written

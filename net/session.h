@@ -1,10 +1,13 @@
 #pragma once
 
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace rc::net {
@@ -110,10 +113,20 @@ class Session {
     void               setOpen(bool open) { accepting = open; }
     // the host: sends `id` away
     void               kick(uint8_t id);
+    // the host: what the games' search (Finder) is told beside the name and the players: the track, the laps ..
+    void               setInfo(std::vector<uint8_t> i) { info = std::move(i); }
 
     std::vector<Event> poll();
+    // a long wait without poll() ahead (loading a track): a thread keeps the connections alive meanwhile, answering
+    // ENet and the search and keeping what came for the next poll(); off again before the game polls once more.
+    // DirectPlay of the original runs its own threads all the time, so a loading player was never dropped
+    void               busy(bool on);
     // leaves (a client) or ends the game for everyone (the host); poll() gives Closed(Left) after it
     void               close();
+
+    // ENet's own start-up, counted (the sessions and Finder)
+    static void        useEnet();
+    static void        dropEnet();
 
   private:
     struct Peer;
@@ -134,6 +147,10 @@ class Session {
     Peer*  peerOf(uint8_t id);
     uint8_t freeId() const;
     void   end(Reason r, std::vector<Event>& ev);
+    void   pump(std::vector<Event>& ev);
+    // a question of Finder that came to the host's port: answered, true; anything else for ENet, false
+    bool   answer(const void* from, const uint8_t* data, size_t size);
+    static int intercept(void* host, void* event);
 
     void*                              enetHost = nullptr;
     void*                              server   = nullptr;   // a client's way to the host
@@ -150,6 +167,14 @@ class Session {
     uint32_t                           maxLag    = 0;
     std::vector<Player>                list;
     Clock::time_point                  lastList;
+    std::vector<uint8_t>               info;
+
+    static constexpr auto              KeepAlivePeriod = std::chrono::milliseconds(20);
+    std::mutex                         lock;
+    std::condition_variable            wake;
+    std::thread                        keeper;
+    bool                               stopKeeper = false;
+    std::vector<Event>                 held;
   };
 
 const char* reasonName(Session::Reason r);

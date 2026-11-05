@@ -206,8 +206,8 @@ PlayerProfile PlayerProfile::parse(const std::vector<uint8_t>& data) {
       case 0x3051: p.lastCar   = c.i32(); break;
       case 0x3052: p.lastLaps  = c.i32(); break;
       case 0x3053: p.lastSkill = c.i32(); break;
-      case 0x4060: p.createdAs = text(c,255); break;
-      case 0x3061: p.unknown61 = c.i32(); break;
+      case 0x4060: p.nick      = text(c,255); break;
+      case 0x3061: p.chatColor = c.i32(); break;
       }
     }
   return p;
@@ -256,8 +256,8 @@ std::vector<uint8_t> PlayerProfile::serialize() const {
   w.dword(0x3051,lastCar);
   w.dword(0x3052,lastLaps);
   w.dword(0x3053,lastSkill);
-  w.str  (0x4060,createdAs);
-  w.dword(0x3061,unknown61);
+  w.str  (0x4060,nick);
+  w.dword(0x3061,chatColor);
   w.close(root);
   return std::move(w.out);
   }
@@ -449,7 +449,7 @@ PlayerList::Entry* PlayerList::create(const std::filesystem::path& dir, std::str
   Entry e;
   e.file = dir/fileName(name);
   e.profile.name      = std::string(name.substr(0,15));
-  e.profile.createdAs = e.profile.name;
+  e.profile.nick      = e.profile.name;
   e.profile.cash      = cash;
   for(size_t i=0; i<cars.size(); ++i)
     e.profile.cars[i].bought = cars[i];

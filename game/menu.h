@@ -46,6 +46,9 @@ class Menu : public Canvas {
       Multi,      // "Wielu graczy" (0x4cd930): the network's games (not ours) and "Dwóch graczy"
       TwoPlayers, // "Dwóch graczy" (0x4d8d30): "Podsumowanie" (dlgTWOPLAYERS_RACESUM) and the controls' pages
       TwoCars,    // the two players' cars (0x4bfa80, dlgTWOPLAYERS_CHOOSE2CARS)
+      NetCreate,  // "Utwórz grę" (0x4ce3e0): "Opcje sieciowe" (dlgNETCREATE_OPTS), "Informacje o graczu"
+      NetJoin,    // "Dołącz do gry" (0x4cf960): the games found (dlgNETJOIN_OPTS), the player, the server
+      NetWait,    // "Oczekujący gracze" (0x4d9ab0): the waiting room of a network game, dlgWAITPLAYERS_*
       };
     // what the player chose, for MainWindow
     enum class Command : uint8_t {
@@ -67,6 +70,7 @@ class Menu : public Canvas {
       Training     = 4,  // "Trening" of the championship: 3 laps, the easy opponents, no fee and no prize
       Championship = 5,  // 5 laps, the expert opponents, the fee paid, the prize won (0x4e03b0)
       Demo         = 6,  // the game's demo: the recorded cars on beach_1, country_3 and country_4 in turn
+      Network      = 7,  // "Utwórz grę" (7) and "Dołącz do gry" (8): the other players' cars (ours: no opponents)
       TwoLaps      = 9,  // "Dwóch graczy", "Okrążenia": the split screen, 1 .. 3 laps
       TwoLag       = 10, // "Dwóch graczy", "Opóźnienia": the split screen, over when one is far enough ahead
       };
@@ -112,7 +116,73 @@ class Menu : public Canvas {
 
     static constexpr size_t TrackCount = 10;
 
+    // The network game's screens (menunet.cpp) see the session through this, filled by MainWindow every frame, and
+    // ask it for things through NetRequest. Names and chat are Windows-1250 here.
+    struct NetView {
+      struct Game {            // a game found ("Dołącz do gry")
+        std::string name, address;
+        uint16_t    port = 0;
+        size_t      track = TrackCount;   // TrackCount: not told
+        int         players = 0, maxPlayers = 0, laps = 0;
+        uint32_t    ping = 0;
+        bool        open = true, sameVersion = true;
+        };
+      struct Row {             // a player in the waiting room
+        uint8_t     id = 0;
+        std::string name;
+        size_t      car = 0;
+        int32_t     boost = 0, resonator = 0, tires = 0;
+        bool        known = false;   // its car told
+        bool        ready = false;
+        bool        self  = false;
+        };
+      struct Line {            // a line of the chat: its sender's colour (0..9, -1 the game's own news)
+        std::string text;
+        int32_t     color = -1;
+        };
+      std::vector<Game> games;
+      bool              online = false;   // in a session (let in)
+      bool              host   = false;
+      std::vector<Row>  rows;
+      size_t            track  = 0;
+      int               laps   = 3;
+      std::vector<Line> chat;
+      std::string       localAddress;   // this computer's, for "Adres IP:"
+      };
+    struct NetRequest {
+      enum Kind : uint8_t {
+        Host,     // "Utwórz": a game as RCCars.crs Network / Multiplayer have it now
+        Search,   // the games at `text` (empty: everyone on the local network), `port`
+        Join,     // "Połącz" to `text`:`port`
+        Cancel,   // "Przerwij" while connecting
+        Leave,    // "Odłącz"
+        Ready,    // "Gotów": `on`
+        Start,    // the host's "Wyścig"
+        Setup,    // the host's track and laps changed: `track`, `laps`
+        Chat,     // `text` said
+        Kick,     // the host's "Wykop gracza": `player`
+        };
+      Kind        kind   = Host;
+      std::string text;
+      uint16_t    port   = 0;
+      size_t      track  = 0;
+      int         laps   = 0;
+      uint8_t     player = 0;
+      bool        on     = false;
+      };
+    // the colours of the chat (0x4e86e0: 0x571710), "Czerwony" .. "Żółty"
+    static constexpr size_t ChatColors = 10;
+    static Color chatColor(int32_t i);
+
     Menu(Tempest::Device& device, Resources& res, Sounds& sounds);
+
+    // the network game: what the session has (every frame), what the screens ask for (once), and what became of
+    // a game created or joined: in, or the text of why not (or why it is over), shown over "Wielu graczy" or where
+    // the player was
+    void    setNet(NetView v) { netView = std::move(v); }
+    std::vector<NetRequest> takeNet() { return std::exchange(netRequests,{}); }
+    void    netIn();
+    void    netOut(uint32_t why);
 
     // the players whose panel the main menu shows and who are chosen on Page::Players
     void    setPlayers(Players* p) { players = p; }
@@ -230,7 +300,9 @@ class Menu : public Canvas {
 
     // the message over a screen (0x4cb830): a text, "Tak" alone or with "Anuluj"; `action` what "Tak" does
     struct Message {
-      enum Action : uint8_t { None, RemovePlayer, NewChampionship, BuyCar, SellCar, BuyUpgrade, SellUpgrade, Quit };
+      enum Action : uint8_t { None, RemovePlayer, NewChampionship, BuyCar, SellCar, BuyUpgrade, SellUpgrade, Quit,
+                              NetCancel,   // "Łączenie..." with "Przerwij" alone
+                              NetLeave };  // "Czy na pewno chcesz się odłączyć?" 
       bool     open   = false;
       uint32_t text   = 0;
       std::string formatted;   // the text with its values, when there is one
@@ -424,6 +496,10 @@ class Menu : public Canvas {
       int         hoverKey = -1;       // Keys: the key under the mouse
       std::string text;                // Text (Windows-1250) and how long it may be
       size_t      maxLen = 60;
+      bool        digits   = false;       // Text: only 0..9 typed
+      bool        readOnly = false;       // Text: shown, not typed in
+      uint32_t    empty    = 0;           // Text: shown grey while it is empty ("domyślny", "wsz. dostępne")
+      std::string labelText;              // instead of the label's text id
       };
     void   buildOptions(int page);
     // the page's values into RCCars.crs (each page's own, 0x4d1980 message 0xf)
@@ -475,6 +551,27 @@ class Menu : public Canvas {
     void   drawTwoCars();
     // the options' pages shown: Page::Options, or "Sterowanie" and "Dostosuj sterowanie" of Page::TwoPlayers
     bool   optionsOn() const { return current==Page::Options || (current==Page::TwoPlayers && twoTab>0); }
+    // the lines of `options` take the mouse and the keys: the options' pages, the network game's
+    bool   linesOn() const { return optionsOn() || netPage(); }
+    bool   netPage() const { return current==Page::NetCreate || current==Page::NetJoin || current==Page::NetWait; }
+
+    // the network game's screens (menunet.cpp): their pages as radio buttons, `netTab` the one shown; its lines
+    // read RCCars.crs (and the player's file) when it comes and are written when it goes (message 0xf)
+    void   buildNet();
+    void   showNetTab(int tab);
+    void   saveNetTab();
+    void   netAction(int id);
+    // a line of the page changed (a Choice), or typed in and Enter pressed (a Text)
+    void   netChanged(Option& o);
+    bool   netSubmit(Option& o);
+    void   netTick(float dt);
+    bool   netClick(float mx, float my);
+    bool   netKey(Tempest::Event::KeyType key);
+    void   drawNet();
+    Table  netGameTable() const;
+    Table  netWaitTable() const;
+    // the games found in the order chosen by "Sortuj wg ..."
+    std::vector<size_t> netGameOrder() const;
 
     // Page::ChampRace (0x4c0610, 0x4c0b80)
     void   fillRivals();
@@ -582,6 +679,18 @@ class Menu : public Canvas {
     float                   multiT = 0;
     size_t                  multiCar = 0;
     bool                    multiShowCar = false;
+    // the network game's screens: the page shown, the session as MainWindow tells it, what is asked of it; the
+    // game chosen in the list (by its address) and the list's order (0 .. 4: name, track, players, laps, lag),
+    // the player chosen in the waiting room; a message to show when the next screen has come
+    int                     netTab = 0;
+    NetView                 netView;
+    std::vector<NetRequest> netRequests;
+    std::string             netChosen;
+    int                     netSort = 2;
+    int                     netRow  = -1;
+    int                     netHover = -1;
+    uint32_t                netMessage = 0;
+    bool                    netReady = false;
     // Page::TwoPlayers: its page shown, 0 "Podsumowanie", else the options' page (3 the devices, 4 the keys);
     // Page::TwoCars: each player's car, boost, engine and tires
     int                     twoTab = 0;

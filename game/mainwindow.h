@@ -47,15 +47,29 @@
 #include "world/modelmesh.h"
 #include "world/level.h"
 #include "world/objects.h"
+#include "net/carstate.h"
+#include "net/finder.h"
+#include "net/session.h"
 
 class MainWindow : public Tempest::Window {
   public:
+    // the network game from the command line (-host, -join), until it has its screens
+    struct NetOptions {
+      enum class Role : uint8_t { None, Host, Join };
+      Role        role    = Role::None;
+      std::string address;                                  // Join: the host's
+      uint16_t    port    = rc::net::Session::DefaultPort;
+      std::string name;                                     // empty: the player playing
+      int         players = 2;                              // Host: the race starts once this many are in
+      };
+
     // `dev`: the -dev switch, RCCars.exe's developer mode (0x147d204); our debug keys work only with it.
     // `level`: straight into a race of that track, without the menus; empty: the main menu
     // `inWindow`: a 800x600 window like the original's menu in a window, otherwise full screen (without changing
     // the screen's resolution, unlike RCCars.exe 0x4a6840, which shows its menus in 800x600)
-    MainWindow(Tempest::Device& device, Resources& res, const std::string& level, bool dev = false,
-               bool inWindow = false);
+    // `netOptions`: a network game to create or join (game/netplay.cpp)
+    MainWindow(Tempest::Device& device, Resources& res, const std::string& level, bool dev, bool inWindow,
+               const NetOptions& netOptions);
     ~MainWindow() override;
 
   private:
@@ -264,6 +278,63 @@ class MainWindow : public Tempest::Window {
       bool                    shown     = false; // the finish table opened
       };
     TwoPlayers              two;
+    // the network game (RCCars.exe modes 7 "Utwórz grę" and 8 "Dołącz do gry", game/netplay.cpp): every player
+    // drives its own car and sends its state (net::CarState), the others' are shown like ghosts (net::RemoteCar).
+    // The host has the track and the laps; it holds everyone's countdown until all have loaded the track.
+    struct NetCar {
+      std::string                      name;
+      rc::Ghosts::Look                 look;
+      bool                             known = false;   // its look came
+      std::unique_ptr<rc::Ghosts::Ghost> shown;   // nullptr until its look came
+      rc::net::RemoteCar               states;
+      std::unique_ptr<rc::AiCarSound>  sound;
+      };
+    struct NetPlay {
+      NetOptions                        options;
+      std::unique_ptr<rc::net::Session> session;
+      std::map<uint8_t,NetCar>          cars;      // the other players', by id
+      float                             clock    = 0;   // s since the session began: the states' clock
+      float                             sendIn   = 0;   // s to the next state sent
+      bool                              held     = false; // the countdown waits for the host's "go"
+      std::map<uint8_t,bool>            ready;     // host: who has loaded the track since the last start
+      // from the menus ("Utwórz grę", "Dołącz do gry"): the waiting room between the races; else the command line's
+      bool                              lobby    = false;
+      bool                              joining  = false; // a client knocking, not let in yet
+      bool                              racing   = false; // the session's race is on: the car is sent
+      size_t                            track    = 0;     // the waiting room's, the host's to choose
+      int                               laps     = 3;
+      std::map<uint8_t,bool>            set;       // who has pressed "Gotów" (the host's word, MsgLobby)
+      std::vector<Menu::NetView::Line>  chat;
+      float                             rate     = rc::net::CarState::DefaultRate;   // states a second sent
+      std::unique_ptr<rc::net::Finder>  finder;    // "Dołącz do gry": the games found
+      std::string                       localAddress;
+      };
+    NetPlay                 net;
+    bool                    online() const { return net.session!=nullptr; }
+    // the session of `net.options`, after init()
+    void                    startNet();
+    // the session's news, the player's car sent, the others' shown; once a frame, also in the menus
+    void                    tickNet(float dt);
+    void                    tickNetSounds(const rc::Vec3& ear, const rc::Vec3& right, bool racing);
+    void                    endNet(rc::net::Session::Reason why);
+    // host: the race again for everyone (a player came), held until all are ready
+    void                    netRestart();
+    // the track loaded and the car on the grid: tell the host (or, the host, see if all are)
+    void                    netLoaded();
+    void                    netLook(uint8_t to);
+    // what the menus' network screens ask for, and what they show
+    void                    netRequest(const Menu::NetRequest& r);
+    void                    netView();
+    // the host: the waiting room to everyone (and the games' search)
+    void                    netLobby();
+    // a line of the chat, Windows-1250; `color` -1: the game's own news
+    void                    netSay(std::string text, int32_t color);
+    // the player's name in the network game (Windows-1250): the nick of "Informacje o graczu"
+    std::string             netNick() const;
+    // the session is over or could not be: why (a text id), the race left, back to "Wielu graczy"
+    void                    netOver(uint32_t why);
+    // player `id`'s grid slot: the player's of the track's opponents' grid, then theirs (0x4a5320 has 6 cars)
+    rc::Mat4                netGrid(uint8_t id) const;
     bool                    split() const { return two.rider!=nullptr; }
     // the split screen's race: player 2 made (`setup` the menu's choice), or gone (nullptr)
     void                    setupTwo(const Menu::Setup* setup);

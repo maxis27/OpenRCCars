@@ -15,6 +15,7 @@
 //   rcinfo <game_dir> traffic <track> [seconds]  the road traffic: departures, how the cars stand on the road, a push
 //   rcinfo <game_dir> shots <track> [car 1-3] [seconds]  guards and the BTR shooting at a parked car: bursts, hits, put back
 //   rcinfo <game_dir> net [port]                 network sessions on 127.0.0.1: joining, messages, leaving (no data read)
+//   rcinfo <game_dir> netcar [rate]              a car's states over a lossy network: packing, where the others show it
 //   rcinfo <game_dir> check                      decode every texture in the pack and every RCCarsDB/*.sb
 
 #include "formats/fog.h"
@@ -42,6 +43,8 @@
 #include "fx/careffects.h"
 #include "fx/worldfx.h"
 #include "fx/groundspots.h"
+#include "net/carstate.h"
+#include "net/finder.h"
 #include "net/session.h"
 
 #include <algorithm>
@@ -1858,8 +1861,8 @@ static int cmdScp(const fs::path& file) {
       if(t.bestRace[n].made())
         std::printf("    %zu laps: %s\n",n,rec(t.bestRace[n]).c_str());
     }
-  std::printf("  last: track %d car %d laps %d skill %d, \"%s\" %d\n",p.lastTrack,p.lastCar,p.lastLaps,p.lastSkill,
-              p.createdAs.c_str(),p.unknown61);
+  std::printf("  last: track %d car %d laps %d skill %d; nick \"%s\", chat colour %d\n",p.lastTrack,p.lastCar,p.lastLaps,p.lastSkill,
+              p.nick.c_str(),p.chatColor);
   const auto back = p.serialize();
   std::printf("written back: %s\n",back==data ? "identical" : "DIFFERENT");
   return 0;
@@ -1928,6 +1931,35 @@ static int cmdNet(uint16_t port) {
   check(has("host",Kind::Joined,a) && has("host",Kind::Joined,b),"the host told of both");
   check(has("b",Kind::Joined,0) && has("b",Kind::Joined,a) && has("b",Kind::Joined,b),"the second told of everyone");
 
+  // the games' search, at the address and to everyone on the network (the latter may not reach this computer)
+  {
+    seats["host"].s->setInfo({4,2});
+    rc::net::Finder at, all;
+    at.search("127.0.0.1",port);
+    all.search("",port);
+    const auto until = std::chrono::steady_clock::now()+std::chrono::seconds(3);
+    while(std::chrono::steady_clock::now()<until && at.games().empty()) {
+      pump(0.02f,nullptr);
+      at.poll(0.02f);
+      all.poll(0.02f);
+      }
+    const auto* g = at.games().empty() ? nullptr : &at.games()[0];
+    if(g!=nullptr)
+      std::printf("  found \"%s\" at %s:%u, %d/%d, %u ms; to everyone: %zu found\n",g->name.c_str(),g->address.c_str(),
+                  g->port,g->players,g->maxPlayers,g->ping,all.games().size());
+    check(g!=nullptr && g->name=="Plaża" && g->players==3 && g->maxPlayers==3 && g->open && g->sameVersion
+          && g->info==std::vector<uint8_t>{4,2},"found by the search");
+    // ENet still works on that port
+    seats["a"].s->send(0x23,{5},true);
+    pump(2,[&]{ return has("host",Kind::Message,a,0x23); });
+    check(has("host",Kind::Message,a,0x23),"the session goes on beside the search");
+    // the ones silent for 5 s go
+    at.search("127.0.0.1",uint16_t(port+3));
+    for(int i=0; i<10; ++i)
+      at.poll(0.6f);
+    check(at.games().empty(),"nobody at that port: nothing found");
+  }
+
   seats["a"].s->send(0x20,{1,2,3},true);
   seats["a"].s->send(0x21,{9},false,b);
   seats["host"].s->send(0x22,{7,7},true);
@@ -1938,6 +1970,18 @@ static int cmdNet(uint16_t port) {
   check(has("b",Kind::Message,a,0x21) && !has("host",Kind::Message,a,0x21),"fast, to one player only");
   check(has("a",Kind::Message,0,0x22) && has("b",Kind::Message,0,0x22),"from the host to everyone");
   check(!has("a",Kind::Message,a),"nothing comes back to the sender");
+
+  // everyone loading a track for longer than ENet's timeout (15 s), nobody polling
+  for(auto& n:{"host","a","b"})
+    seats[n].s->busy(true);
+  seats["a"].s->send(0x24,{4},true);
+  std::this_thread::sleep_for(std::chrono::seconds(17));
+  for(auto& n:{"host","a","b"})
+    seats[n].s->busy(false);
+  pump(1,[&]{ return has("host",Kind::Message,a,0x24) && has("b",Kind::Message,a,0x24); });
+  check(!has("host",Kind::Left) && !has("a",Kind::Closed) && !has("b",Kind::Closed)
+          && seats["host"].s->players().size()==3,"17 s busy loading: nobody dropped");
+  check(has("host",Kind::Message,a,0x24) && has("b",Kind::Message,a,0x24),"what came meanwhile kept");
 
   seats["c"].s = Session::join("127.0.0.1",port,"Celina");
   pump(5,[&]{ return seats["c"].s->closed(); });
@@ -1979,7 +2023,7 @@ static int cmdNet(uint16_t port) {
 
   seats["g"].s = Session::join("127.0.0.1",uint16_t(port+2),"Gosia");
   const auto t1 = std::chrono::steady_clock::now();
-  pump(10,[&]{ return seats["g"].s->closed(); });
+  pump(20,[&]{ return seats["g"].s->closed(); });
   std::printf("  nobody there: closed after %.1f s\n",std::chrono::duration<float>(std::chrono::steady_clock::now()-t1).count());
   check(closedWhy("g")==Session::Reason::NoAnswer,"nobody at that port");
 
@@ -1988,14 +2032,137 @@ static int cmdNet(uint16_t port) {
   return failed==0 ? 0 : 3;
   }
 
+// a car sent over a network that loses and delays states: the 55 bytes of a state, and how far from where it
+// really was the others show it, between the states and moved on when they stop coming
+static int cmdNetCar(float rate) {
+  using rc::net::RemoteCar;
+  namespace CarState = rc::net::CarState;
+  // the true car: a slalom, swinging 45 degrees left and right every 9 s, speeding up and slowing down between
+  // 8 and 16 m/s, rocking on its springs (integrated in 1 ms steps)
+  std::vector<rc::CarProfile::Frame> path;
+  {
+  rc::Vec3 at = {0,1,0};
+  for(int i=0; i<=12000; ++i) {
+    const float t = float(i)*0.001f;
+    const float heading = 0.8f*std::sin(0.7f*t), turn = 0.56f*std::cos(0.7f*t);
+    const float v = 12.f+4.f*std::sin(0.5f*t);
+    rc::CarProfile::Frame f;
+    f.time     = t;
+    f.position = {at.x,1.f+0.05f*std::sin(3*t),at.z};
+    f.velocity = {v*std::sin(heading),0.15f*std::cos(3*t),v*std::cos(heading)};
+    f.rot[0] = std::cos(heading/2); f.rot[1] = 0; f.rot[2] = std::sin(heading/2); f.rot[3] = 0;
+    f.spin = {0,turn,0};
+    for(int k=0; k<4; ++k)
+      f.suspension[k] = 0.06f+0.01f*std::sin(3*t+float(k));
+    f.steer = 20.f*std::cos(0.7f*t);
+    f.keys  = 0x11;
+    path.push_back(f);
+    at += rc::Vec3{f.velocity.x,0,f.velocity.z}*0.001f;
+    }
+  }
+  auto truth = [&](float t) {
+    const size_t i = size_t(std::clamp(std::lround(t*1000.f),0l,long(path.size()-1)));
+    auto f = path[i];
+    f.time = t;
+    return f;
+    };
+  int failed = 0;
+  auto check = [&](bool ok, const char* what) {
+    std::printf("  %-58s %s\n",what,ok ? "ok" : "FAILED");
+    if(!ok)
+      ++failed;
+    };
+
+  {
+  const auto f = truth(3.21f);
+  const auto bytes = CarState::pack(f,CarState::Boosting);
+  rc::CarProfile::Frame g;
+  uint8_t flags = 0;
+  const bool ok = CarState::unpack(bytes,g,flags);
+  const float dp = (g.position-f.position).length(), dv = (g.velocity-f.velocity).length();
+  const float ds = std::abs(g.suspension[0]-f.suspension[0]);
+  const rc::Mat4 pa = RemoteCar::pose(f), pb = RemoteCar::pose(g);
+  const float dr = (pa.vector({0,0,1})-pb.vector({0,0,1})).length();
+  std::printf("  %zu bytes; off by %.4f m, %.4f m/s, %.6f m spring, %.5f rotation, steer %.2f\n",bytes.size(),dp,dv,ds,dr,
+              g.steer);
+  check(ok && bytes.size()==CarState::Size && flags==CarState::Boosting && g.keys==f.keys,"a state packed and unpacked");
+  check(dp<1e-4f && dv<0.01f && ds<1e-5f && dr<1e-3f && std::abs(g.steer-f.steer)<0.01f,"precision");
+  auto bad = bytes;
+  bad.pop_back();
+  check(!CarState::unpack(bad,g,flags),"a short one refused");
+  }
+
+  // the network: 30 ms there, up to 40 ms more at random, every tenth state lost, and 0.3 s of nothing at 6 s
+  std::mt19937 rng(7);
+  std::uniform_real_distribution<float> jitter(0.f,0.04f), chance(0.f,1.f);
+  struct InFlight { float arrive; rc::CarProfile::Frame f; };
+  std::vector<InFlight> wire;
+  RemoteCar car(rate);
+  const float frame = 1.f/60.f, send = 1.f/rate;
+  float nextSend = 0, worst = 0, worstGap = 0, sum = 0, worstTurn = 0;
+  int   samples = 0;
+  for(float now=0; now<10.f; now+=frame) {
+    while(nextSend<=now) {
+      const bool lost = chance(rng)<0.1f || (nextSend>6.f && nextSend<6.3f);
+      if(!lost)
+        wire.push_back({nextSend+0.03f+jitter(rng),truth(nextSend)});
+      nextSend += send;
+      }
+    for(size_t i=0; i<wire.size();) {
+      if(wire[i].arrive<=now) {
+        rc::CarProfile::Frame g;
+        uint8_t flags = 0;
+        CarState::unpack(CarState::pack(wire[i].f,0),g,flags);
+        car.receive(g,flags,now);
+        wire.erase(wire.begin()+long(i));
+        }
+      else
+        ++i;
+      }
+    if(!car.ready() || now<1.f)
+      continue;
+    const auto shown = car.at(now);
+    const auto real  = truth(shown.time);
+    const float err  = (shown.position-real.position).length();
+    const float turn = (RemoteCar::pose(shown).vector({0,0,1})-RemoteCar::pose(real).vector({0,0,1})).length();
+    // behind the real car by the delay
+    const float behind = now-shown.time;
+    if(now>6.f && now<6.6f)
+      worstGap = std::max(worstGap,err);
+    else {
+      worst = std::max(worst,err);
+      worstTurn = std::max(worstTurn,turn);
+      sum += err;
+      ++samples;
+      }
+    if(samples==1)
+      std::printf("  shown %.0f ms behind the sender (delay %.0f ms + the fastest trip 30 ms)\n",behind*1000,car.delay()*1000);
+    }
+  std::printf("  %.0f states a second: off the true path by %.3f m on average, %.3f m at most, %.4f rotation;"
+              " %.3f m in the 0.3 s gap\n",rate,sum/float(std::max(samples,1)),worst,worstTurn,worstGap);
+  check(worst<0.1f && worstTurn<0.05f,"between the states: on the path (within 10 cm and 3 degrees)");
+  check(worstGap<2.f,"0.3 s without states: moved on, then back");
+
+  // a late state does not pull the car back
+  RemoteCar late(rate);
+  late.receive(truth(1.0f),0,10.0f);
+  late.receive(truth(1.2f),0,10.2f);
+  late.receive(truth(1.1f),0,10.25f);
+  check(late.at(10.25f).time>=1.0f && late.silence(10.25f)<0.1f,"an old state that came late is left out");
+  std::printf("%s\n",failed==0 ? "ok" : "FAILED");
+  return failed==0 ? 0 : 3;
+  }
+
 int main(int argc, char** argv) {
   if(argc<3) {
-    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|tbl|scp|crs|sb|obj|nodes|coll|objects|check|drive|race|gates|ai|fx|fog|ram|chars|drown|traffic|shots|net ...\n");
+    std::fprintf(stderr,"usage: rcinfo <game_dir> pack|extract|csi|tbl|scp|crs|sb|obj|nodes|coll|objects|check|drive|race|gates|ai|fx|fog|ram|chars|drown|traffic|shots|net|netcar ...\n");
     return 1;
     }
   try {
     const fs::path game = argv[1];
     const std::string cmd = argv[2];
+    if(cmd=="netcar")
+      return cmdNetCar(argc>3 ? float(std::atof(argv[3])) : rc::net::CarState::DefaultRate);
     if(cmd=="net")
       return cmdNet(argc>3 ? uint16_t(std::atoi(argv[3])) : rc::net::Session::DefaultPort);
     if(cmd=="coll" && argc>3)

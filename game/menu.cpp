@@ -333,6 +333,8 @@ void Menu::leave(Page to, Command cmd) {
     saveOptions();
   if(current==Page::TwoPlayers || current==Page::TwoCars)
     saveTwo();
+  if(netPage())
+    saveNetTab();
   next    = to;
   nextCmd = cmd;
   slide   = 1;
@@ -531,6 +533,11 @@ void Menu::build(Page p) {
     case Page::TwoCars:
       buildTwoCars();
       break;
+    case Page::NetCreate:
+    case Page::NetJoin:
+    case Page::NetWait:
+      buildNet();
+      break;
     case Page::ChampWin:
       // 0x4c13a0: the congratulations, back to the main menu
       headerText  = T_Championship;
@@ -541,6 +548,9 @@ void Menu::build(Page p) {
   // the new buttons come in
   slide  = 2;
   slideT = 0;
+  // why the network game is over, over the screen it went back to
+  if(netMessage!=0)
+    showMessage(std::exchange(netMessage,0u));
   }
 
 void Menu::playControl(int sound) {
@@ -620,8 +630,9 @@ void Menu::tick(float dt) {
     }
   refreshButtons();
   infoTick(dt);
-  if(optionsOn())
+  if(linesOn())
     optionsTick(dt);
+  netTick(dt);
   multiTick(dt);
   // 0x4c3e40: the pages go on once the screen has come, and at the last one's end back to the main menu
   if(current==Page::Credits && slide==0 && !creditsTick(dt))
@@ -799,7 +810,7 @@ void Menu::mouseMove(int x, int y) {
     }
   if(current==Page::Garage)
     hoverEnum(garagePage==0 ? garageCar : upgradeEnum);
-  if(optionsOn())
+  if(linesOn())
     optionsHover(mouseX-contentShift(),mouseY-tall*0.5f);
   for(auto* e:twoEnums())
     hoverEnum(*e);
@@ -880,7 +891,9 @@ void Menu::mouseDown(int x, int y) {
         command = pills[i].command;
       return;
       }
-  if(optionsOn()) {
+  if(linesOn()) {
+    if(netPage() && netClick(mouseX-contentShift(),mouseY-tall*0.5f))
+      return;
     optionsClick(mouseX-contentShift(),mouseY-tall*0.5f);
     return;
     }
@@ -1121,6 +1134,13 @@ void Menu::keyDown(Event::KeyType key, uint32_t ch) {
       if(key==Event::K_ESCAPE)
         leave(Page::TwoPlayers,Command::None);
       return;
+    case Page::NetCreate:
+    case Page::NetJoin:
+    case Page::NetWait:
+      if(optionsKey(key,ch))
+        return;
+      netKey(key);
+      return;
     }
   }
 
@@ -1263,9 +1283,9 @@ void Menu::showMessage(uint32_t text, Message::Action action, std::string format
   message.pills.clear();
   // 0x4cc0a0: "Tak" alone in the middle, or "Tak" and "Anuluj" 42 from the box's sides
   Pill ok;
-  ok.text = T_Yes;
+  ok.text = action==Message::NetCancel ? cancelText : T_Yes;
   ok.red  = true;
-  if(action==Message::None) {
+  if(action==Message::None || action==Message::NetCancel) {
     ok.box = {(800-135)*0.5f,309,(800+135)*0.5f,345};
     message.pills = {ok};
     }
@@ -1282,6 +1302,22 @@ void Menu::messageAnswer(bool ok) {
   message.open = false;
   if(ok && message.action==Message::Quit) {
     command = Command::Quit;
+    return;
+    }
+  if(message.action==Message::NetCancel) {
+    // "Przerwij" while connecting (0x4cfa8c)
+    NetRequest r;
+    r.kind = NetRequest::Cancel;
+    netRequests.push_back(r);
+    return;
+    }
+  if(message.action==Message::NetLeave) {
+    if(ok) {
+      NetRequest r;
+      r.kind = NetRequest::Leave;
+      netRequests.push_back(r);
+      leave(Page::Multi,Command::None);
+      }
     return;
     }
   if(!ok || message.action==Message::None || players==nullptr)
@@ -2160,10 +2196,18 @@ void Menu::draw(Encoder<CommandBuffer>& enc, uint8_t frame, int w, int h, const 
     dy = tall*0.5f;
     drawGarage();
     }
-  if(optionsOn()) {
+  if(linesOn()) {
     dx = contentShift();
     dy = tall*0.5f;
     drawOptions();
+    }
+  if(netPage()) {
+    dx = contentShift();
+    dy = tall*0.5f;
+    drawNet();
+    if(netTab==1 && current!=Page::NetWait && players!=nullptr)
+      if(auto* p = players->current())
+        drawPanel(*p,true);
     }
   if(current==Page::Multi) {
     dx = contentShift();

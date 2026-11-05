@@ -75,10 +75,17 @@ static float scriptValue(const Resources& res, const char* file, const std::stri
   return def;
   }
 
-MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, bool dev, bool inWindow)
+MainWindow::MainWindow(Device& device, Resources& res, const std::string& name, bool dev, bool inWindow,
+                       const NetOptions& netOptions)
   : Window(inWindow ? Normal : FullScreen), device(device), resources(res), swapchain(device,hwnd()),
     library([&res](const std::string& path){ return res.readFile(path); }), devMode(dev) {
   setWindowTitle("OpenRCCars");
+  net.options = netOptions;
+  if(netOptions.role==NetOptions::Role::Host) {
+    // the host's race of -l: the other players, no opponents
+    raceMode = Menu::Mode::Network;
+    aiLevel  = rc::Opponents::Level::Off;
+    }
   resetSwapchain();
   sounds   = std::make_unique<Sounds>(res);
   intro    = std::make_unique<Intro>(device,res);
@@ -175,6 +182,7 @@ void MainWindow::init(const std::string& name) {
   applyOptions();
   sounds->startMusic();
   intro.reset();
+  startNet();
   lastTick = Application::tickCount();
   }
 
@@ -456,6 +464,8 @@ void MainWindow::setupPhysics(bool restartRace, bool again) {
       Log::e("two players: no grid: ",e.what());
       }
     }
+  if(online())
+    carPose = netGrid(net.session->self());
   camera.fov = split() ? chase.splitFov() : Camera().fov;
   const auto geom = rc::carGeometry(carScene,Cars[carId]);
   const auto prm  = rc::CarParams::load(resources.pack(),int32_t(carId+1),boostLevel,resonatorLevel,tiresLevel);
@@ -622,6 +632,9 @@ Hud::Info MainWindow::hudInfo() const {
     if(g.visible && !g.lap.empty())
       info.opponents.push_back({g.pose().translation(),g.pose().vector({0,0,1})});
     }
+  for(auto& [id,c]:net.cars)
+    if(c.shown && c.states.ready())
+      info.opponents.push_back({c.shown->pose().translation(),c.shown->pose().vector({0,0,1})});
   if(opponents && opponents->size()>0) {
     info.place     = opponents->place(playerFinish);
     for(size_t i=0; i<opponents->size(); ++i) {
@@ -927,7 +940,11 @@ void MainWindow::menuCommand(Menu::Command c) {
       paused = false;
       // the ghost race has no finish: it is left from its menu, for its screen (0x4e07c0); the laps kept (0x4f17d0)
       saveGhosts();
-      menu->open(c==Menu::Command::Done || ghosts!=nullptr ? menu->afterRace() : Menu::Page::Main);
+      // the network game's waiting room again, while the session lasts (the command line's: the main menu)
+      if(raceMode==Menu::Mode::Network)
+        menu->open(online() && net.lobby ? Menu::Page::NetWait : Menu::Page::Main);
+      else
+        menu->open(c==Menu::Command::Done || ghosts!=nullptr ? menu->afterRace() : Menu::Page::Main);
       return;
     }
   }
@@ -1016,6 +1033,11 @@ void MainWindow::startRace() {
       break;
     case Menu::Mode::Demo:
       break;   // startDemo()'s
+    case Menu::Mode::Network:
+      // the host's laps (net MsgStart), the other players instead of opponents
+      laps    = st.laps;
+      aiLevel = rc::Opponents::Level::Off;
+      break;
     case Menu::Mode::TwoLaps:
     case Menu::Mode::TwoLag:
       // 0x4a4bb0, 0x4a4bc0: "fixedNLaps" laps, or no end of laps in the race of the gap; no opponents (0x4a5320)
@@ -1086,6 +1108,8 @@ void MainWindow::startRace() {
     }
   setupGhosts();
   paused   = false;
+  if(online() && st.mode==Menu::Mode::Network)
+    netLoaded();
   lastTick = Application::tickCount();
   }
 
@@ -1420,7 +1444,8 @@ void MainWindow::tick(float dt) {
     carPose = vehicle->pose();
     const rc::Vec3 at = carPose.translation();
     const size_t   was = checkpoints->next();
-    const auto     ev  = race->update(dt,at,carPose.vector({0,0,1}));
+    // a network game's countdown waits for the host's "go"
+    const auto     ev  = race->update(net.held ? 0.f : dt,at,carPose.vector({0,0,1}));
     // the way driven (0x4f1c80: every step, not while the car is put back); ours also not while it flies
     if(!race->holdCar() && playerFinish<0 && !flying)
       odometer += (at-lastCarPos).length();
@@ -1908,6 +1933,7 @@ void MainWindow::tickSounds(float dt) {
     sounds->playAt(g.kind==rc::fx::Gunfire::Sound::Burst ? "burst" : "bullet",g.at,ear,right);
   if(traffic)
     sounds->tickTraffic(*traffic,ear,right);
+  tickNetSounds(ear,right,racing);
   for(size_t i=0; ghosts && i<ghosts->size() && i<ghostSounds.size(); ++i) {
     // a ghost's engine, as an opponent's
     const auto&    g  = (*ghosts)[i];
@@ -2244,6 +2270,21 @@ rc::Mat4 MainWindow::drawScene(Encoder<CommandBuffer>& enc, const Camera& cam, c
     mesh.showAntenna(true);
     mesh.draw(enc,viewProj,push,g.pose(),&parts);
     }
+  for(auto& [id,c]:net.cars) {
+    // the other players of the network game: drawn as the ghosts are
+    if(c.shown==nullptr || !c.states.ready())
+      continue;
+    const auto& g = *c.shown;
+    auto        m = aiMeshes.find({g.look.car,g.look.skin,g.look.boost,g.look.resonator,g.look.tires});
+    if(m==aiMeshes.end())
+      continue;
+    auto&       mesh  = m->second->at((g.pose().translation()-cam.position).length(),lodDistances);
+    const auto  parts = partPoses(mesh,g.geometry(),g.rigPose());
+    lightCar(mesh,&mesh==&m->second->full() && quality.light,carLight,1.f);
+    mesh.setReflections(quality.envMap);
+    mesh.showAntenna(true);
+    mesh.draw(enc,viewProj,push,g.pose(),&parts);
+    }
   antennaView->draw(enc,frame,push);
   effects->setFog(push.cameraPos[3],push.fogColor);
   if(vehicle)
@@ -2275,7 +2316,19 @@ void MainWindow::render() {
       }
     if(raceRequested) {
       raceRequested = false;
-      startRace();
+      // loading takes long: the others must not drop us meanwhile, nor we them
+      if(online())
+        net.session->busy(true);
+      try {
+        startRace();
+        }
+      catch(...) {
+        if(online())
+          net.session->busy(false);
+        throw;
+        }
+      if(online())
+        net.session->busy(false);
       }
     if(!demoRequested.empty())
       startDemo(std::exchange(demoRequested,std::string()));
@@ -2290,10 +2343,15 @@ void MainWindow::render() {
     const uint64_t now = Application::tickCount();
     const float    dt  = float(now-lastTick)/1000.f;
     lastTick = now;
+    tickNet(std::min(dt,0.1f));
     // the main menu and the quick race instead of the race; the race's menu over the stopped race
     const bool front = menu->active() && menu->page()!=Menu::Page::InRace && menu->page()!=Menu::Page::Finish;
     menu->tick(std::min(dt,0.1f));
     menuCommand(menu->take());
+    for(auto& r:menu->takeNet())
+      netRequest(r);
+    if(menu->active())
+      netView();
     if(menu->takeOptionsChanged())
       applyOptions();
     if(front) {

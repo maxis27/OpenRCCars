@@ -550,7 +550,9 @@ LevelMesh::LevelMesh(Device& device, Resources& res, const rc::SbScene& scene, c
       }
     if(key.modulate) {
       // darkens or lightens the ground under it: its grey (128) leaves it as it is
-      b.flags = F_Modulate;
+      // RCCars.exe gives the few that have a lightmap (country_4) a second stage with it (0x464440), which shows as
+      // dark tyre marks
+      b.flags = F_Modulate | (b.tex[1]!=nullptr ? uint32_t(F_Lightmap) : 0u);
       b.mode  = rc::AlphaMode::Opaque;
       }
     if(b.mode==rc::AlphaMode::Cutout)
@@ -736,7 +738,8 @@ void LevelMesh::draw(Encoder<CommandBuffer>& enc, const Push& frame, Pass pass,
       continue;
     if((b.mode==rc::AlphaMode::Translucent)!=(pass==Pass::Translucent))
       continue;
-    const bool tess = (b.flags & F_Water) && !pso.water.isEmpty();
+    // only the sea with waves moves; pools and streams are flat
+    const bool tess = (b.flags & F_Waves) && !pso.water.isEmpty();
     auto&      p    = tess ? pso.water : (b.flags & F_Modulate) ? pso.modulate : pso.get(b.mode);
     if(current!=&p) {
       enc.setPipeline(p);

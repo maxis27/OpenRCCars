@@ -183,6 +183,7 @@ class Opponent {
     std::unique_ptr<Vehicle>              driven;
     float                                 driveTime  = 0;    // s since knocked (0x439c)
     float                                 sinceTouch = 1e3f; // s since the last contact (0x4430)
+    float                                 tipped     = 0;    // s tipped over with the body on the track (0x43bc)
     float                                 stuckTime  = 0;    // s barely moving (0x442c) ...
     float                                 backTime   = 0;    // ... backing up for this long (0x4428)
     bool                                  backing    = false;

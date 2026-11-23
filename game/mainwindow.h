@@ -249,7 +249,6 @@ class MainWindow : public Tempest::Window {
       ChaseCamera                      chase;
       Camera                           camera;
       float                            finish     = -1;  // race time of its finish
-      float                            upsideDown = 0;
       float                            airborne   = 0;
       bool                             jump       = false;
       };
@@ -305,7 +304,6 @@ class MainWindow : public Tempest::Window {
     float                   besideMin    = 1e9f; // how close the car came to it
     bool                    besideDone   = false;
     bool                    jumpPressed = false;
-    float                   upsideDown = 0; // seconds on the roof or side, then the car is put back
     float                   shotTime   = -1; // seconds since a bullet hit the car (held, then put back), < 0 none
     bool                    shotSound  = false; // a bullet hit the car since the last tickSounds (car_cdt_bullet)
     // RCCars.exe's developer mode (-dev, 0x147d204) and its F9 (0x147d254, the "ZERO" mode of 0x482900): the

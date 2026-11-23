@@ -101,6 +101,8 @@ class Vehicle {
     void                       place(const Mat4& pose, const Vec3& velocity, const Vec3& spin);
     // back on the wheels where it is, facing the same way (after a roll-over)
     void                       recover();
+    // a sphere of the body (not a wheel) within `margin` m of the track
+    bool                       bodyNearTrack(float margin) const { return near(BodySpheres,margin); }
     // call once per frame before PhysicsWorld::step
     void                       update(const Input& in, float dt);
 

@@ -385,7 +385,6 @@ void MainWindow::ghostBackToStart() {
   effects->clear(true);
   besideDone = true;
   lastCarPos = carPose.translation();
-  upsideDown = 0;
   shotTime   = -1;
   resetVolumes.reset();
   chase.reset(chaseCar());
@@ -506,7 +505,6 @@ void MainWindow::respawnCar() {
   if(opponents)
     opponents->playerMoved();
   lastCarPos = carPose.translation();
-  upsideDown = 0;
   shotTime   = -1;
   resetVolumes.reset();
   chase.reset(chaseCar());
@@ -1516,12 +1514,8 @@ void MainWindow::tick(float dt) {
     if(shotTime>=0)
       shotTime += dt;
 
-    // on its roof or side for a while: back on the wheels (not while flown: RCCars.exe skips the car's own update)
-    upsideDown = !flying && carPose.vector({0,1,0}).y<0.3f ? upsideDown+dt : 0;
-    if(upsideDown>2.f) {
-      vehicle->recover();
-      upsideDown = 0;
-      }
+    // a player's car tipped over stays so (RCCars.exe stands only the autopilot's cars up, 0x4fe310): Jump or
+    // "Zresetuj" put it back
     // back to the last checkpoint (RCCars.exe 0x508160): out of the track's collision box (sideways, or more
     // than 0.1 m under it), drowned, a while in a reset volume or stuck in the track (0x4f5e50); never while F9
     // flies the car (0x5082c0)
@@ -1578,7 +1572,6 @@ void MainWindow::setFlying(bool on) {
   else {
     // the physics again from where it was left, at rest
     vehicle->reset(carPose);
-    upsideDown = 0;
     resetVolumes.reset();
     chase.reset(chaseCar());
     Log::i("dev: the car drives (F9)");

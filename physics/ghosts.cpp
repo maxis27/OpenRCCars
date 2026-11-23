@@ -78,6 +78,15 @@ void Ghosts::Ghost::show(float t, float dt) {
   wheelTurn += currentSpeed*dt/wheelRadius;
   }
 
+void Ghosts::Ghost::put(const CarProfile::Frame& f, float dt) {
+  current      = CarProfile::poseOf(f);
+  currentSpeed = Vec3::dot(f.velocity,current.vector({0,0,1}));
+  for(size_t i=0; i<6; ++i)
+    springs[i] = f.suspension[i];
+  steer      = f.steer;
+  wheelTurn += currentSpeed*dt/wheelRadius;
+  }
+
 CarRig::Pose Ghosts::Ghost::rigPose() const {
   const float deg = 180.f/3.14159265f;
   std::vector<CarRig::Wheel> in(geom.wheels.size());
@@ -217,9 +226,13 @@ void Ghosts::record(float dt, const Vehicle& car, uint32_t keys, bool racing) {
   const auto& fr = rec.frames();
   if(fr.size()>=MaxFrames || (!fr.empty() && recTime-fr.back().time<FrameStep))
     return;
+  rec.add(frameOf(car,recTime,keys));
+  }
+
+CarProfile::Frame Ghosts::frameOf(const Vehicle& car, float time, uint32_t keys) {
   CarProfile::Frame f;
   const Mat4 pose = car.pose();
-  f.time     = recTime;
+  f.time     = time;
   f.position = pose.translation();
   toQuaternion(pose,f.rot);
   f.velocity = car.velocity();
@@ -230,7 +243,7 @@ void Ghosts::record(float dt, const Vehicle& car, uint32_t keys, bool racing) {
     }
   f.steer = car.steering();
   f.keys  = keys;
-  rec.add(f);
+  return f;
   }
 
 void Ghosts::update(float dt) {

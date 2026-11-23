@@ -84,7 +84,7 @@ std::vector<uint8_t> readCrs(const std::filesystem::path& p) {
 // Page::Multi
 
 void Menu::buildMulti() {
-  // 0x4cd930: the network's two (not ours: greyed), "Dwóch graczy", no race; the player's panel
+  // 0x4cd930: "Utwórz grę" (0xedb), "Dołącz do gry" (0xedc), "Dwóch graczy", no race; the player's panel
   headerText = T_Multiplayer;
   auto add = [this](int slot, uint32_t text, Button::Kind kind, int id, Page to, bool enabled) {
     Button b;
@@ -96,8 +96,8 @@ void Menu::buildMulti() {
     b.enabled = enabled;
     right.push_back(b);
     };
-  add(0,T_CreateGame, Button::Tab, 0xedb,Page::None,false);
-  add(1,T_JoinGame,   Button::Tab, 0xedc,Page::None,false);
+  add(0,T_CreateGame, Button::Tab, 0,    Page::NetCreate,true);
+  add(1,T_JoinGame,   Button::Tab, 0,    Page::NetJoin,true);
   add(3,T_TwoPlayers, Button::Tab, M_Two,Page::None,true);
   add(8,T_MainMenu,   Button::Back,0,    Page::Main,true);
   add(-1,T_Race,      Button::Race,0,    Page::None,false);

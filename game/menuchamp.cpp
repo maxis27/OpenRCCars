@@ -268,6 +268,10 @@ void Menu::refreshButtons() {
   }
 
 void Menu::buttonAction(int id) {
+  if(netPage()) {
+    netAction(id);
+    return;
+    }
   if(current==Page::Players) {
     playerAction(id);
     return;
@@ -903,6 +907,8 @@ Menu::Page Menu::afterRace() const {
     return Page::GhostRace;
   if(choice.two())
     return Page::TwoPlayers;   // 0x4e07c0: over "Wielu graczy"
+  if(choice.mode==Mode::Network)
+    return Page::NetWait;      // the waiting room again
   if(choice.mode==Mode::Championship && championWon)
     return Page::ChampWin;
   return Page::Champ;

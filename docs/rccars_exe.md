@@ -325,10 +325,12 @@ z `Settings/cockpit.ini`.
   staje na swoim miejscu w szyku (`PlayerPath`, `start.dat`).
 - **Nagrania**: dopóki nikt ich nie potrąci, nie jeżdżą z fizyką, tylko odtwarzają przejazdy z
   `CarProfiles/<trasa>/*.dat`. Nagranie to jedno okrążenie od startu, którego koniec schodzi się z początkiem pętli;
-  kolejne okrążenia kierowca jedzie z odmian tego nagrania (`over1`, `over1_2`, `over1_3` …) po kolei. Okrążenia
+  pod koniec każdego gra wybiera następne (0x502c70): trzecią odmianę (`over1_3`, okrążenie ze skrótami), gdy
+  przeciwnik jest za graczem (gracz ma więcej okrążeń albo na tym samym okrążeniu jest w nim o ponad 5 s dłużej,
+  tablica wyścigu +8 i +0x18, 0x4ea120), a w innym razie na zmianę pierwszą i drugą (`over1`, `over1_2`, `over1` …);
+  po trzeciej wraca pierwsza. Wczytuje tylko `<nazwa>`, `<nazwa>_2` i `<nazwa>_3` (0x4f13d8). Okrążenia
   przeciwników liczymy po przejechaniu `cp_1` (do 2,88 m) pod koniec nagrania, a nie po kolejnych punktach, bo
-  odmiany `_3` bywają skrótami. Odtwarzając nagranie, są bryłą kinematyczną (pchają rekwizyty). Które z odmian
-  nagrania i w jakiej kolejności bierze oryginał, nie wiemy. Malowanie `Skin` to numer od zera, jak u gracza: 0x49fc80
+  odmiany `_3` bywają skrótami. Odtwarzając nagranie, są bryłą kinematyczną (pchają rekwizyty). Malowanie `Skin` to numer od zera, jak u gracza: 0x49fc80
   dodaje 1 do auta i malowania (`car_askin%i%i`), więc `Skin` 1–3 to druga do czwartej tekstura (że wartość z pliku
   trafia tam bez zmian, nie prześledziliśmy, ale funkcja przyjmuje 0..3). Między dwiema klatkami, które dzieli
   w poziomie więcej niż 1,5 × `maxImpLinear` (23,8 m/s), odtwarzanie (0x502ea0) nie miesza klatek, tylko trzyma
@@ -423,14 +425,14 @@ i trzy pikapy (w kilku malowaniach), na urban_1 hummer, a na beach_4 pływający
 - **BTR** (`roadcar.ini`: `TowerVel`, `TowerShootT`) celuje w auto w klinie 20 m ±15° przed lufą, po 0,33 s strzela
   serią (komunikat 0x261 do `BURST_MNG`, jak strażnik, więc trafienia działają tak samo, także na przeciwników),
   potem co 1,25 s, cztery razy, dopóki cel jest bliżej niż 25 m; zgubiwszy cel, wodzi wieżą ±50°. Tempo obrotu
-  wieży (2 × `TowerVel`) jest zgadnięte.
+  wieży przy celowaniu to 2 × `TowerVel` (0x518325) i wieża nie wychodzi wtedy poza ±50° (0x51836c).
 - **Cienie i poświaty** (0x516f50, przy `VIDEO_RoadCarShadow`) idą do kolejki świateł gry (0x44c640, do 100 na
   klatkę), która kładzie je na pobliskie ściany trasy (0x44c750, 0x45a220): od ściany odległej o h < R plama ma
   promień √(R²−h²), uv = 0,5 + d·0,453125/ten promień, a siłę (1/255)^((h/R)²). Poświata: kampery i ciężarówki (ta
   sama flaga co światła), przy każdym reflektorze punkt 2 m przed nim, R = 2 m, biała tekstura `shex_wht` dodana do
-  obrazu, niezależnie od tego, czy światła się palą. Cienie: tylko auta `Slow`, przy każdym kole punkt `ShadowY`/100 m
+  obrazu (rodzaj 1 kolejki, `SrcAlpha, One`, a tekstura jest nieprzezroczysta), niezależnie od tego, czy światła się palą. Cienie: tylko auta `Slow`, przy każdym kole punkt `ShadowY`/100 m
   (0,48) pod osią, R = `ShadowR`/100 m (0,46) z `roadcar.ini`, tekstura `wheel_shd` obrócona wzdłuż koła,
-  odejmowana od obrazu (tryby mieszania 4 i 5 z 0x45c410 to nasze odczytanie). U nas plamy nie leżą na morzu (fale
+  odejmowana od obrazu (rodzaj 3 kolejki, `Zero, InvSrcColor`, tryb 4 z 0x45c6e0 ustawiany w 0x466638). U nas plamy nie leżą na morzu (fale
   je poruszają), więc pływający BTR ma cienie tylko na brzegu. `rcinfo traffic` podaje, na ilu ścianach leżą (hummer
   na urban_1: 4 cienie na około 10 ścianach).
 
@@ -496,7 +498,7 @@ i trzy pikapy (w kilku malowaniach), na urban_1 hummer, a na beach_4 pływający
   czyta `maxHeight` = 0 i prawie każda klatka dokłada punkt: ślad ma długość pierścienia (przy 60 klatkach na sekundę
   kilka metrów). Pierwszy punkt pasa i koniec pasa są przezroczyste, ostatnia ćwierć życia (60 s) zanika. Rysowane do
   20 m od kamery (0x52fd00) jako tekstura × siła + szarość (1 − siła)/2, mnożona przez to, co pod spodem, dwa razy
-  (u nas mieszanie `DstColor`/`SrcColor`, wywnioskowane): przy sile 0 ziemia się nie zmienia. Kolejne czworokąty
+  (`DestColor, SrcColor`: materiał 0x80000021 w 0x530018, bit 0x20 → tryb 5 z 0x45c6e0): przy sile 0 ziemia się nie zmienia. Kolejne czworokąty
   jednego auta są podnoszone o 2e-5 m. We mgle idą ku połowie koloru mgły, jak przebieg 0x463e70 dla takich mieszań.
 - **Kilwater** (`wtr_trace`, 0x528ce0, 0x528ed0, tylko auta graczy): jeden czworokąt na wodzie za każdym tylnym
   kołem i za karoserią, tworzony co klatkę, gdy lustro wody przecina koło (albo połowę wysokości karoserii) i auto
@@ -517,10 +519,13 @@ i trzy pikapy (w kilku malowaniach), na urban_1 hummer, a na beach_4 pływający
   hamulcem) dymi `eg_int(2 × poślizg)` kłębów na sekundę. Kłąb odpala wciśnięcie skoku (bit 0x577c to Jump,
   nie turbo).
 - **Brud** (0x52e320, 0x531c20, 0x507dc0, 0x531450): każde koło, które kurzy, dokłada do licznika auta
-  `ilość kurzu × 0,1` na sekundę (do 3000), każde koło w wodzie zmywa 350 na sekundę. Licznik wybiera między czystym
-  autem a teksturami `dirt_car<auto>_1` i `_2` (auta 2 i 3 mają osobne `a`/`b` dla dwóch tekstur karoserii
-  `car_askin*` i `car_bskin*`) i miesza sąsiednie; brud kładzie się na lakier według swojej przezroczystości. Tylko
-  auta graczy.
+  `ilość kurzu × 0,1` na sekundę (do 3000), każde koło w wodzie zmywa 350 na sekundę. Licznik wybiera dwie sąsiednie
+  z listy `car_dirted_hw0`, `dirt_car<auto>_1`, `_2` (auta 2 i 3 mają osobne `a`/`b` dla dwóch tekstur karoserii
+  `car_askin*` i `car_bskin*`) i miesza je w karcie (stopień 1 `BLENDFACTORALPHA` dla koloru i przezroczystości,
+  0x4670e0, bo stała 0x571d24 = 1 wybiera tę drogę zamiast mieszania na procesorze 0x46c2a0). Karoseria jest
+  rysowana drugi raz z tą mieszanką, z `ZBIAS` 4, i kładzie się na lakier według przezroczystości (`SrcAlpha,
+  InvSrcAlpha`). `car_dirted_hw0` to jeden piksel 2/255, więc do pierwszej tekstury brud wyłania się z prawie
+  czarnego i przezroczystego. Tylko auta graczy.
 - **Rozbryzgi fal** (`WATER_SPLASH` 0x5272f0, `WATER_SPLASH_MNG` 0x527d80, znaczniki 0x5277a0, co klatkę 0x527a40):
   znacznik `water_splash_N` (do 16; beach_1, beach_3, country_3) bliżej niż `ActiveRad` (20 m w poziomie) od kamery
   i na ekranie co `TimeDelay ± TimeDelayDisp` s (1 ± 0,25) rozbryzguje się w losowym miejscu `Radius` (5 cm) od

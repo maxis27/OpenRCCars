@@ -15,7 +15,7 @@
 
 // RCCars.exe's light queue on screen (0x44c640 -> 0x466350): textures laid onto the track around a point
 // (rc::fx::layOnto). A shadow takes its texture's colour off what is under it, D3D blend Zero / InvSrcColor (mode 4
-// of 0x45c6e0, the textured kind 3 of the queue); a glow adds it.
+// of 0x45c6e0, set for the textured kind 3 of the queue at 0x466638); a glow adds it.
 class SpotView {
   public:
     struct Spot {

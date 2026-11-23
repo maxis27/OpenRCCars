@@ -74,11 +74,14 @@ void main() {
     }
 
   if((push.flags & F_DIRT)!=0u) {
-    // the dust the car picked up (RCCars.exe 0x531c20, 0x507dc0): its dirt_car textures, painted like the car,
-    // laid over it by their opacity; from the clean car to the first one, then from the first to the second
+    // the dust the car picked up (RCCars.exe 0x531c20, 0x508030 -> 0x4670e0): the body is drawn once more with
+    // two textures of the list car_dirted_hw0, dirt_car<n>_1, _2 (0x531450) mixed by the texture factor
+    // (D3DTOP_BLENDFACTORALPHA, colour and alpha alike) and laid over the paint by its opacity (SrcAlpha /
+    // InvSrcAlpha). car_dirted_hw0 is a single pixel of 2/255, so up to the first texture the dirt fades in from
+    // almost black and see-through
     float t  = push.time;
     vec4  hi = texture(texBase2, inUvBase);
-    vec4  lo = t<1.0 ? vec4(hi.rgb, 0.0) : texture(texMask, inUvBase);
+    vec4  lo = t<1.0 ? vec4(2.0/255.0) : texture(texMask, inUvBase);
     vec4  d  = mix(lo, hi, clamp(t<1.0 ? t : t-1.0, 0.0, 1.0));
     color.rgb = mix(color.rgb, d.rgb, d.a);
     }

@@ -32,7 +32,7 @@ constexpr float GlowRadius   = 2.f;    // m: .. on the faces within this of that
 constexpr float WheelRadius[2] = {0.35f, 0.45f}; // of the wheel's height: collision sphere, steering / BTR (0x517940)
 
 // the BTR's turret (0x517f10, 0x518050, 0x5184b0 and the sector watcher 0x535720 .. 0x5359f0); the zones and the
-// way it turns are read from the code as far as they go, the turning speed while aiming is inferred
+// way it turns are read from the code (aiming at twice TowerVel and within the sweep: 0x518325, 0x51836c)
 constexpr float TowerSweep   = 50.f;   // degrees either way while it searches
 constexpr float TowerReach   = 20.f;   // m: a car in front of the gun (within TowerCone) is locked on ..
 constexpr float TowerCone    = 15.f;   // degrees either way
@@ -545,7 +545,7 @@ void Traffic::spots(State& s) {
 // 0x261 to BURST_MNG, the guards' gunfire), then one every 1.25 s, four in all, as long as it stays within 25 m.
 // Without a target in reach the turret keeps still; once it has lost one it sweeps 50 degrees either way at
 // TowerVel degrees/s (0x518121) looking for the next. While aiming it turns towards the target at up to twice that
-// (inferred from 0x518325).
+// (0x518325: TowerVel x dt doubled) and never beyond the 50 degrees of the sweep (0x51836c .. 0x5183da).
 void Traffic::turret(State& s, float dt, Vehicle* player, const std::vector<Characters::Car>& cars) {
   const State::Part& tp = s.parts[size_t(s.turretPart)];
   const Vec3 gun   = s.car.world.point(tp.pivot);
@@ -610,7 +610,7 @@ void Traffic::turret(State& s, float dt, Vehicle* player, const std::vector<Char
     const float cross = Vec3::dot(Vec3::cross(b,to),upW);
     const float err   = std::atan2(cross,Vec3::dot(b,to))*180.f/Pi;
     const float step  = 2.f*prm.towerVel*dt;
-    s.towerAngle += std::clamp(err,-step,step);
+    s.towerAngle  = std::clamp(s.towerAngle+std::clamp(err,-step,step),-TowerSweep,TowerSweep);
     s.lockTime   += dt;
     if(s.lockTime>=(s.bursts==0 ? TowerFirst : TowerNext)) {
       s.lockTime = 0;

@@ -34,6 +34,7 @@ constexpr float BackUpTime  = 1.5f;    // s of backing up when stuck
 // a camera sees a point this close and this far off the way it looks (RCCars.exe 0x406ab0(view, pos, 50, 100))
 static constexpr float SeeDistance = 50.f;
 static constexpr float SeeAngle    = 100.f;  // degrees
+static constexpr float BehindTime  = 5.f;    // s more into the same lap than the opponent: its third recording (0x554730)
 // a knocked car back on the recording blends into it in this many seconds (0x503190)
 static constexpr float ResumeFade  = 1.f;
 
@@ -170,6 +171,7 @@ void Opponent::restart() {
   finishTime   = -1;
   stopTime     = -1;
   lapAt        = 0;
+  behind       = false;
   bestLap      = -1;
   drownTimer   = 0;
   resets.reset();
@@ -219,7 +221,11 @@ void Opponent::update(float dt, float rate, float ahead, bool band, const std::f
   if(playTime>profiles[cur].duration()) {
     const Vec3  was  = current.translation();
     const float over = playTime-profiles[cur].duration();
-    cur      = (cur+1)%profiles.size();
+    // 0x502c70: the third recording when behind, else the first and the second by turns
+    if(behind && profiles.size()>2)
+      cur = 2;
+    else
+      cur = (cur==0 && profiles.size()>1) ? 1 : 0;
     playTime = profiles[cur].cycleStart()+over;
     seam     = was-profiles[cur].pose(playTime).translation();
     if(seam.length()>2.f)
@@ -600,9 +606,9 @@ Opponents::Opponents(PhysicsWorld& world, const Reader& read, const SbScene& car
     const auto& o = ops[i];
     if((o.races & bit)==0 || o.car<0 || o.car>2 || o.path.empty())
       continue;
-    // "surf\over1": over1.dat, over1_2.dat, over1_3.dat ..
+    // "surf\over1": over1.dat, over1_2.dat, over1_3.dat (0x4f13d8; every _3 on the tracks has a _2)
     std::vector<CarProfile> laps;
-    for(int v=1; v<10; ++v) {
+    for(int v=1; v<=3; ++v) {
       try {
         auto lap = CarProfile::parse(read("CarProfiles\\"+o.path+(v>1 ? "_"+std::to_string(v) : "")+".dat"));
         if(lap.empty())
@@ -672,6 +678,8 @@ void Opponents::setTrack(const SbScene& track) {
 void Opponents::restart() {
   player.reset();
   playerSinceCar = 1e3f;
+  playerLapsSeen = 0;
+  playerLapAt    = 0;
   for(auto& c:cars)
     c->restart();
   }
@@ -683,6 +691,14 @@ void Opponents::update(float dt, bool racing, const Vec3& playerPos, size_t play
   if(active!=nullptr)
     playerPose = active->pose();
   told.clear();
+  if(playerLaps!=playerLapsSeen) {
+    playerLapsSeen = playerLaps;
+    playerLapAt    = raceTime;
+    }
+  // 0x502c70 measures each opponent against the player (the active car in the demo, 0x4870c0): their laps
+  // (0x4ea120, race table +8), then on the same lap the time into it (+0x18, reset by 0x4eaa50)
+  const size_t leadLaps = active!=nullptr ? active->laps() : playerLaps;
+  const float  leadAt   = active!=nullptr ? active->lapAt : playerLapAt;
   // 0x4fd440, 0x406ab0: within SeeDistance of a view's camera and SeeAngle of where it looks
   auto seen = [this](const Vec3& p) {
     auto sees = [&p](const Viewer& v) {
@@ -703,6 +719,7 @@ void Opponents::update(float dt, bool racing, const Vec3& playerPos, size_t play
       continue;
     const size_t was = c->laps();
     const float ahead = c->progress()-(active!=nullptr ? active->progress() : player.progress());
+    c->behind = c.get()!=active && (leadLaps>c->laps() || (leadLaps==c->laps() && c->lapAt-leadAt>BehindTime));
     c->update(dt,baseRate,ahead,active!=nullptr || !playerDone,seen);
     const auto back = c->trackRules(dt);
     if(back==Opponent::Back::Drowned)

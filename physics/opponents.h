@@ -55,9 +55,11 @@ class RouteTracker {
 //   x a rubber band: Splines/FuncWaitAccel<n>_A.bspl of how far (m along the route) the opponent n is ahead of
 //     the player (0x4fd4b0): up to 1.1 .. 1.2 when 40 .. 50 m behind, down to 0.6 .. 0.65 when 20 .. 45 m ahead
 //     (the files without _A are for another game mode, 0x4fd6e2).
-// A recording is one lap from the grid whose end joins where its loop begins (CarProfile::cycleStart); the
-// opponent drives the recording and its variants in turn (over1, over1_2, over1_3, over1 ..): they all start
-// the same way, so they join there too. A lap counts when the replay crosses the line of cp_1 near the end of
+// A recording is one lap from the grid whose end joins where its loop begins (CarProfile::cycleStart). At the end
+// of each one RCCars.exe picks the next (0x502c70): the third (over1_3, a lap that cuts corners) when the opponent
+// is behind the player (a lap or more, or on the same lap more than 5 s less into it, see Opponent::behind), else
+// the first and the second (over1_2) by turns (over1, over1_2, over1 ..); after the third comes the first. They
+// all start the same way, so they join there too. Only <name>, <name>_2 and <name>_3 are read (0x4f13d8). A lap counts when the replay crosses the line of cp_1 near the end of
 // a recording, wherever the recorded driver went (the checkpoints only judge the player).
 // While it replays, nothing pushes the car. When another car or a prop comes at it, it is knocked off the
 // recording (knock(), RCCars.exe 0x533990, 0x533ee0 -> 0x4fd9d0): from then on it is a car like the player's (Vehicle, with its own CarParams), driven by the game's autopilot back
@@ -138,6 +140,7 @@ class Opponent {
     // race bookkeeping (Opponents)
     float                finishTime = -1;   // race time of the finish, < 0 before
     float                lapAt      = 0;    // race time the lap being driven began
+    bool                 behind     = false; // the player is a lap or more ahead, or more than 5 s on this lap
     float                bestLap    = -1;   // its fastest lap, < 0 none yet
     float                sinceCar   = 1e3f; // s since a hit with another car began (Opponents::collide)
     float                shakeLeft  = 0;    // s left of the window judging how hard the player hit it ...
@@ -289,6 +292,8 @@ class Opponents {
     std::vector<News>                      told;
     int                                    focus = -1;     // follow()
     std::vector<std::vector<Ball>>         ballBuf;        // collide(): the player's, then each opponent's
+    size_t                                 playerLapsSeen = 0;
+    float                                  playerLapAt    = 0; // race time the player's lap began
   };
 
 }

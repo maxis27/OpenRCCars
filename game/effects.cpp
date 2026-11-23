@@ -110,7 +110,8 @@ Effects::Effects(Device& device, Resources& res)
   sh   = AppShader::get("marks.frag.sprv");
   frag = device.shader(sh.data,sh.len);
   psoWake = device.pipeline(Topology::Triangles,st,vert,frag);
-  // the tracks darken or lighten what is under them: twice the source times the destination
+  // the tracks darken or lighten what is under them: twice the source times the destination (material flags
+  // 0x80000021 at 0x530018 -> bit 0x20 of 0x45c3c0 -> mode 5 of 0x45c6e0, DestColor / SrcColor)
   st.setBlendSource(RenderState::BlendMode::DstColor);
   st.setBlendDest  (RenderState::BlendMode::SrcColor);
   psoTrack = device.pipeline(Topology::Triangles,st,vert,frag);

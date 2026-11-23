@@ -16,7 +16,8 @@ SpotView::SpotView(Device& device) : device(device) {
   st.setBlendSource(RenderState::BlendMode::Zero);
   st.setBlendDest  (RenderState::BlendMode::OneMinusSrcColor);
   psoShadow = device.pipeline(Topology::Triangles,st,vert,frag);
-  // the glow's blend is ours (white on black textures)
+  // the glow: kind 1 of the light queue, shex_wht at SrcAlpha / One (material flags 5 -> mode 3 of 0x45c6e0,
+  // 0x4668e2); shex_wht and the vertex colour are opaque, so that is One / One
   st.setBlendSource(RenderState::BlendMode::One);
   st.setBlendDest  (RenderState::BlendMode::One);
   psoGlow   = device.pipeline(Topology::Triangles,st,vert,frag);
